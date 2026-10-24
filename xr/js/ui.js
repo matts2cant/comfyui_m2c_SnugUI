@@ -10,7 +10,7 @@
 // Option callbacks (onClick, onChange, onSelect...) are plain properties, so `new Button({ onClick })`
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
-import { commit, editText } from "./keyboard.js";
+import { commit, editText, erase, showKeyboard } from "./keyboard.js";
 
 let maxAnisotropy = 1;
 export function setRenderer(renderer) {
@@ -212,8 +212,8 @@ export class Slider extends Widget {
 	constructor(o) {
 		super({ label: "", min: 0, max: 1, step: 0.01, value: 0, drag: true, size: 28, w: 400, h: 124, ...o });
 		this.field = new TextField({
-			size: this.size, y: 0, h: 48, parent: this, panel: this.panel,
-			onEdit: () => this.field.ta.select(),
+			size: this.size, y: 0, h: 48, parent: this, panel: this.panel, compact: true,
+			onEdit: () => this.field.selectAll(),
 			onDone: (v) => {
 				const n = Number(v.trim().replace(",", "."));
 				if (v.trim() && Number.isFinite(n)) this.set(n);
@@ -434,17 +434,83 @@ export class List extends Scrollable {
 	}
 }
 
+// The toolbar overlaying the panel next to the field being edited (below it, above when there is no room or the
+// field sets barAbove): Keyboard opens the system keyboard, Del / arrows / Select all edit the model, Done commits.
+// A compact bar only has Keyboard, Del and Done.
+export class EditBar extends Widget {
+	constructor({ field, compact }) {
+		super({ field, size: 26, h: 68 });
+		const caret = (d) => {
+			const { selectionStart: s, selectionEnd: e, value } = field.ta;
+			field.setCaret(s !== e ? (d < 0 ? s : e) : Math.min(value.length, Math.max(0, s + d)));
+		};
+		const all = [["Keyboard", showKeyboard], ["Del", () => erase()], ["←", () => caret(-1)], ["→", () => caret(1)], ["Select all", () => field.selectAll()], ["Done", commit]];
+		this.btns = (compact ? [all[0], all[1], all[5]] : all).map(([text, run]) => ({ text, run, y: 8, h: this.h - 16 }));
+		measure.font = font(this.size, true);
+		let x = 8;
+		for (const b of this.btns) {
+			b.x = x;
+			b.w = Math.max(72, Math.ceil(measure.measureText(b.text).width) + 40);
+			x += b.w + 8;
+		}
+		this.w = x;
+	}
+
+	place() {
+		const { panel, field } = this, a = field.abs(), below = a.y + field.h + 6;
+		this.x = Math.max(8, Math.min(a.x, panel.width - this.w - 8));
+		this.y = !field.barAbove && below + this.h <= panel.height ? below : Math.max(0, a.y - 6 - this.h);
+	}
+
+	btnAt(p) { return this.btns.find((b) => p.lx >= b.x && p.lx < b.x + b.w && p.ly >= b.y && p.ly < b.y + b.h); }
+	onDown(p) { this.down = this.btnAt(p); }
+	onMove(p) {
+		const b = this.btnAt(p);
+		if (b !== this.hot) { this.hot = b; this.invalidate(); }
+	}
+	onClick(p) { this.btnAt(p)?.run(); }
+
+	draw(ctx) {
+		rrect(ctx, 0, 0, this.w, this.h, theme.radius);
+		ctx.fillStyle = theme.bg;
+		ctx.fill();
+		ctx.strokeStyle = theme.accent;
+		ctx.lineWidth = 3;
+		ctx.stroke();
+		const lit = this.pressed ? this.down : this.hover ? this.hot : null;
+		ctx.font = font(this.size, true);
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		for (const b of this.btns) {
+			rrect(ctx, b.x, b.y, b.w, b.h, theme.radius * 0.7);
+			ctx.fillStyle = b.text === "Done" ? theme.accent : theme.surface;
+			ctx.fill();
+			if (b === lit) {
+				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fill();
+			}
+			ctx.fillStyle = theme.fg;
+			ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 1);
+		}
+	}
+}
+
 // Tapping starts an in-place edit through keyboard.js: the field draws the hidden textarea's live value,
-// caret and selection. Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts, onKey(e).
+// caret and selection, shows an EditBar, and handles taps (caret), drags (selection) and double taps (word) itself.
+// Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts, onKey(e), compact and
+// barAbove for the toolbar.
 export class TextField extends Widget {
 	constructor(o) {
 		super({ value: "", placeholder: "", size: 30, w: 400, h: 72, ...o });
 		this.ta = null;
 		this.first = 0;
 		this.blink = true;
+		this.anchor = null;
+		this.tapAt = 0;
+		this.bar = new EditBar({ field: this, compact: this.compact });
 	}
 
-	edit() {
+	edit(p) {
 		const initial = this.value;
 		this.first = 0;
 		this.blink = true;
@@ -456,6 +522,11 @@ export class TextField extends Widget {
 			onDone: (v) => { this.stop(); this.value = v; this.onDone?.(v); },
 			onCancel: () => { this.stop(); this.onCancel?.(); },
 		});
+		// the caret goes where the field showed the tap: laid out from the start of the text
+		this.ta.setSelectionRange(0, 0);
+		this.setCaret(this.indexAt(p));
+		this.panel.add(this.bar);
+		this.bar.place();
 		this.timer = setInterval(() => { this.blink = !this.blink; this.invalidate(); }, 500);
 		this.onEdit?.();
 		this.invalidate();
@@ -464,8 +535,18 @@ export class TextField extends Widget {
 	stop() {
 		clearInterval(this.timer);
 		this.ta = null;
+		this.bar.panel?.remove(this.bar);
 		this.invalidate();
 	}
+
+	setCaret(start, end = start, dir = "none") {
+		this.ta.setSelectionRange(start, end, dir);
+		this.blink = true;
+		this.invalidate();
+	}
+
+	// not ta.select(): that focuses the textarea, which would open the keyboard in XR
+	selectAll() { this.setCaret(0, this.ta.value.length); }
 
 	// caret = the moving end of the selection
 	caret() {
@@ -488,14 +569,45 @@ export class TextField extends Widget {
 		return { lines, first: this.first, rows, lh, top: 16, dx: 0, caret };
 	}
 
-	onClick(p) {
-		if (!this.ta) return this.edit();
+	// character index under the point, in the layout of the current caret
+	indexAt(p) {
 		const { lines, first, rows, lh, top, dx } = this.layout();
 		const i = Math.min(lines.length - 1, first + rows - 1, Math.max(first, first + Math.floor((p.ly - top) / lh)));
-		const idx = lines[i].start + colAt(measure, lines[i].text, p.lx - 20 + dx);
-		this.ta.setSelectionRange(idx, idx);
-		this.blink = true;
-		this.invalidate();
+		return lines[i].start + colAt(measure, lines[i].text, p.lx - 20 + dx);
+	}
+
+	// a press while editing sets the caret and anchors a drag selection; a second one close by in time selects the word
+	onDown(p) {
+		this.dragCapture = this.ta !== null;
+		if (!this.ta) return;
+		const idx = this.indexAt(p), now = performance.now();
+		if (now - this.tapAt < 400 && Math.abs(p.x - this.tapX) < 24) {
+			const text = this.ta.value, word = (i) => /[\p{L}\p{N}_]/u.test(text[i]);
+			let s = Math.min(idx, text.length - 1), e = s + 1;
+			if (s >= 0) {
+				while (s > 0 && word(s - 1) === word(s)) s--;
+				while (e < text.length && word(e) === word(e - 1)) e++;
+				this.setCaret(s, e);
+			}
+			this.anchor = null;
+		} else {
+			this.setCaret(idx);
+			this.anchor = idx;
+		}
+		this.tapAt = now;
+		this.tapX = p.x;
+	}
+
+	onMove(p) {
+		if (this.anchor === null || !this.ta) return;
+		const idx = this.indexAt(p);
+		this.setCaret(Math.min(idx, this.anchor), Math.max(idx, this.anchor), idx < this.anchor ? "backward" : "forward");
+	}
+
+	onUp() { this.anchor = null; }
+
+	onClick(p) {
+		if (!this.ta) this.edit(p);
 	}
 
 	drawEdit(ctx) {
@@ -529,6 +641,7 @@ export class TextField extends Widget {
 	}
 
 	draw(ctx) {
+		if (this.ta) this.bar.place();
 		const { w, h } = this, r = theme.radius * 0.7;
 		rrect(ctx, 0, 0, w, h, r);
 		ctx.fillStyle = theme.bg;
@@ -557,7 +670,7 @@ export class TextField extends Widget {
 // Enter or a tap picks it; text that matches no option reverts. onChange(value) when the selection changes.
 export class Combo extends TextField {
 	constructor(o) {
-		super({ options: [], current: undefined, rows: 8, ...o, onInput: (q) => this.filter(q), onKey: (e) => this.key(e), onEdit: () => this.open(), onDone: (v) => this.done(v) });
+		super({ options: [], current: undefined, rows: 8, compact: true, ...o, onInput: (q) => this.filter(q), onKey: (e) => this.key(e), onEdit: () => this.open(), onDone: (v) => this.done(v) });
 		this.items = this.options.map((it) => ({ ...it, lc: it.label.toLowerCase() }));
 		this.list = new List({ rowH: 56, size: this.size, outline: true, onSelect: (it) => { this.picked = it; commit(); } });
 		this.select(this.current);
@@ -570,7 +683,7 @@ export class Combo extends TextField {
 	}
 
 	open() {
-		this.ta.select();
+		this.selectAll();
 		this.list.hover = false;
 		this.list.selected = this.current;
 		this.panel.add(this.list);
@@ -590,13 +703,15 @@ export class Combo extends TextField {
 		this.reveal(true);
 	}
 
-	// below the field, or above it when the panel has no room
+	// below the toolbar, or above the field when the panel has no room (the toolbar is above the field when it has none below)
 	place() {
-		const { list } = this, a = this.abs(), below = a.y + this.h + 6;
+		const { list, bar } = this, a = this.abs();
+		bar.place();
 		list.h = Math.min(this.rows, list.items.length) * list.rowH;
 		list.w = this.w;
 		list.x = a.x;
-		list.y = below + list.h <= this.panel.height ? below : Math.max(0, a.y - 6 - list.h);
+		const belowBar = bar.y > a.y, y = belowBar ? bar.y + bar.h + 6 : bar.y - 6 - list.h;
+		list.y = belowBar && y + list.h > this.panel.height ? Math.max(0, a.y - 6 - list.h) : Math.max(0, y);
 		list.visible = list.items.length > 0;
 	}
 

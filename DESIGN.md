@@ -27,7 +27,7 @@ xr/index.html            VR page shell
 xr/vendor/               three.module.js (+ three.core.js if the version splits it) — vendored three.js r17x
 xr/js/main.js            bootstrap, renderer, scene, XR session (AR/VR), desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
-xr/js/keyboard.js        native-keyboard bridge (editText)
+xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
 xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
@@ -112,18 +112,29 @@ export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; cont
 Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"accent"|"danger", toggled},
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
-TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey},
+TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
 Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 export function loadImage(url) -> Promise<HTMLImageElement>  // cached
 ```
-`keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onDone(v), onCancel() }) -> textarea`,
-plus `commit()` and `isEditing()`. Editing is always in place: one hidden, focusable in-DOM `<textarea>` (Quest system keyboard in
-XR, physical keys on desktop) is focused synchronously from the click; the caret starts at the end. A TextField tap calls editText and
-draws the textarea's live value, blinking caret and selection itself (auto-scrolled to the caret); a tap inside it moves the caret.
-`input` → onInput; commit (onDone) on blur, Enter in a single-line field, `commit()`; Escape reverts (onInput(initial), onCancel).
-main.js commits when a press lands away from every TextField (on release) and keeps the textarea focused on canvas mousedown.
-Only one edit at a time.
+`keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
+plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()` and `erase(dir)`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
+selection are what the TextField draws and what taps move (selection APIs work on an unfocused textarea; never use `ta.select()`, it focuses).
+Desktop (`setXR(false)`): `ta` is focused at edit start and takes physical keys; blur, Enter in a single-line field and `commit()` commit
+(onDone), Escape reverts (onInput(initial), onCancel).
+XR (main.js calls `setXR` on session start/end): the Quest system keyboard can only insert (each open starts an empty session whose first
+key overwrites the focused element's value, existing text is not shown, backspace cannot delete existing text, and while it is up the
+session is `visible-blurred` with no controller input). So `ta` is never focused; a second always-empty hidden `<input>` `kb` is focused by
+`showKeyboard()` (the toolbar's Keyboard button, from its select handler for user activation). On kb focus the model text around the caret
+or selection is captured (before/after); each kb `input` sets `ta.value = before + kb.value + after` with the caret after the typed text and
+fires onInput. A kb `beforeinput` delete with an empty kb is applied to the model by `erase` (selection, or one character) and cancelled.
+kb blur (keyboard dismissed) does not commit: the field stays in edit mode. Enter on kb commits single-line fields (a multiline field gets a
+newline); the Quest keyboard's confirm key is assumed to arrive as keydown Enter (unverified).
+TextField edit UX: the first tap enters edit mode with the caret at the tap (no keyboard yet); taps move the caret, dragging selects
+(down anchors, move extends), a second tap within 400 ms selects the word. While editing, an `EditBar` overlays the panel below the field
+(above when there is no room or `barAbove`): Keyboard, Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard,
+Del, Done. A Combo's dropdown goes below its bar (above the field when it does not fit). main.js commits when a press lands away from every
+TextField and EditBar (on release). Only one edit at a time.
 
 `comfy.js`:
 ```js

@@ -36,7 +36,7 @@ export function createRightPanel({ THREE, store, ui }) {
 	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90, w: W });
 	const stack = new ScrollView({ x: M, w: W });
 	const field = new TextField({
-			x: M, w: W, placeholder: "search LoRAs",
+			x: M, w: W, placeholder: "search LoRAs", barAbove: true,
 			onInput: (v) => setQuery(v),
 			onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
 			onCancel: () => { editing = false; syncVisible(); },

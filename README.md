@@ -23,7 +23,7 @@ If the page opens without WebXR, it shows the same instructions with your addres
    Sending again replaces the snapshot on every open VR page.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter AR (passthrough) or Enter VR.
 4. Layout: image and history in the middle, prompt/seed/Generate at the bottom, settings on the left,
-   LoRAs on the right. Text fields open the Quest keyboard.
+   LoRAs on the right. Text fields have an edit toolbar with a Quest keyboard button.
 
 The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters.
 
@@ -35,8 +35,9 @@ The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to
 - Status bar above the image: Grid (batch view), HD (see below), To VR / To AR (switches mode).
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
-- Text fields edit in place: tap one to get a caret (and the Quest keyboard), tap inside it to move the caret.
-  Closing the keyboard, tapping elsewhere or Enter (single-line fields) applies the text; Escape reverts it.
+- Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, Del, arrows, Select all, Done). Tap to move
+  the caret, drag to select, double-tap for a word. Keyboard opens the Quest keyboard, which only inserts text at the caret
+  (use Del and the arrows for the rest). Done, tapping elsewhere or Enter (single-line fields) applies the text; Escape reverts it.
 
 ## Limits
 

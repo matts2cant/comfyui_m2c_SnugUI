@@ -1,9 +1,16 @@
-// Text entry for in-canvas editing. One hidden, focusable textarea carries the edit: focusing it opens the
-// Quest system keyboard in XR and receives physical keys on desktop. The edited TextField draws the live
-// value and selection itself.
+// Text entry for in-canvas editing. A hidden textarea `ta` is the edit model: its value and selection are what the
+// edited TextField draws and what clicks move. On desktop it is focused and receives physical keys.
+// In XR the Quest system keyboard can only insert (it starts empty on every open and cannot delete existing text),
+// so `ta` is never focused there: a second, always-empty hidden input `kb` is focused to open the keyboard and
+// whatever it holds is spliced into `ta` at the caret that was set when it opened.
 
-let hidden = null;
+let ta = null;
+let kb = null;
 let active = null;
+let xr = false;
+let before = "", after = ""; // model text around the caret (or selection) when the keyboard opened
+
+export const setXR = (v) => { xr = v; };
 
 export const isEditing = () => active !== null;
 
@@ -12,24 +19,65 @@ export function commit() {
 	active?.finish(true);
 }
 
-function textarea() {
-	if (!hidden) {
-		hidden = document.createElement("textarea");
-		Object.assign(hidden.style, { position: "fixed", left: "0", top: "0", width: "1px", height: "1px", padding: "0", border: "0", opacity: "0.01", fontSize: "16px", pointerEvents: "none" });
-		// keys typed while editing must not reach page shortcuts
-		for (const type of ["keydown", "keyup", "keypress"]) hidden.addEventListener(type, (e) => e.stopPropagation());
-		document.body.append(hidden);
-	}
-	return hidden;
+function hiddenInput(el) {
+	Object.assign(el.style, { position: "fixed", left: "0", top: "0", width: "1px", height: "1px", padding: "0", border: "0", opacity: "0.01", fontSize: "16px", pointerEvents: "none" });
+	// keys typed while editing must not reach page shortcuts
+	for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => e.stopPropagation());
+	document.body.append(el);
+	return el;
+}
+
+function init() {
+	if (ta) return;
+	ta = hiddenInput(document.createElement("textarea"));
+	kb = hiddenInput(document.createElement("input"));
+	kb.type = "text";
+	kb.autocomplete = "off";
+	kb.addEventListener("focus", () => { kb.value = ""; rebase(); });
+	kb.addEventListener("input", () => { if (active) splice(); });
+	kb.addEventListener("beforeinput", (e) => {
+		if (active && !kb.value && (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward")) {
+			e.preventDefault();
+			erase(e.inputType === "deleteContentBackward" ? -1 : 1);
+		}
+	});
+}
+
+function rebase() {
+	before = ta.value.slice(0, ta.selectionStart);
+	after = ta.value.slice(ta.selectionEnd);
+}
+
+// model = text around the caret + what the keyboard holds, caret after it
+function splice() {
+	const caret = before.length + kb.value.length;
+	ta.value = before + kb.value + after;
+	ta.setSelectionRange(caret, caret);
+	ta.dispatchEvent(new Event("input"));
+}
+
+// Deletes the selection, or the character before (dir < 0) / after the caret, in the edit model.
+export function erase(dir = -1) {
+	if (!active) return;
+	let s = ta.selectionStart, e = ta.selectionEnd;
+	if (s === e) { if (dir < 0) s = Math.max(0, s - 1); else e = Math.min(ta.value.length, e + 1); }
+	ta.setRangeText("", s, e, "end");
+	ta.dispatchEvent(new Event("input"));
+	rebase();
+}
+
+// Opens the system keyboard in XR (call it from the select handler: it needs user activation), focuses the textarea on desktop.
+export function showKeyboard() {
+	if (active) (xr ? kb : ta).focus();
 }
 
 // Starts editing `initial` and returns the textarea (live value and selection). Call it from a user gesture.
 // onInput(v) on every change, onSelection() when the caret or selection may have moved,
-// onKey(e) before the key is handled, onDone(v) on commit (blur, Enter in a single-line field),
+// onKey(e) before the key is handled, onDone(v) on commit (desktop blur, Enter in a single-line field, commit()),
 // onCancel() on Escape after onInput(initial) reverted the live changes.
 export function editText({ initial = "", multiline = false, onInput, onSelection, onKey, onDone, onCancel }) {
+	init();
 	active?.finish(true);
-	const ta = textarea();
 	const edit = new AbortController();
 	const { signal } = edit;
 	let ended = false;
@@ -40,6 +88,7 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 		edit.abort();
 		const value = ta.value;
 		ta.blur();
+		kb.blur();
 		if (ok) onDone?.(value);
 		else {
 			if (value !== initial) onInput?.(initial);
@@ -52,14 +101,25 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 	ta.addEventListener("input", () => { onInput?.(ta.value); onSelection(); }, { signal });
 	ta.addEventListener("keyup", onSelection, { signal });
 	document.addEventListener("selectionchange", onSelection, { signal });
-	ta.addEventListener("keydown", (e) => {
+	const keydown = (e) => {
 		onKey?.(e);
 		if (e.key === "Escape") finish(false);
 		else if (e.key === "Enter" && (!multiline || e.ctrlKey)) { e.preventDefault(); finish(true); }
+	};
+	ta.addEventListener("keydown", keydown, { signal });
+	// the keyboard's blur only means it was dismissed: the field stays in edit mode
+	kb.addEventListener("keydown", (e) => {
+		keydown(e);
+		if (e.key === "Enter" && multiline && !ended) {
+			e.preventDefault();
+			before += kb.value + "\n";
+			kb.value = "";
+			splice();
+		}
 	}, { signal });
 	ta.addEventListener("blur", () => finish(true), { signal });
 
-	ta.focus();
+	if (!xr) ta.focus();
 	ta.setSelectionRange(initial.length, initial.length);
 	return ta;
 }

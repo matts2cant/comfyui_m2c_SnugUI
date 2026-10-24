@@ -75,6 +75,7 @@ async function enter(m) {
 		session.end();
 		throw e;
 	}
+	keyboard.setXR(true);
 	keyboard.commit();
 	needRecenter = true;
 	$("overlay").hidden = $("hint").hidden = true;
@@ -83,6 +84,7 @@ async function enter(m) {
 function onSessionEnd() {
 	mode = "desktop";
 	applyMode();
+	keyboard.setXR(false);
 	keyboard.commit();
 	for (const ptr of pointers) releasePointer(ptr);
 	// three overwrites the camera pose while presenting
@@ -215,10 +217,11 @@ function updatePointer(ptr, ray) {
 	return ptr.hit = hit;
 }
 
-// a press away from any text field commits the open edit once released, so a click on e.g. a suggestion still lands
+// a press away from any text field and its toolbar commits the open edit once released, so a click on e.g. a suggestion still lands
 function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
-	ptr.outside = keyboard.isEditing() && !(hit?.panel.hitTest(hit.x, hit.y) instanceof ui.TextField);
+	const target = hit?.panel.hitTest(hit.x, hit.y);
+	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
 	if (!hit) return false;
 	ptr.cap = hit.panel;
 	hit.panel.pointer("down", hit.x, hit.y, ptr.id);
