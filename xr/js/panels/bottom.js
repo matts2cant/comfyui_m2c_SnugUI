@@ -1,6 +1,6 @@
-// Bottom panel: prompt text boxes, seeds, batch count, generate / cancel and run status.
+// Bottom panel: prompt text boxes on the left; batch count, seeds, generate / cancel and run status on the right.
 const MODES = ["fixed", "randomize", "increment"];
-const SEED_ROW = 96;
+const MODE_LABELS = { fixed: "Fixed", randomize: "Rand", increment: "Incr" };
 
 export function createBottomPanel({ THREE, store, client, ui }) {
 	const { theme } = ui;
@@ -11,17 +11,19 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	const VIEW_W = 1060, W = VIEW_W - 24;
 	const view = panel.add(new ui.ScrollView({ x: 20, y: 20, w: VIEW_W, h: 460 }));
 	let rows = [];
+	let seedRows = [];
 
 	// right column
 	const RX = 1110, RW = 466;
-	const batchN = new ui.Label({ text: "1", size: 36, bold: true, align: "center", x: RX + 264, y: 24, w: 70, h: 72 });
-	panel.add(new ui.Label({ text: "Batch", size: 32, color: theme.muted, x: RX, y: 24, w: 150, h: 72 }));
-	panel.add(new ui.Button({ text: "−", size: 40, x: RX + 162, y: 24, w: 90, onClick: () => store.setBatchCount(store.batchCount - 1) }));
+	const batchN = new ui.Label({ text: "1", size: 36, bold: true, align: "center", x: RX + 264, y: 20, w: 70, h: 56 });
+	panel.add(new ui.Label({ text: "Batch", size: 30, color: theme.muted, x: RX, y: 20, w: 150, h: 56 }));
+	panel.add(new ui.Button({ text: "−", size: 36, x: RX + 162, y: 20, w: 90, h: 56, onClick: () => store.setBatchCount(store.batchCount - 1) }));
 	panel.add(batchN);
-	panel.add(new ui.Button({ text: "+", size: 40, x: RX + 346, y: 24, w: 90, onClick: () => store.setBatchCount(store.batchCount + 1) }));
-	panel.add(new ui.Button({ text: "Generate", size: 52, variant: "accent", x: RX, y: 116, w: RW, h: 150, onClick: () => store.generate() }));
-	const cancel = panel.add(new ui.Button({ text: "Cancel", variant: "danger", x: RX, y: 278, w: RW, h: 72, onClick: () => client.interrupt() }));
-	const status = panel.add(new ui.Label({ text: "", size: 28, wrap: true, x: RX, y: 366, w: RW, h: 110 }));
+	panel.add(new ui.Button({ text: "+", size: 36, x: RX + 346, y: 20, w: 90, h: 56, onClick: () => store.setBatchCount(store.batchCount + 1) }));
+	const seedView = panel.add(new ui.ScrollView({ x: RX, y: 84, w: RW, h: 0 }));
+	const generate = panel.add(new ui.Button({ text: "Generate", size: 48, variant: "accent", x: RX, w: RW, onClick: () => store.generate() }));
+	const cancel = panel.add(new ui.Button({ text: "Cancel", size: 28, variant: "danger", x: RX, y: 364, w: RW, h: 48, onClick: () => client.interrupt() }));
+	const status = panel.add(new ui.Label({ text: "", size: 24, wrap: true, x: RX, y: 418, w: RW, h: 62 }));
 
 	// run status
 	let remaining = 0, running = false, error = "", errorTime = 0;
@@ -66,54 +68,63 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 
 	function seedRow(input) {
 		const key = input.key;
-		const label = new ui.Label({ text: input.label, size: 30, color: theme.muted, w: 220, h: 72 });
+		const label = new ui.Label({ text: input.label, size: 26, color: theme.muted, w: 136, h: 48 });
 		const value = new ui.TextField({
-			w: 330,
+			size: 26, w: RW - 144, h: 48,
 			onDone: (v) => {
 				const n = Number(v.trim());
 				if (Number.isInteger(n)) store.set(key, n);
 				value.value = String(store.get(key));
 			},
 		});
-		const random = new ui.Button({ text: "Random", size: 28, w: 200, onClick: () => store.randomizeSeed(key) });
+		const random = new ui.Button({ text: "Random", size: 24, w: 190, h: 48, onClick: () => store.randomizeSeed(key) });
 		const mode = new ui.Button({
-			size: 26, w: 250,
+			size: 24, w: RW - 198, h: 48,
 			onClick: () => store.setSeedMode(key, MODES[(MODES.indexOf(store.seedMode(key)) + 1) % MODES.length]),
 		});
 		return {
 			widgets: [label, value, random, mode],
 			refresh() {
 				value.value = String(store.get(key));
-				mode.text = "Mode: " + store.seedMode(key);
+				mode.text = MODE_LABELS[store.seedMode(key)];
 				mode.toggled = store.seedMode(key) !== "fixed";
 			},
 			place(y) {
-				label.y = value.y = random.y = mode.y = y;
-				label.x = 0; value.x = 232; random.x = 574; mode.x = 786;
-				return y + SEED_ROW;
+				label.y = value.y = y; random.y = mode.y = y + 52;
+				label.x = random.x = 0; value.x = 144; mode.x = 198;
+				return y + 108;
 			},
 		};
 	}
 
 	function layout() {
-		// prompt boxes share the height the seed rows leave; 12 is the scroll view's bottom pad, 24 the row gap
-		const fills = rows.filter((r) => r.fill).length;
-		const fillH = Math.floor((view.h + 12 - (rows.length - fills) * SEED_ROW) / fills);
+		// prompt boxes share the full height; 12 is the scroll view's bottom pad, 24 the row gap
+		const fillH = Math.floor((view.h + 12) / rows.length);
 		let y = 0;
 		for (const r of rows) y = r.place(y, fillH);
 		view.invalidate();
+
+		y = 0;
+		for (const r of seedRows) y = r.place(y);
+		seedView.h = Math.min(y + 4, 212);
+		generate.y = seedView.y + seedView.h + 6;
+		generate.h = cancel.y - 6 - generate.y;
+		seedView.invalidate();
 	}
 
 	function refresh() {
-		for (const r of rows) r.refresh();
+		for (const r of [...rows, ...seedRows]) r.refresh();
 		batchN.setText(String(store.batchCount));
 		layout();
 	}
 
 	function build() {
-		rows = [...store.groups.prompts.map(promptRow), ...store.groups.seeds.map(seedRow)];
+		rows = store.groups.prompts.map(promptRow);
+		seedRows = store.groups.seeds.map(seedRow);
 		view.clear();
 		view.setChildren(rows.flatMap((r) => r.widgets));
+		seedView.clear();
+		seedView.setChildren(seedRows.flatMap((r) => r.widgets));
 		refresh();
 	}
 
