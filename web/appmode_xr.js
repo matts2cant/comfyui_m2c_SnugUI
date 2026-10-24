@@ -76,6 +76,22 @@ function resolveEntry(entry) {
     return { nodeId, name, node, widget: node && findWidget(node, name) };
 }
 
+// An object-valued widget that the node serializes into a JSON-string input of another name (Pixaroma's sizes_ui ->
+// hidden SizesState): the string input that parses to an object sharing a key with the widget value.
+function jsonTargets(node, widget, output) {
+    const { class_type: classType, inputs = {} } = output[node.id] ?? {};
+    const keys = typeof widget?.value === "object" && widget.value ? Object.keys(widget.value) : [];
+    return Object.entries(inputs).flatMap(([input, v]) => {
+        if (typeof v !== "string" || !v.startsWith("{")) return [];
+        try {
+            const parsed = JSON.parse(v);
+            return keys.some((k) => k in parsed) ? [{ nodeId: String(node.id), input, classType, json: true }] : [];
+        } catch {
+            return [];
+        }
+    });
+}
+
 // Subgraph widgets are not prompt inputs themselves: write a unique value into each and find where it lands in the
 // flattened prompt. Plain node widgets map straight to their own prompt input.
 async function findTargets(entries) {
@@ -95,13 +111,16 @@ async function findTargets(entries) {
     return entries.map(({ node, name }, i) => {
         if (!node) return [];
         const baseName = name.replace(/#\d+$/u, "");
-        if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : [];
+        if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : jsonTargets(node, entries[i].widget, output);
         return Object.entries(output).flatMap(([nodeId, n]) =>
             Object.entries(n.inputs).filter(([, v]) => v === sentinels[i]).map(([input]) => ({ nodeId, input, classType: n.class_type })));
     });
 }
 
-async function buildInput({ nodeId, name, node, widget }, targets) {
+// widgets with their own VR control, keyed by classType:widget
+const JSON_WIDGET_TYPES = { "PixaromaSizes:sizes_ui": "PIXAROMA_SIZES" };
+
+async function buildInput({ nodeId, name, node, widget }, targets, output) {
     const baseName = name.replace(/#\d+$/u, "");
     const [first] = targets;
     const base = {
@@ -117,6 +136,10 @@ async function buildInput({ nodeId, name, node, widget }, targets) {
         targets,
     };
     if (!first) return base;
+    if (first.json) {
+        const type = JSON_WIDGET_TYPES[`${first.classType}:${baseName}`] ?? "UNSUPPORTED";
+        return { ...base, type, value: JSON.parse(output[first.nodeId].inputs[first.input]) };
+    }
 
     const def = await nodeDef(first.classType);
     const spec = def?.input?.required?.[first.input] ?? def?.input?.optional?.[first.input];
@@ -155,7 +178,7 @@ async function buildSnapshot(linearData) {
         version: 1,
         workflowName: (workflow?.filename ?? "workflow").replace(/\.json$/iu, ""),
         prompt: output,
-        inputs: await Promise.all(entries.map((entry, i) => buildInput(entry, targets[i]))),
+        inputs: await Promise.all(entries.map((entry, i) => buildInput(entry, targets[i], output))),
         outputs: (linearData.outputs ?? []).map(String),
         loraNodes: Object.entries(output).filter(([, n]) => LORA_CLASSES.includes(n.class_type)).map(buildLoraNode),
     };

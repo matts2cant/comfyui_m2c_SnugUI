@@ -8,7 +8,7 @@ const isSeed = input => input.type === "INT" && (/seed/i.test(input.widget) || /
 function leftGroup(input) {
     if (input.type === "COMBO" && /Loader|Load/.test(input.classType) && !input.classType.includes("LoadImage")) return 0;
     if (SAMPLER_WIDGETS.includes(input.widget)) return 1;
-    if (SIZE_WIDGETS.includes(input.widget)) return 2;
+    if (SIZE_WIDGETS.includes(input.widget) || input.type === "PIXAROMA_SIZES") return 2;
     return 3;
 }
 

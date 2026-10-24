@@ -58,7 +58,7 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
     nodeId: "5", classType: "KSampler", nodeTitle: "KSampler",   // nodeId/classType/widget = FIRST target (the host node if none)
     widget: "seed", label: "seed",     // widget = prompt input name; label = App-mode widget label/name
     targets: [ {nodeId: "260:310", input: "seed", classType: "KSampler"} ],  // every prompt input the widget feeds
-    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage)
+    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"PIXAROMA_SIZES"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage); PIXAROMA_SIZES = Pixaroma Sizes state object
     multiline: false,                  // STRING only
     options: [...],                    // COMBO/IMAGE values
     min, max, step, round,             // numbers (from /object_info input spec or widget.options)
@@ -81,6 +81,10 @@ Subgraphs: the API prompt is flattened (ids like `260:12`, nested `a:b:c`), so w
 builder sets a unique sentinel on each, calls `graphToPrompt()` once, scans the prompt for it (`targets`, one widget may feed several
 inner nodes), then restores every value. Plain node widgets map straight to their own prompt input. An input with no targets is type
 UNSUPPORTED and read-only (left panel shows "edit on desktop"); `buildPrompt` writes each value to all of its targets.
+An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidden JSON-string input `SizesState`, injected by the node's
+own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
+`json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
+gets a dedicated type (`PIXAROMA_SIZES`: left-panel size picker, in the size group); other JSON widgets are UNSUPPORTED text edits.
 
 ## Desktop extension (`web/appmode_xr.js`)
 - `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
