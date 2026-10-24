@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyUI App Mode XR</title>
+<style>
+	html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e13; font: 16px system-ui, sans-serif; color: #e8ecf2; }
+	canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+	#overlay { position: fixed; left: 0; right: 0; bottom: 24px; display: flex; gap: 12px; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
+	#overlay > * { pointer-events: auto; }
+	#overlay button { padding: 14px 28px; border: 0; border-radius: 12px; background: #4c8dff; color: #fff; font: 600 18px system-ui, sans-serif; cursor: pointer; }
+	#overlay button.secondary { background: #303846; }
+	#hint { position: fixed; left: 16px; top: 12px; color: #8c96a8; font-size: 14px; z-index: 10; }
+	[hidden] { display: none !important; }
+</style>
+<script type="importmap">{ "imports": { "three": "/appmode-xr/static/vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="hint">Desktop preview: drag to look, wheel to scroll, click to press. R recenters.</div>
+<div id="overlay">
+	<button id="enter-ar" hidden>Enter AR</button>
+	<button id="enter-vr" class="secondary" hidden>Enter VR</button>
+</div>
+<script type="module" src="/appmode-xr/static/js/main.js"></script>
+</body>
+</html>
