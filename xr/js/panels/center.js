@@ -314,12 +314,12 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		refresh();
 	});
 
-	// consecutive "queued" events belong to one batch until it holds store.batchCount prompts
+	// each generate() press starts a new batch; its prompts' results land in it
+	store.addEventListener("generate", () => {
+		batch = { results: [] };
+	});
+
 	store.addEventListener("queued", ({ detail }) => {
-		const now = performance.now();
-		if (!batch || batch.ids.length >= batch.expected || now - batch.last > 3000) batch = { ids: [], expected: store.batchCount, results: [], last: now };
-		batch.ids.push(detail.prompt_id);
-		batch.last = now;
 		byPrompt.set(detail.prompt_id, batch);
 		setProgress({ error: false, text: "Queued" });
 		refresh();
@@ -367,7 +367,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		if (outputs?.length && !outputs.includes(String(detail.node))) return;
 		const images = (detail.output?.images ?? []).filter((i) => IMAGE_EXT.test(i.filename));
 		if (!images.length) return;
-		if (!byPrompt.has(detail.prompt_id)) byPrompt.set(detail.prompt_id, { ids: [detail.prompt_id], expected: 1, results: [], last: 0 });
+		if (!byPrompt.has(detail.prompt_id)) byPrompt.set(detail.prompt_id, { results: [] });
 		batch = byPrompt.get(detail.prompt_id);
 		const entries = images.map(({ filename, subfolder, type }) => ({ filename, subfolder, type, url: client.viewUrl({ filename, subfolder, type }) }));
 		batch.results.push(...entries);

@@ -140,6 +140,7 @@ class Store extends EventTarget {
     }
 
     async generate() {
+        emit(this, "generate", { count: this.batchCount });
         try {
             for (let i = 0; i < this.batchCount; i++) {
                 this.applySeedModes();

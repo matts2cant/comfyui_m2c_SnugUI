@@ -75,7 +75,7 @@ async function buildInput(entry, output) {
         classType: promptNode?.class_type ?? node?.type ?? "",
         nodeTitle: node?.title ?? "",
         widget: name,
-        label: widget?.label || baseName,
+        label: widget?.label || (baseName === "value" && node?.title) || baseName,
         type: "UNSUPPORTED",
         value: widget?.value ?? null,
         control: null,
@@ -84,7 +84,8 @@ async function buildInput(entry, output) {
 
     const def = await nodeDef(promptNode.class_type);
     const spec = def?.input?.required?.[baseName] ?? def?.input?.optional?.[baseName];
-    const control = widget.linkedWidgets?.find((w) => w.name === "control_after_generate");
+    // the control widget is the only linked one (core PrimitiveInt names it "fixed", not "control_after_generate")
+    const control = widget.linkedWidgets?.[0];
     return { ...base, ...describeWidget(widget, spec), control: control?.value ?? null };
 }
 
@@ -123,6 +124,8 @@ async function buildSnapshot(linearData) {
 async function openInVR() {
     const linearData = app.rootGraph?.extra?.linearData;
     if (!linearData?.inputs?.length) return toast("warn", "Open in VR", "Configure App mode first");
+    // opened before any await so the popup blocker sees the user gesture
+    const win = window.open("about:blank", "appmode-xr");
     try {
         const res = await api.fetchApi("/appmode-xr/snapshot", {
             method: "POST",
@@ -130,9 +133,10 @@ async function openInVR() {
             body: JSON.stringify(await buildSnapshot(linearData)),
         });
         if (!res.ok) throw new Error(`server returned ${res.status}`);
-        window.open("/appmode-xr", "appmode-xr");
+        if (win) win.location = "/appmode-xr";
         toast("success", "Open in VR", "Snapshot sent");
     } catch (err) {
+        win?.close();
         console.error("[AppModeXR]", err);
         toast("error", "Open in VR failed", err.message);
     }

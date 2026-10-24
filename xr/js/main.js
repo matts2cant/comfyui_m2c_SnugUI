@@ -132,20 +132,11 @@ const panels = [
 	return p;
 });
 
-const notice = new ui.Panel({ name: "notice", widthM: 1.2, heightM: 0.26 });
-notice.add(new ui.Label({ text: "Send a workflow from ComfyUI (Open in VR / Alt+V)", size: 34, align: "center", x: 20, y: 80, w: 1160, h: 100 }));
-notice.mesh.position.set(0, 0.05, -1.55);
-uiGroup.add(notice.mesh);
-
 // ---- snapshot ----
 async function loadSnapshot() {
 	try {
 		const snapshot = await ctx.client.getSnapshot();
-		if (snapshot) {
-			store.snapshot = snapshot;
-			store.load(snapshot);
-		}
-		notice.mesh.visible = !snapshot;
+		if (snapshot) store.load(snapshot);
 	} catch (e) {
 		console.warn("snapshot load failed", e);
 	}
