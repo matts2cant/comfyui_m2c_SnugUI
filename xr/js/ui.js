@@ -6,7 +6,7 @@
 // Widget.draw(ctx) is called with ctx translated to the widget's top-left: draw in local 0..w / 0..h.
 // Pointer events carry p = { x, y (panel px), lx, ly (widget-local px), id }.
 // Subclasses must not use class fields for options: set defaults via super({ ...defaults, ...opts }).
-// Chips / wrapping Label compute their own height in relayout(); stackY() calls it after setting w.
+// A wrapping Label computes its own height in relayout(); stackY() calls it after setting w.
 // Option callbacks (onClick, onChange, onSelect...) are plain properties, so `new Button({ onClick })`
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
@@ -355,75 +355,6 @@ export class List extends Scrollable {
 	}
 }
 
-export class Chips extends Widget {
-	constructor(o) { super({ chips: [], size: 28, w: 600, ...o }); this.relayout(); }
-	setChips(chips) { this.chips = chips; this.relayout(); this.invalidate(); }
-	// flows chips into rows; sets h to the needed height
-	relayout() {
-		const hh = 64, gap = 12, pad = 22;
-		measure.font = font(this.size);
-		const del = this.onDelete ? 56 : 0;
-		const rects = [];
-		let x = 0, y = 0;
-		const place = (kind, i, cw, text) => {
-			if (x > 0 && x + cw > this.w) { x = 0; y += hh + gap; }
-			rects.push({ x, y, w: cw, h: hh, kind, i, text });
-			x += cw + gap;
-		};
-		this.chips.forEach((c, i) => {
-			const tw = Math.min(measure.measureText(c).width, Math.max(60, this.w - 2 * pad - del));
-			place("chip", i, tw + 2 * pad + del, c);
-		});
-		if (this.onAdd) place("add", -1, 72, "+");
-		this.rects = rects;
-		this.laidW = this.w;
-		this.h = y + hh;
-	}
-	rectAt(p) {
-		if (this.laidW !== this.w) this.relayout();
-		return this.rects.find((r) => p.lx >= r.x && p.lx < r.x + r.w && p.ly >= r.y && p.ly < r.y + r.h);
-	}
-	onMove(p) {
-		const r = this.rectAt(p);
-		if (r !== this.hotRect) { this.hotRect = r; this.invalidate(); }
-	}
-	onClick(p) {
-		const r = this.rectAt(p);
-		if (!r) return;
-		if (r.kind === "add") this.onAdd();
-		else if (this.onDelete && p.lx >= r.x + r.w - 56) this.onDelete(r.i);
-		else this.onTap?.(r.i);
-	}
-	draw(ctx) {
-		if (this.laidW !== this.w) this.relayout();
-		ctx.font = font(this.size);
-		ctx.textBaseline = "middle";
-		for (const r of this.rects) {
-			rrect(ctx, r.x, r.y, r.w, r.h, r.h / 2);
-			ctx.fillStyle = r.kind === "add" ? theme.accent : theme.surface;
-			ctx.fill();
-			const hot = r === this.hotRect;
-			if (hot) tint(ctx, this, r.x, r.y, r.w, r.h, r.h / 2);
-			ctx.fillStyle = theme.fg;
-			if (r.kind === "add") {
-				ctx.textAlign = "center";
-				ctx.font = font(40, true);
-				ctx.fillText("+", r.x + r.w / 2, r.y + r.h / 2 + 1);
-				ctx.font = font(this.size);
-				continue;
-			}
-			const del = this.onDelete ? 56 : 0;
-			ctx.textAlign = "left";
-			ctx.fillText(ellipsize(ctx, r.text, r.w - 44 - del), r.x + 22, r.y + r.h / 2 + 1);
-			if (del) {
-				ctx.fillStyle = theme.muted;
-				ctx.textAlign = "center";
-				ctx.fillText("×", r.x + r.w - 30, r.y + r.h / 2 + 1);
-			}
-		}
-	}
-}
-
 export class TextField extends Widget {
 	constructor(o) { super({ value: "", placeholder: "", size: 30, w: 400, h: 72, ...o }); }
 	draw(ctx) {
@@ -439,7 +370,13 @@ export class TextField extends Widget {
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
 		ctx.fillStyle = this.value ? theme.fg : theme.muted;
-		ctx.fillText(ellipsize(ctx, this.value || this.placeholder, w - 40), 20, h / 2 + 1);
+		if (!this.multiline) { ctx.fillText(ellipsize(ctx, this.value || this.placeholder, w - 40), 20, h / 2 + 1); return; }
+		// multiline: word-wrapped from the top, clipped with "…" when it overflows the box
+		const lh = Math.round(this.size * 1.3);
+		const lines = wrapLines(ctx, this.value || this.placeholder, w - 40);
+		const max = Math.max(1, Math.floor((h - 32) / lh));
+		if (lines.length > max) { lines.length = max; lines[max - 1] = ellipsize(ctx, lines[max - 1] + "…", w - 40); }
+		lines.forEach((line, i) => ctx.fillText(line, 20, 16 + lh * (i + 0.5)));
 	}
 }
 

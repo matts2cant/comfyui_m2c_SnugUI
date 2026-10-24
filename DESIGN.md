@@ -102,8 +102,8 @@ export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; cont
 // Built-ins (constructor takes one options object; all have x,y,w,h):
 Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"accent"|"danger", toggled},
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons),
-List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable), Chips{chips:[string], onTap(i), onDelete(i), onAdd()},
-TextField{value, placeholder, onClick}, ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
+List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
+TextField{value, placeholder, onClick, multiline}, ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 export function loadImage(url) -> Promise<HTMLImageElement>  // cached
 ```
@@ -191,8 +191,8 @@ main.js positions the returned group per the layout above (panel modules build t
   as a grid; history strip (session list, also persisted to localStorage, last 50) — tap thumbnail to show it.
   Status bar: workflow name, progress, AR/VR toggle, HD toggle. Only images from `executed` events whose node is in
   snapshot.outputs (or any node if outputs is empty) and whose items are images (png/jpg/jpeg/webp).
-- bottom: one row per prompt input: label + Chips (prompt split on commas, trimmed); tap chip → editText(initial = chip) and
-  replace that segment; × deletes; "+" appends a new segment via editText; a small "edit all" button edits the whole text.
+- bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
+  placeholder "Tap to edit prompt"); tap → editText(initial = full text, multiline, live onInput) and store.set the whole text.
   Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Batch − n +. Big Generate button,
   Cancel (interrupt) button, queued/running indicator.
 - left: scrollable list of controls from store.groups.left: COMBO → button showing value that opens a picker view inside the
@@ -207,10 +207,10 @@ main.js positions the returned group per the layout above (panel modules build t
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clip_strength ?? strength, active: true}` (dedupe by name).
 
 ## Implementation notes (wave 1, binding for wave 2)
-- ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Chips and wrapping
+- ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
-  `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `Chips.setChips`, `setRenderer`.
+  `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`.
 - ctx also has `camera`; `window.__xr = ctx` for debugging. keyboard.js has `setXRSession(session)` (main calls it).
 - comfy.js: `objectInfo(class)` resolves to the class entry; client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: exports `applyLorasToText`; `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).

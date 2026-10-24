@@ -1,6 +1,5 @@
-// Bottom panel: prompt chips, seeds, batch count, generate / cancel and run status.
+// Bottom panel: prompt text boxes, seeds, batch count, generate / cancel and run status.
 const MODES = ["fixed", "randomize", "increment"];
-const segments = (text) => String(text ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 	const { theme } = ui;
@@ -47,27 +46,18 @@ export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 
 	// prompt / seed rows
 	function promptRow(input) {
-		const commit = (segs) => store.set(input.key, segs.join(", "));
+		const set = (v) => store.set(input.key, v);
 		const label = new ui.Label({ text: input.nodeTitle || input.label, size: 28, color: theme.muted, h: 44 });
-		const edit = new ui.Button({
-			text: "Edit all", size: 22, w: 160, h: 44,
-			onClick: () => keyboard.editText({ initial: store.get(input.key) ?? "", multiline: true, onDone: (v) => store.set(input.key, v) }),
-		});
-		const chips = new ui.Chips({
-			onAdd: () => keyboard.editText({ onDone: (v) => commit([...segments(store.get(input.key)), ...segments(v)]) }),
-			onTap: (i) => keyboard.editText({
-				initial: segments(store.get(input.key))[i],
-				onDone: (v) => { const segs = segments(store.get(input.key)); segs.splice(i, 1, ...segments(v)); commit(segs); },
-			}),
-			onDelete: (i) => { const segs = segments(store.get(input.key)); segs.splice(i, 1); commit(segs); },
+		const box = new ui.TextField({
+			multiline: true, size: 28, h: 180, placeholder: "Tap to edit prompt",
+			onClick: () => keyboard.editText({ initial: store.get(input.key) ?? "", multiline: true, onInput: set, onDone: set }),
 		});
 		return {
-			widgets: [label, edit, chips],
-			refresh: () => chips.setChips(segments(store.get(input.key))),
+			widgets: [label, box],
+			refresh: () => { box.value = String(store.get(input.key) ?? ""); },
 			place(y) {
-				label.x = 0; label.y = edit.y = y; label.w = W - 172; edit.x = W - 160;
-				chips.x = 0; chips.y = y + 52; chips.w = W; chips.relayout();
-				return chips.y + chips.h + 24;
+				label.x = box.x = 0; label.y = y; label.w = box.w = W; box.y = y + 52;
+				return box.y + box.h + 24;
 			},
 		};
 	}
