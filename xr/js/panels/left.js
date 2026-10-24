@@ -203,5 +203,5 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	});
 	rebuild();
 
-	return { group };
+	return { group, panel };
 }

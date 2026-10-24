@@ -207,5 +207,5 @@ export function createRightPanel({ THREE, store, ui }) {
 	store.addEventListener("change", (e) => { if (e.detail.key.startsWith("lora:")) render(); });
 	render();
 
-	return { group };
+	return { group, panel };
 }

@@ -1,8 +1,7 @@
-// Center panel: status bar, image (mesh or XR quad layer), batch grid, history strip.
-// 16:9 stage centered on the group origin; main.js scales the group to the physical screen size
-export const STAGE_W = 2.0;
-const STAGE_H = STAGE_W * 9 / 16, STAGE_Y = 0;
-const BAR_H = 0.12, STRIP_H = 0.2, GAP = 0.03;
+// Center panel: image (mesh or XR quad layer) or batch grid on a stage centered on the group origin, plus the status bar and
+// history strip panels. The stage takes the aspect of what it shows at the screen diagonal; main.js places everything.
+const BAR_W = 1.6, BAR_H = 0.12, STRIP_H = 0.2; // BAR_W matches the prompt panel
+const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
 const STEREO_KEY = "appmode-xr.stereo";
 const STEREO_MODES = [["flat", "Flat"], ["lr", "3D L/R"], ["rl", "3D R/L"]];
@@ -58,7 +57,7 @@ function saveHistory(history) {
 	} catch {}
 }
 
-export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
+export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen }) {
 	const { theme } = ui;
 	const group = new THREE.Group();
 
@@ -161,18 +160,17 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		}
 	}
 
-	// square cells in the roomiest rows x cols arrangement
+	// square cells in a near-square cols x rows arrangement; the stage takes that grid's aspect
+	const gridDims = (n) => {
+		const cols = Math.ceil(Math.sqrt(n));
+		return { cols, rows: Math.ceil(n / cols) };
+	};
+
 	class BatchGrid extends ui.Widget {
 		constructor(o) { super({ items: [], selected: null, gap: 16, ...o }); }
 		cells() {
-			const n = this.items.length, gap = this.gap;
-			let best = { s: 0 };
-			for (let cols = 1; cols <= n; cols++) {
-				const rows = Math.ceil(n / cols);
-				const s = Math.min((this.w - gap * (cols - 1)) / cols, (this.h - gap * (rows - 1)) / rows);
-				if (s > best.s) best = { s, cols, rows };
-			}
-			const { s, cols, rows } = best;
+			const { cols, rows } = gridDims(this.items.length), gap = this.gap;
+			const s = Math.min((this.w - gap * (cols - 1)) / cols, (this.h - gap * (rows - 1)) / rows);
 			const x0 = (this.w - (cols * s + gap * (cols - 1))) / 2, y0 = (this.h - (rows * s + gap * (rows - 1))) / 2;
 			return this.items.map((_, i) => ({ x: x0 + (i % cols) * (s + gap), y: y0 + Math.floor(i / cols) * (s + gap), s }));
 		}
@@ -204,24 +202,21 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	}
 
 	// ---- panels ----
-	const status = new ui.Panel({ name: "center-status", widthM: STAGE_W, heightM: BAR_H });
-	const stage = new ui.Panel({ name: "center-stage", widthM: STAGE_W, heightM: STAGE_H });
-	const stripPanel = new ui.Panel({ name: "center-history", widthM: STAGE_W, heightM: STRIP_H });
-	status.mesh.position.y = STAGE_Y + STAGE_H / 2 + GAP + BAR_H / 2;
-	stage.mesh.position.y = STAGE_Y;
-	stripPanel.mesh.position.y = STAGE_Y - STAGE_H / 2 - GAP - STRIP_H / 2;
-	group.add(status.mesh, stage.mesh, stripPanel.mesh);
+	const status = new ui.Panel({ name: "center-status", widthM: BAR_W, heightM: BAR_H });
+	const stage = new ui.Panel({ name: "center-stage", widthM: 1, heightM: 1, pxPerM: screen.pxPerM }); // sized by fitStage
+	const stripPanel = new ui.Panel({ name: "center-history", widthM: BAR_W, heightM: STRIP_H });
+	group.add(stage.mesh);
 
-	const nameLabel = status.add(new ui.Label({ text: "", size: 36, bold: true, x: 30, y: 0, w: 280, h: 120 }));
-	const progress = status.add(new ProgressBar({ x: 325, y: 0, w: 640, h: 120 }));
-	const queueLabel = status.add(new ui.Label({ text: "", size: 30, color: theme.muted, align: "center", x: 975, y: 0, w: 120, h: 120 }));
-	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 1110 + [0, 118, 251][i], y: 22, w: [110, 125, 125][i], h: 76, onClick: () => setStereo(m) })));
-	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1500, y: 22, w: 140, h: 76, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
-	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1655, y: 22, w: 120, h: 76, onClick: () => { hd = !hd; } }));
-	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1790, y: 22, w: 180, h: 76, onClick: () => xr.toggleMode() }));
+	const nameLabel = status.add(new ui.Label({ text: "", size: 34, bold: true, x: 24, y: 0, w: 230, h: 120 }));
+	const progress = status.add(new ProgressBar({ x: 262, y: 0, w: 420, h: 120 }));
+	const queueLabel = status.add(new ui.Label({ text: "", size: 28, color: theme.muted, align: "center", x: 686, y: 0, w: 104, h: 120 }));
+	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 800 + [0, 112, 232][i], y: 22, w: [104, 112, 112][i], h: 76, onClick: () => setStereo(m) })));
+	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1160, y: 22, w: 110, h: 76, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
+	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1280, y: 22, w: 90, h: 76, onClick: () => { hd = !hd; } }));
+	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1380, y: 22, w: 200, h: 76, onClick: () => xr.toggleMode() }));
 
-	const grid = stage.add(new BatchGrid({ x: 20, y: 20, w: stage.width - 40, h: stage.height - 40, onSelect: (e) => { view = "single"; showEntry(e); } }));
-	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: 40, y: stage.height / 2 - 36, w: stage.width - 80, h: 72 }));
+	const grid = stage.add(new BatchGrid({ onSelect: (e) => { view = "single"; showEntry(e); } }));
+	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", h: 72 }));
 
 	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { view = "single"; showEntry(e); } }));
 
@@ -237,7 +232,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	const eyeMat = new THREE.MeshBasicMaterial({ toneMapped: false });
 	const eyeMesh = new THREE.Mesh(plane, eyeMat);
 	eyeMesh.layers.set(2);
-	imageMesh.position.y = holeMesh.position.y = eyeMesh.position.y = STAGE_Y;
 	imageMesh.visible = holeMesh.visible = eyeMesh.visible = false;
 	group.add(imageMesh, holeMesh, eyeMesh);
 
@@ -254,6 +248,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	let loadToken = 0;
 	let hd = false;
 	let stereo = loadStereo(), halves = [];
+	let stageAspect = 0;
 	// live previews stay flat
 	const isSplit = () => stereo !== "flat" && !previewing;
 
@@ -280,6 +275,32 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		gridBtn.visible = results.length >= 2;
 		gridBtn.toggled = gridOn;
 		for (const p of [stage, stripPanel, status]) p.invalidate();
+		fitStage();
+	}
+
+	// stage = screen diagonal at the aspect of the grid / displayed image (half width per eye in stereo); same-aspect previews keep it
+	function fitStage() {
+		let a = EMPTY_ASPECT;
+		if (gridOn) {
+			const { cols, rows } = gridDims(batch.results.length);
+			a = cols / rows;
+		} else if (singleOn) a = shown.naturalWidth / (isSplit() ? 2 : 1) / shown.naturalHeight;
+		if (Math.abs(a / stageAspect - 1) < ASPECT_EPS) return;
+		stageAspect = a;
+		const h = screen.diagonal / Math.hypot(1, a), w = h * a;
+		stage.resize(w, h);
+		grid.x = grid.y = 20;
+		grid.w = stage.width - 40;
+		grid.h = stage.height - 40;
+		empty.x = 40;
+		empty.y = stage.height / 2 - 36;
+		empty.w = stage.width - 80;
+		imageMesh.scale.set(w, h, 1);
+		holeMesh.scale.copy(imageMesh.scale);
+		eyeMesh.scale.copy(imageMesh.scale);
+		screen.w = w;
+		screen.h = h;
+		screen.onResize();
 	}
 
 	function setShown(img) {
@@ -297,11 +318,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	// maps shownTex whole, or one half per eye in the stereo modes (L/R: left half is the left eye, R/L: crossed)
 	function layoutImage() {
 		const split = isSplit();
-		const w = shown.naturalWidth / (split ? 2 : 1);
-		const k = Math.min(STAGE_W / w, STAGE_H / shown.naturalHeight);
-		imageMesh.scale.set(w * k, shown.naturalHeight * k, 1);
-		holeMesh.scale.copy(imageMesh.scale);
-		eyeMesh.scale.copy(imageMesh.scale);
 		halves.forEach((t) => t.dispose());
 		halves = split ? [0, 0.5].map((x) => {
 			const half = shownTex.clone();
@@ -322,6 +338,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		} catch {}
 		if (shown) layoutImage();
 		syncModeBtns();
+		refresh();
 	}
 
 	function syncModeBtns() {
@@ -550,5 +567,5 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	syncModeBtns();
 	refresh();
 	if (history.length) showEntry(history[0]);
-	return { group, update };
+	return { group, status, strip: stripPanel, update };
 }

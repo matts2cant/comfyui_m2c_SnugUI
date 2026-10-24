@@ -128,7 +128,7 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	showStatus();
 
 	return {
-		group,
+		group, panel,
 		update(dt) {
 			if (errorTime > 0 && (errorTime -= dt) <= 0) { error = ""; showStatus(); }
 		},

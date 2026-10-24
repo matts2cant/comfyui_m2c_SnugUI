@@ -5,7 +5,7 @@ import * as keyboard from "./keyboard.js";
 import { showHelp } from "./help.js";
 import { ComfyClient } from "./comfy.js";
 import { store } from "./state.js";
-import { createCenterPanel, STAGE_W } from "./panels/center.js";
+import { createCenterPanel } from "./panels/center.js";
 import { createBottomPanel } from "./panels/bottom.js";
 import { createLeftPanel } from "./panels/left.js";
 import { createRightPanel } from "./panels/right.js";
@@ -120,46 +120,97 @@ const needHelp = !window.isSecureContext || !navigator.xr;
 if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
 
 // ---- panels ----
-// layout in meters / degrees, eye at the origin; panels are scaled groups, their canvases keep a fixed pixel layout
-// center: 16:9 screen of SCREEN_DIAGONAL_IN inches (+/-35 deg x +/-22 deg), status bar and history strip down to -29 deg
+// Everything sits on the vertical plane z = -SCREEN_DISTANCE (eye at the origin). The screen is SCREEN_DIAGONAL_IN inches at the
+// aspect of what it shows; top to bottom under it: history strip, status bar, prompt panel (toggle buttons at its edges).
+// Side panels sit beside the screen, yawed at the eye. Every panel group has PANEL_SCALE, so px density and fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
-const CENTER_SCALE = SCREEN_DIAGONAL_IN * 0.0254 * 16 / Math.hypot(16, 9) / STAGE_W;
-// bottom: top edge at -37 deg, face tilted at the eye
-const BOTTOM_SCALE = 0.35, BOTTOM_DIST = 0.6, BOTTOM_ANGLE = 45;
-// sides: inner edges at +/-39 deg
-const SIDE_SCALE = 0.6, SIDE_DIST = 0.75, SIDE_YAW = 58;
+const PANEL_SCALE = 0.35;
+const GAP_SCREEN_STRIP = 0.012, GAP_STRIP_STATUS = 0.012, GAP_STATUS_PROMPT = 0.003, GAP_TOGGLE = 0.003, GAP_SIDE = 0.02;
+const SIDES_KEY = "appmode-xr.sides";
+
+// size of the screen, filled in by the center panel whenever the displayed aspect changes
+const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: 1000 / PANEL_SCALE, w: 0, h: 0, onResize() {} };
 const ctx = {
-	THREE, store, ui, scene, renderer, camera,
+	THREE, store, ui, scene, renderer, camera, screen,
 	client: new ComfyClient(),
 	xr: { isPresenting: () => renderer.xr.isPresenting, mode: () => mode, toggleMode },
 };
 window.__xr = ctx;
 
-function side(group, dir) {
-	const a = THREE.MathUtils.degToRad(SIDE_YAW) * dir;
-	group.scale.setScalar(SIDE_SCALE);
-	group.position.set(-Math.sin(a) * SIDE_DIST, 0, -Math.cos(a) * SIDE_DIST);
-	group.rotation.y = a;
+const sides = { left: true, right: true };
+try {
+	Object.assign(sides, JSON.parse(localStorage.getItem(SIDES_KEY)));
+} catch {}
+
+function panelGroup(panel) {
+	const group = new THREE.Group();
+	group.add(panel.mesh);
+	return group;
 }
 
-function bottom(group) {
-	const a = THREE.MathUtils.degToRad(BOTTOM_ANGLE);
-	group.scale.setScalar(BOTTOM_SCALE);
-	group.position.set(0, -Math.sin(a) * BOTTOM_DIST, -Math.cos(a) * BOTTOM_DIST);
-	group.rotation.x = -a;
+// button panel on the prompt panel's edge that shows / hides a side panel
+function sideToggle(name, text) {
+	const panel = new ui.Panel({ name: "toggle-" + name, widthM: 0.18, heightM: 0.5 });
+	const button = panel.add(new ui.Button({ text, size: 28, x: 12, y: 12, w: panel.width - 24, h: panel.height - 24, toggled: sides[name] }));
+	button.onClick = () => {
+		sides[name] = button.toggled = !sides[name];
+		try {
+			localStorage.setItem(SIDES_KEY, JSON.stringify(sides));
+		} catch {}
+		layout();
+	};
+	return { group: panelGroup(panel), panel, name };
 }
 
-const panels = [
-	[createCenterPanel, (g) => { g.scale.setScalar(CENTER_SCALE); g.position.set(0, 0, -SCREEN_DISTANCE); }],
-	[createBottomPanel, bottom],
-	[createLeftPanel, (g) => side(g, 1)],
-	[createRightPanel, (g) => side(g, -1)],
-].map(([create, place]) => {
-	const p = create(ctx);
-	place(p.group);
-	uiGroup.add(p.group);
-	return p;
-});
+const center = createCenterPanel(ctx);
+const bottom = createBottomPanel(ctx);
+const settings = createLeftPanel(ctx);
+const loras = createRightPanel(ctx);
+const toggles = [sideToggle("left", "Settings"), sideToggle("right", "LoRAs")];
+const sidePanels = { left: settings, right: loras };
+const stripGroup = panelGroup(center.strip), statusGroup = panelGroup(center.status);
+const promptGroup = bottom.group;
+const panels = [center, bottom, settings, loras];
+for (const g of [center.group, stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) uiGroup.add(g);
+for (const g of [stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) g.scale.setScalar(PANEL_SCALE);
+
+// side panel with its inner edge on the plane at |x| = innerX, yawed so its center faces the eye
+function placeSide(group, panel, dir, innerX, y) {
+	const half = panel.widthM * PANEL_SCALE / 2;
+	let a = 0;
+	for (let i = 0; i < 4; i++) a = Math.atan2(innerX + half * Math.cos(a), SCREEN_DISTANCE - half * Math.sin(a));
+	group.rotation.y = a * dir;
+	group.position.set(-dir * (innerX + half * Math.cos(a)), y, -(SCREEN_DISTANCE - half * Math.sin(a)));
+}
+
+function layout() {
+	const { w, h } = screen;
+	const at = (group, x, y) => group.position.set(x, y, -SCREEN_DISTANCE);
+	const sizeOf = (panel) => [panel.widthM * PANEL_SCALE, panel.heightM * PANEL_SCALE];
+	at(center.group, 0, 0);
+
+	let y = -h / 2 - GAP_SCREEN_STRIP;
+	const [, stripH] = sizeOf(center.strip);
+	at(stripGroup, 0, y - stripH / 2);
+	y -= stripH + GAP_STRIP_STATUS;
+	const [, statusH] = sizeOf(center.status);
+	at(statusGroup, 0, y - statusH / 2);
+	y -= statusH + GAP_STATUS_PROMPT;
+	const [promptW, promptH] = sizeOf(bottom.panel);
+	at(promptGroup, 0, y - promptH / 2);
+
+	for (const t of toggles) {
+		const dir = t.name === "left" ? 1 : -1, [toggleW] = sizeOf(t.panel);
+		at(t.group, -dir * (promptW / 2 + GAP_TOGGLE + toggleW / 2), y - promptH / 2);
+		const sidePanel = sidePanels[t.name];
+		sidePanel.group.visible = sides[t.name];
+		const sideH = sidePanel.panel.heightM * PANEL_SCALE;
+		placeSide(sidePanel.group, sidePanel.panel, dir, w / 2 + GAP_SIDE, h >= sideH ? h / 2 - sideH / 2 : 0);
+	}
+}
+
+screen.onResize = layout;
+layout();
 
 // ---- snapshot ----
 async function loadSnapshot() {

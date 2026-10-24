@@ -179,10 +179,11 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 4. everything else → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
-- center image: 1.3 m wide (aspect from image), at (0, 0.05, -1.7); top status bar just above it; history strip just below it.
-- bottom panel: 1.6 x 0.5 m at (0, -0.55, -1.2), tilted back ~30° to face the eye.
-- left panel: 0.85 x 1.15 m, at distance 1.4 m, yaw +40° (to the left), facing user.
-- right panel: 0.85 x 1.15 m, at distance 1.4 m, yaw -40°, facing user.
+- everything on the plane z = -0.5 (eye at the origin). Screen: 32" diagonal at the aspect of what it shows (image; half width per eye in
+  stereo; grid aspect; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js -> `screen.onResize`).
+- under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge.
+- left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller).
+- all panels use scale 0.35; main.js `layout()` is the single place that positions them.
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, update(dt) }` where
 `ctx = { THREE, store, client, ui, scene, renderer, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).

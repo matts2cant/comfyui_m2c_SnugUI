@@ -889,15 +889,11 @@ export class Panel {
 	static updateAll() { for (const p of Panel.all) if (p.dirty) p.draw(); }
 
 	constructor({ name = "panel", widthM, heightM, pxPerM = 1000, bg = theme.panel }) {
-		const k = Math.min(1, 2048 / (Math.max(widthM, heightM) * pxPerM));
 		this.name = name;
-		this.pxPerM = pxPerM * k;
-		this.widthM = widthM;
-		this.heightM = heightM;
+		this.maxPxPerM = pxPerM;
 		this.bg = bg;
 		this.canvas = document.createElement("canvas");
-		this.width = this.canvas.width = Math.round(widthM * this.pxPerM);
-		this.height = this.canvas.height = Math.round(heightM * this.pxPerM);
+		this.setSize(widthM, heightM);
 		this.ctx = this.canvas.getContext("2d");
 		this.texture = new THREE.CanvasTexture(this.canvas);
 		this.texture.colorSpace = THREE.SRGBColorSpace;
@@ -915,6 +911,23 @@ export class Panel {
 		this.pointers = new Map();
 		this.dirty = true;
 		Panel.all.add(this);
+	}
+
+	setSize(widthM, heightM) {
+		this.pxPerM = this.maxPxPerM * Math.min(1, 2048 / (Math.max(widthM, heightM) * this.maxPxPerM));
+		this.widthM = widthM;
+		this.heightM = heightM;
+		this.width = this.canvas.width = Math.round(widthM * this.pxPerM);
+		this.height = this.canvas.height = Math.round(heightM * this.pxPerM);
+	}
+
+	// new world size at the same canvas density; widgets keep their px positions, the caller relayouts them
+	resize(widthM, heightM) {
+		this.setSize(widthM, heightM);
+		this.texture.dispose();
+		this.mesh.geometry.dispose();
+		this.mesh.geometry = new THREE.PlaneGeometry(widthM, heightM);
+		this.invalidate();
 	}
 
 	add(widget) {
