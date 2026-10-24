@@ -166,8 +166,7 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by right panel via loraNodes)
 2. STRING && multiline → prompts (bottom)
 3. INT && (widget is "seed"/"noise_seed" or contains "seed" or control != null) → seeds (bottom)
-4. everything else → left, sorted by group: model loaders (COMBO on classType matching /Loader|Load/ excluding LoadImage), then sampler
-   params (sampler_name, scheduler, steps, cfg, denoise…), then size (width/height/batch_size), then the rest; App-mode order within a group.
+4. everything else → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - center image: 1.3 m wide (aspect from image), at (0, 0.05, -1.7); top status bar just above it; history strip just below it.
