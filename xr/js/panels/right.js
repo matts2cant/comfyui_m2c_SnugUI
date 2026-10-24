@@ -180,9 +180,6 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 	}
 
 	function startEdit() {
-		editing = true;
-		syncVisible();
-		loadSuggest();
 		keyboard.editText({
 			initial: query,
 			placeholder: field.placeholder,
@@ -190,6 +187,10 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 			onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
 			onCancel: () => { editing = false; syncVisible(); },
 		});
+		// after editText: it commits a still-open previous edit, whose onDone clears the flag
+		editing = true;
+		syncVisible();
+		loadSuggest();
 	}
 
 	function add(item) {

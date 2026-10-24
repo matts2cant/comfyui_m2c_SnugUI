@@ -4,9 +4,9 @@ const BAR_H = 0.1, STRIP_H = 0.14, GAP = 0.03;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
 const THUMB = 512, LAYER_MAX = 3072;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
-// the quad layer path is untested on hardware: flip this to force the plain mesh
+// the quad layer path is untested on hardware: it is off until the HD button is pressed; false disables the button
 const ENABLE_QUAD_LAYER = true;
-const FLIP_Y = true;
+const FLIP_Y = true; // layer textures follow GL row order, bottom row first
 
 const loadImg = (url) => new Promise((resolve, reject) => {
 	const img = new Image();
@@ -234,7 +234,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	let previewing = false;
 	let gridOn = false, singleOn = false;
 	let loadToken = 0;
-	let hd = true;
+	let hd = false;
 
 	const thumbOf = (e) => {
 		if (e.thumb === undefined) {
@@ -388,8 +388,8 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 
 	function applyPose(m) {
 		m.decompose(pos, quat, scl);
-		quad.width = scl.x;
-		quad.height = scl.y;
+		quad.width = scl.x / 2;
+		quad.height = scl.y / 2;
 		quad.transform = new XRRigidTransform(pos, quat);
 		lastPose.copy(m);
 	}
@@ -405,14 +405,18 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		const gl = renderer.getContext();
 		const sub = binding.getSubImage(quad, renderer.xr.getFrame());
 		renderer.state.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
+		gl.getError();
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, FLIP_Y);
 		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+		// a rejected upload would leave the hole over an empty layer
+		if (gl.getError()) throw new Error("quad layer upload failed");
 		uploaded = shown;
 	}
 
 	// Mirrors three's webxr_vr_layers example: [quad layer, projection layer] with a transparent hole
-	// punched where the image is. Sets imageMesh / holeMesh visibility.
+	// punched where the image is. Sets imageMesh / holeMesh visibility. Quest Browser takes quad width/height
+	// as half extents (three halves them too).
 	function updateLayer() {
 		const session = xr.isPresenting() ? renderer.xr.getSession() : null;
 		if (session !== layerSession) {
@@ -433,7 +437,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 				m.decompose(pos, quat, scl);
 				quad = binding.createQuadLayer({
 					space: renderer.xr.getReferenceSpace(), layout: "mono", viewPixelWidth: pw, viewPixelHeight: ph,
-					width: scl.x, height: scl.y, transform: new XRRigidTransform(pos, quat),
+					width: scl.x / 2, height: scl.y / 2, transform: new XRRigidTransform(pos, quat),
 				});
 				lastPose.copy(m);
 				quadW = pw;
@@ -463,6 +467,8 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 			console.warn("quad layer disabled", e);
 			layerFailed = true;
 			quad = null;
+			if (inLayers) renderer.xr.getSession().updateRenderState({ layers: [renderer.xr.getBaseLayer()] });
+			inLayers = false;
 			holeMesh.visible = false;
 			imageMesh.visible = singleOn;
 		}

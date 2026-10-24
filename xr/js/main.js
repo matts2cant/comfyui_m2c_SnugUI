@@ -66,9 +66,15 @@ async function enter(m) {
 		optionalFeatures: ["local-floor", "hand-tracking", "layers"],
 	});
 	session.addEventListener("end", onSessionEnd, { once: true });
-	await renderer.xr.setSession(session);
-	mode = m;
-	applyMode();
+	try {
+		renderer.xr.setReferenceSpaceType(session.enabledFeatures.includes("local-floor") ? "local-floor" : "local");
+		mode = m;
+		applyMode();
+		await renderer.xr.setSession(session);
+	} catch (e) {
+		session.end();
+		throw e;
+	}
 	keyboard.setXRSession(session);
 	needRecenter = true;
 	$("overlay").hidden = $("hint").hidden = true;
@@ -78,7 +84,11 @@ function onSessionEnd() {
 	mode = "desktop";
 	applyMode();
 	keyboard.setXRSession(null);
-	for (const ptr of pointers) { ptr.panel?.pointer("leave", 0, 0, ptr.id); ptr.panel = ptr.cap = null; }
+	for (const ptr of pointers) releasePointer(ptr);
+	// three overwrites the camera pose while presenting
+	camera.position.set(0, EYE_HEIGHT, 0);
+	uiGroup.position.set(0, EYE_HEIGHT, 0);
+	uiGroup.rotation.y = yaw = pitch = 0;
 	$("overlay").hidden = $("hint").hidden = false;
 }
 
@@ -89,6 +99,7 @@ function toggleMode() {
 	if (!session) return enter(support.ar ? "ar" : "vr").catch(reportError);
 	const target = mode === "ar" ? "vr" : "ar";
 	if (!support[target]) return;
+	// only one immersive session can exist, so the new one is requested from the end event (the select's transient user activation)
 	session.addEventListener("end", () => enter(target).catch(reportError), { once: true });
 	session.end();
 }
@@ -196,6 +207,13 @@ function pointerDown(ptr, ray) {
 	return true;
 }
 
+// drop hover and any held press without clicking (controller lost, session ended)
+function releasePointer(ptr) {
+	ptr.cap?.pointer("up", -1e6, -1e6, ptr.id);
+	ptr.panel?.pointer("leave", 0, 0, ptr.id);
+	ptr.panel = ptr.cap = null;
+}
+
 function pointerUp(ptr, ray) {
 	if (!ptr.cap) return;
 	const panel = ptr.cap, q = project(panel, ray);
@@ -222,7 +240,7 @@ const controllers = [0, 1].map((i) => {
 	};
 	const c = { ptr, target, ray, dot, aim, source: null };
 	target.addEventListener("connected", (e) => { c.source = e.data; ray.visible = e.data.targetRayMode !== "gaze"; });
-	target.addEventListener("disconnected", () => { c.source = null; ray.visible = dot.visible = false; });
+	target.addEventListener("disconnected", () => { c.source = null; ray.visible = dot.visible = false; releasePointer(ptr); });
 	target.addEventListener("selectstart", () => pointerDown(ptr, aim()));
 	target.addEventListener("selectend", () => pointerUp(ptr, aim()));
 	target.addEventListener("squeezestart", () => { if (c.source?.handedness === "left") recenter(); });
@@ -232,6 +250,11 @@ const controllers = [0, 1].map((i) => {
 function updateControllers(dt) {
 	for (const c of controllers) {
 		if (!c.source) continue;
+		if (!c.target.visible) {
+			c.dot.visible = false;
+			if (!c.ptr.cap) releasePointer(c.ptr);
+			continue;
+		}
 		const hit = updatePointer(c.ptr, c.aim());
 		const d = hit ? hit.dist : 1.5;
 		c.ray.scale.z = d;
@@ -245,10 +268,10 @@ const worldPoint = (ray, d) => ray.at(d, tmp.clone());
 
 function recenter() {
 	if (renderer.xr.isPresenting) {
+		// the XR camera's matrixWorld is only refreshed inside render(), so read the pose three decomposed this frame
 		const cam = renderer.xr.getCamera();
-		const pos = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
-		const dir = cam.getWorldDirection(new THREE.Vector3());
-		uiGroup.position.copy(pos);
+		const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+		uiGroup.position.copy(cam.position);
 		uiGroup.rotation.y = Math.atan2(-dir.x, -dir.z);
 	} else {
 		uiGroup.position.set(0, EYE_HEIGHT, 0);
@@ -307,7 +330,7 @@ addEventListener("resize", () => {
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
 	const dt = Math.min(clock.getDelta(), 0.1);
-	if (needRecenter && renderer.xr.isPresenting) { recenter(); needRecenter = false; }
+	if (needRecenter && renderer.xr.isPresenting && renderer.xr.getFrame().getViewerPose(renderer.xr.getReferenceSpace())) { recenter(); needRecenter = false; }
 	if (!renderer.xr.isPresenting) camera.rotation.set(pitch, yaw, 0);
 	meshes = [];
 	uiGroup.traverseVisible((o) => { if (o.userData.panel) meshes.push(o); });

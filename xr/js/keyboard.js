@@ -5,7 +5,11 @@
 let session = null;
 let active = null;
 
-export function setXRSession(s) { session = s; }
+// an edit still open when a session starts or ends (the textarea would stay focused but invisible) is committed
+export function setXRSession(s) {
+	active?.finish(true);
+	session = s;
+}
 
 function el(tag, css, parent) {
 	const e = document.createElement(tag);
@@ -15,7 +19,7 @@ function el(tag, css, parent) {
 }
 
 export function editText({ initial = "", multiline = false, placeholder = "", onInput, onDone, onCancel }) {
-	active?.finish(false);
+	active?.finish(true);
 	const hidden = session?.isSystemKeyboardSupported;
 	let backdrop = null, ta;
 	if (hidden) {
