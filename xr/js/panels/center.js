@@ -244,6 +244,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shown = null;          // HTMLImageElement on the mesh / layer
 	let shownTex = null;
 	let previewing = false;
+	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let gridOn = false, singleOn = false;
 	let loadToken = 0;
 	let hd = false;
@@ -367,6 +368,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// back from a live preview to the last real image once the run is over
 	function endPreview() {
+		previewEpoch++;
 		if (!previewing) return;
 		previewing = false;
 		if (current) showEntry(current);
@@ -419,14 +421,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	});
 
 	client.addEventListener("preview", async ({ detail }) => {
-		const token = ++loadToken;
+		const token = ++loadToken, epoch = previewEpoch;
 		let img;
 		try {
 			img = await loadImg(detail.url);
 		} catch {
 			return;
 		}
-		if (token !== loadToken) return;
+		if (token !== loadToken || epoch !== previewEpoch) return;
 		previewing = true;
 		setShown(img);
 		refresh();

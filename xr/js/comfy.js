@@ -1,6 +1,8 @@
 // ComfyUI client: websocket events, prompt queueing, previews.
 const PREVIEW_IMAGE = 1;
 const PREVIEW_IMAGE_WITH_METADATA = 4;
+// the server only sends previews when the run asks for a method; "default"/"none" in the desktop setting still get "auto" here
+const PREVIEW_METHODS = ["auto", "latent2rgb", "taesd"];
 
 function uuid() {
     const b = crypto.getRandomValues(new Uint8Array(16));
@@ -28,6 +30,7 @@ export class ComfyClient extends EventTarget {
     #retry = 0;
     #previewUrl = null;
     #lastDone = null;
+    #queued = new Set();
     #objectInfo = new Map();
 
     #emit(type, detail) {
@@ -98,6 +101,7 @@ export class ComfyClient extends EventTarget {
             const meta = JSON.parse(new TextDecoder().decode(buf.slice(8, 8 + metaLength)));
             mime = meta.image_type;
             prompt_id = meta.prompt_id;
+            if (!this.#queued.has(prompt_id)) return;
             bytes = buf.slice(8 + metaLength);
         } else {
             return;
@@ -112,14 +116,19 @@ export class ComfyClient extends EventTarget {
         return res.ok ? res.json() : null;
     }
 
-    async queue(prompt) {
+    async queue(prompt, previewMethod) {
         const res = await fetch("/prompt", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt, client_id: this.clientId }),
+            body: JSON.stringify({
+                prompt,
+                client_id: this.clientId,
+                extra_data: { preview_method: PREVIEW_METHODS.includes(previewMethod) ? previewMethod : "auto" },
+            }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(errorMessage(body, `Queue failed (${res.status})`));
+        this.#queued.add(body.prompt_id);
         return body;
     }
 

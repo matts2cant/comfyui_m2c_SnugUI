@@ -140,7 +140,7 @@ class Store extends EventTarget {
         emit(this, "generate");
         try {
             this.applySeedModes();
-            const { prompt_id } = await this.client.queue(this.buildPrompt());
+            const { prompt_id } = await this.client.queue(this.buildPrompt(), this.snapshot.previewMethod);
             emit(this, "queued", { prompt_id });
         } catch (e) {
             emit(this, "error", { message: e.message });

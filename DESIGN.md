@@ -53,6 +53,7 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
   version: 1, id, created,            // id/created set by server
   workflowName: "my_app",              // activeWorkflow filename without extension
   prompt: { "<nodeId>": { class_type, inputs: {...}, _meta } },   // app.graphToPrompt().output
+  previewMethod: "default",            // setting "Comfy.Execution.PreviewMethod": default|none|auto|latent2rgb|taesd
   inputs: [ {                          // one per extra.linearData.inputs entry, in App-mode order
     key: "<nodeId>:<widgetName>",      // App-mode widget: nodeId = node id in the root graph (a subgraph node for promoted widgets)
     nodeId: "5", classType: "KSampler", nodeTitle: "KSampler",   // nodeId/classType/widget = FIRST target (the host node if none)
@@ -142,7 +143,7 @@ export class ComfyClient extends EventTarget {
   clientId                          // random uuid, used for /ws?clientId= and prompt client_id
   connect()                         // reconnects with backoff
   getSnapshot() -> snapshot|null    // GET /appmode-xr/snapshot
-  queue(prompt) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id}; throws Error(message) on 4xx with node_errors summary
+  queue(prompt, previewMethod) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id, extra_data: {preview_method}}; throws Error(message) on 4xx with node_errors summary
   interrupt()                       // POST /interrupt
   viewUrl({filename, subfolder, type})
   objectInfo(classType)             // cached GET /object_info/{class}
@@ -152,7 +153,12 @@ export class ComfyClient extends EventTarget {
 }
 ```
 Binary ws frames: uint32 BE event type; 1 = PREVIEW_IMAGE (next uint32 BE image type 1=jpeg 2=png, then bytes);
-4 = PREVIEW_IMAGE_WITH_METADATA (uint32 BE metadata length, JSON metadata incl. prompt_id, then image bytes). See `server.py`/`protocol.py`.
+4 = PREVIEW_IMAGE_WITH_METADATA (uint32 BE metadata length, JSON metadata incl. prompt_id and image_type (mime), then image bytes). See `server.py`/`protocol.py`.
+Live previews: the server only sends them when the run's `extra_data.preview_method` names a method (execution.py `set_preview_method`; the
+server default here is none). `queue()` sends the snapshot's `previewMethod` when it is auto/latent2rgb/taesd, otherwise "auto" (previews are
+always wanted in VR). Previews are sent to the queueing client's socket only; the client drops type 4 frames whose prompt_id it did not queue.
+Type 2 (UNENCODED_PREVIEW_IMAGE) is encoded server-side into type 1 and type 1 is only sent to clients without `supports_preview_metadata`
+(this client sets it), so in practice only type 4 arrives; type 1 is still parsed (no prompt_id).
 
 `state.js`:
 ```js

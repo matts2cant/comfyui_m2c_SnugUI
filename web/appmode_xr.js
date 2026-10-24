@@ -178,6 +178,7 @@ async function buildSnapshot(linearData) {
         version: 1,
         workflowName: (workflow?.filename ?? "workflow").replace(/\.json$/iu, ""),
         prompt: output,
+        previewMethod: app.extensionManager.setting.get("Comfy.Execution.PreviewMethod"),
         inputs: await Promise.all(entries.map((entry, i) => buildInput(entry, targets[i], output))),
         outputs: (linearData.outputs ?? []).map(String),
         loraNodes: Object.entries(output).filter(([, n]) => LORA_CLASSES.includes(n.class_type)).map(buildLoraNode),
