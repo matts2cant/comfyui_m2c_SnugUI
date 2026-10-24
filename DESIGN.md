@@ -54,10 +54,11 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
   workflowName: "my_app",              // activeWorkflow filename without extension
   prompt: { "<nodeId>": { class_type, inputs: {...}, _meta } },   // app.graphToPrompt().output
   inputs: [ {                          // one per extra.linearData.inputs entry, in App-mode order
-    key: "<nodeId>:<widgetName>",      // nodeId = API prompt node id
-    nodeId: "5", classType: "KSampler", nodeTitle: "KSampler",
-    widget: "seed", label: "seed",     // label = widget label/name
-    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"UNSUPPORTED",   // IMAGE = combo with image_upload (LoadImage)
+    key: "<nodeId>:<widgetName>",      // App-mode widget: nodeId = node id in the root graph (a subgraph node for promoted widgets)
+    nodeId: "5", classType: "KSampler", nodeTitle: "KSampler",   // nodeId/classType/widget = FIRST target (the host node if none)
+    widget: "seed", label: "seed",     // widget = prompt input name; label = App-mode widget label/name
+    targets: [ {nodeId: "260:310", input: "seed", classType: "KSampler"} ],  // every prompt input the widget feeds
+    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage)
     multiline: false,                  // STRING only
     options: [...],                    // COMBO/IMAGE values
     min, max, step, round,             // numbers (from /object_info input spec or widget.options)
@@ -75,7 +76,11 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
 ```
 App mode facts: `app.rootGraph.extra.linearData = {inputs: [[widgetId, widgetName, {height?}?]...], outputs: [nodeId...]}`.
 Canonical widgetId = `${rootGraph.id}:${encodeURIComponent(nodeId)}:${encodeURIComponent(widgetName)}`, legacy form
-`[nodeId, widgetName]`; duplicate names get `#1` suffix. Inputs not resolvable to an API-prompt input → type UNSUPPORTED.
+`[nodeId, widgetName]`; duplicate names get `#1` suffix.
+Subgraphs: the API prompt is flattened (ids like `260:12`, nested `a:b:c`), so widgets on a subgraph node are resolved empirically: the
+builder sets a unique sentinel on each, calls `graphToPrompt()` once, scans the prompt for it (`targets`, one widget may feed several
+inner nodes), then restores every value. Plain node widgets map straight to their own prompt input. An input with no targets is type
+UNSUPPORTED and read-only (left panel shows "edit on desktop"); `buildPrompt` writes each value to all of its targets.
 
 ## Desktop extension (`web/appmode_xr.js`)
 - `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
@@ -202,8 +207,8 @@ main.js positions the returned group per the layout above (panel modules build t
 - left: scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
   panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
   INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
-  STRING single-line → TextField; UNSUPPORTED/unknown → TextField on the value as text (JSON for objects), converted back to the
-  original value's type on commit; state.js writes such a value into the prompt only after it was edited.
+  STRING single-line → TextField; UNSUPPORTED type with targets → TextField on the value as text (JSON for objects), converted back to the
+  original value's type on commit; state.js writes such a value into the prompt only after it was edited. Inputs without targets are read-only.
 - right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05), expandable
   clip strength, remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from

@@ -87,7 +87,14 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		};
 	}
 
+	function readOnlyFor(input, label) {
+		const value = show(input.value);
+		const text = `${value.length > 120 ? `${value.slice(0, 120)}…` : value}  (edit on desktop)`;
+		return { widgets: [new Label({ text: label, size: 24, color: theme.muted }), new Label({ text, size: 26, wrap: true })], update() {} };
+	}
+
 	function controlFor(input, label) {
+		if (!input.targets.length) return readOnlyFor(input, label);
 		switch (input.type) {
 			case "INT":
 			case "FLOAT": return sliderFor(input, label);

@@ -31,12 +31,14 @@ async function nodeDef(classType) {
     return defCache.get(classType);
 }
 
-// Widget -> snapshot type/fields, using the node def input spec when there is one
-function describeWidget(widget, spec) {
+// input spec (of the first prompt target) -> snapshot type/fields; the App-mode widget only decides when there is no spec
+function describeInput(spec, widget) {
     const opts = spec?.[1] ?? {};
-    switch (widget.type) {
-        case "number": {
-            const type = spec ? spec[0] : widget.options?.precision === 0 ? "INT" : "FLOAT";
+    const kind = !spec ? WIDGET_KINDS[widget.type] : Array.isArray(spec[0]) ? "COMBO" : spec[0];
+    switch (kind) {
+        case "INT":
+        case "FLOAT": {
+            const type = spec ? kind : widget.options?.precision === 0 ? "INT" : "FLOAT";
             return {
                 type,
                 min: opts.min ?? widget.options?.min,
@@ -45,48 +47,84 @@ function describeWidget(widget, spec) {
                 round: opts.round,
             };
         }
-        case "combo": {
-            const values = widget.options?.values;
-            const options = typeof values === "function" ? values() : values ?? (Array.isArray(spec?.[0]) ? spec[0] : opts.options) ?? [];
+        case "COMBO": {
+            const values = spec ? (Array.isArray(spec[0]) ? spec[0] : opts.options) : widget.options?.values;
+            const options = typeof values === "function" ? values() : values ?? [];
             return { type: opts.image_upload ? "IMAGE" : "COMBO", options };
         }
-        case "toggle":
-        case "boolean":
+        case "BOOLEAN":
             return { type: "BOOLEAN" };
-        case "text":
-        case "customtext":
-        case "string":
-            return { type: "STRING", multiline: widget.type === "customtext" || !!opts.multiline };
+        case "STRING":
+            return { type: "STRING", multiline: !spec ? widget.type === "customtext" : !!opts.multiline };
         default:
             return { type: "UNSUPPORTED" };
     }
 }
 
-async function buildInput(entry, output) {
+const WIDGET_KINDS = { number: "INT", combo: "COMBO", toggle: "BOOLEAN", boolean: "BOOLEAN", text: "STRING", customtext: "STRING", string: "STRING" };
+
+// "260:12:5" -> node 5 inside subgraph node 12 inside subgraph node 260
+function nodeByExecutionId(id) {
+    const [head, ...rest] = id.split(":");
+    return rest.reduce((node, part) => node?.subgraph.getNodeById(Number(part)), app.rootGraph.getNodeById(Number(head)));
+}
+
+function resolveEntry(entry) {
     const { graphId, nodeId, name } = parseEntry(entry);
     const root = app.rootGraph;
     const node = (!graphId || graphId === root.id) ? root.getNodeById(/^\d+$/u.test(nodeId) ? Number(nodeId) : nodeId) : null;
-    const widget = node && findWidget(node, name);
+    return { nodeId, name, node, widget: node && findWidget(node, name) };
+}
+
+// Subgraph widgets are not prompt inputs themselves: write a unique value into each and find where it lands in the
+// flattened prompt. Plain node widgets map straight to their own prompt input.
+async function findTargets(entries) {
+    const sentinels = entries.map(({ node, widget }, i) => {
+        if (!widget || !node.isSubgraphNode()) return null;
+        if (typeof widget.value === "number") return 912345.678 + i;
+        return typeof widget.value === "object" ? null : `__appmodexr_${i}__`;
+    });
+    const originals = entries.map(({ widget }) => widget?.value);
+    let output;
+    try {
+        entries.forEach(({ widget }, i) => { if (sentinels[i] !== null) widget.value = sentinels[i]; });
+        ({ output } = await app.graphToPrompt());
+    } finally {
+        entries.forEach(({ widget }, i) => { if (sentinels[i] !== null) widget.value = originals[i]; });
+    }
+    return entries.map(({ node, name }, i) => {
+        if (!node) return [];
+        const baseName = name.replace(/#\d+$/u, "");
+        if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : [];
+        return Object.entries(output).flatMap(([nodeId, n]) =>
+            Object.entries(n.inputs).filter(([, v]) => v === sentinels[i]).map(([input]) => ({ nodeId, input, classType: n.class_type })));
+    });
+}
+
+async function buildInput({ nodeId, name, node, widget }, targets) {
     const baseName = name.replace(/#\d+$/u, "");
-    const promptNode = output[String(node?.id)];
+    const [first] = targets;
     const base = {
         key: `${nodeId}:${name}`,
-        nodeId,
-        classType: promptNode?.class_type ?? node?.type ?? "",
+        nodeId: first?.nodeId ?? nodeId,
+        classType: first?.classType ?? node?.type ?? "",
         nodeTitle: node?.title ?? "",
-        widget: name,
+        widget: first?.input ?? name,
         label: widget?.label || (baseName === "value" && node?.title) || baseName,
         type: "UNSUPPORTED",
         value: widget?.value ?? null,
         control: null,
+        targets,
     };
-    if (!widget || !promptNode || !(baseName in promptNode.inputs)) return base;
+    if (!first) return base;
 
-    const def = await nodeDef(promptNode.class_type);
-    const spec = def?.input?.required?.[baseName] ?? def?.input?.optional?.[baseName];
-    // the control widget is the only linked one (core PrimitiveInt names it "fixed", not "control_after_generate")
-    const control = widget.linkedWidgets?.[0];
-    return { ...base, ...describeWidget(widget, spec), control: control?.value ?? null };
+    const def = await nodeDef(first.classType);
+    const spec = def?.input?.required?.[first.input] ?? def?.input?.optional?.[first.input];
+    // the control widget is the only linked one (core PrimitiveInt names it "fixed", not "control_after_generate");
+    // a promoted widget has none of its own, so look at the inner widget behind the first target
+    const inner = nodeByExecutionId(first.nodeId)?.widgets?.find((w) => w.name === first.input);
+    const control = (widget.linkedWidgets ?? inner?.linkedWidgets)?.[0];
+    return { ...base, ...describeInput(spec, widget), control: control?.value ?? null };
 }
 
 function buildLoraNode([nodeId, node]) {
@@ -109,13 +147,15 @@ function buildLoraNode([nodeId, node]) {
 }
 
 async function buildSnapshot(linearData) {
+    const entries = linearData.inputs.map(resolveEntry);
+    const targets = await findTargets(entries);
     const { output } = await app.graphToPrompt();
     const workflow = app.extensionManager.workflow.activeWorkflow;
     return {
         version: 1,
         workflowName: (workflow?.filename ?? "workflow").replace(/\.json$/iu, ""),
         prompt: output,
-        inputs: await Promise.all(linearData.inputs.map((entry) => buildInput(entry, output))),
+        inputs: await Promise.all(entries.map((entry, i) => buildInput(entry, targets[i]))),
         outputs: (linearData.outputs ?? []).map(String),
         loraNodes: Object.entries(output).filter(([, n]) => LORA_CLASSES.includes(n.class_type)).map(buildLoraNode),
     };
