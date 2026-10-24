@@ -101,9 +101,10 @@ export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; cont
   onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false } ; invalidate() }
 // Built-ins (constructor takes one options object; all have x,y,w,h):
 Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"accent"|"danger", toggled},
-Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons),
+Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
-TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit}, ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
+TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey},
+Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 export function loadImage(url) -> Promise<HTMLImageElement>  // cached
 ```
@@ -198,11 +199,11 @@ main.js positions the returned group per the layout above (panel modules build t
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
   Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Batch − n +. Big Generate button,
   Cancel (interrupt) button, queued/running indicator.
-- left: scrollable list of controls from store.groups.left: COMBO → button showing value that opens a picker view inside the
-  panel (filter TextField with live onInput + List + back); INT/FLOAT → Slider (respect min/max/step; when the
-  range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle; STRING single-line → TextField; IMAGE → picker view with
-  ImageGrid of options thumbnails (`/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
-  UNSUPPORTED → read-only label "edit on desktop".
+- left: scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
+  panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
+  INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
+  STRING single-line → TextField; UNSUPPORTED/unknown → TextField on the value as text (JSON for objects), converted back to the
+  original value's type on commit; state.js writes such a value into the prompt only after it was edited.
 - right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05), expandable
   clip strength, remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from

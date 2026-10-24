@@ -10,7 +10,7 @@
 // Option callbacks (onClick, onChange, onSelect...) are plain properties, so `new Button({ onClick })`
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
-import { editText } from "./keyboard.js";
+import { commit, editText } from "./keyboard.js";
 
 let maxAnisotropy = 1;
 export function setRenderer(renderer) {
@@ -69,6 +69,12 @@ function colAt(ctx, text, x) {
 	}
 	if (lo < text.length && x - ctx.measureText(text.slice(0, lo)).width > ctx.measureText(text.slice(0, lo + 1)).width - x) lo++;
 	return lo;
+}
+
+// square-cropped image filling the s x s box at x, y
+function drawCover(ctx, img, x, y, s) {
+	const k = Math.min(img.naturalWidth, img.naturalHeight);
+	ctx.drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, x, y, s, s);
 }
 
 function rrect(ctx, x, y, w, h, r) {
@@ -201,8 +207,27 @@ export class Toggle extends Widget {
 	}
 }
 
+// The value text at the top right is a TextField: tapping it edits the number in place (accepts "," as decimal separator).
 export class Slider extends Widget {
-	constructor(o) { super({ label: "", min: 0, max: 1, step: 0.01, value: 0, drag: true, size: 28, w: 400, h: 124, ...o }); }
+	constructor(o) {
+		super({ label: "", min: 0, max: 1, step: 0.01, value: 0, drag: true, size: 28, w: 400, h: 124, ...o });
+		this.field = new TextField({
+			size: this.size, y: 0, h: 48, parent: this, panel: this.panel,
+			onEdit: () => this.field.ta.select(),
+			onDone: (v) => {
+				const n = Number(v.trim().replace(",", "."));
+				if (v.trim() && Number.isFinite(n)) this.set(n);
+			},
+		});
+		this.relayout();
+	}
+	relayout() { Object.assign(this.field, { x: this.w - 220, w: 220 }); }
+	setPanel(panel) { this.panel = this.field.panel = panel; }
+	origin() { return this.abs(); }
+	hitTest(x, y) {
+		const hit = super.hitTest(x, y);
+		return hit && this.field.contains(x - this.x, y - this.y) ? this.field : hit;
+	}
 	// -/+ buttons (plus -- / ++ when bigStep is set) and the track between them
 	parts() {
 		const bs = 64, gap = 12, y = this.h - bs - 4, big = this.bigStep;
@@ -258,10 +283,19 @@ export class Slider extends Widget {
 		ctx.fillStyle = theme.muted;
 		ctx.textAlign = "left";
 		ctx.fillText(ellipsize(ctx, this.label, w * 0.6), 4, 22);
-		ctx.font = font(this.size, true);
-		ctx.fillStyle = theme.fg;
-		ctx.textAlign = "right";
-		ctx.fillText(this.text(), w - 4, 22);
+		const { field } = this;
+		if (!field.ta) field.value = this.text();
+		if (field.ta || field.hover) {
+			ctx.save();
+			ctx.translate(field.x, field.y);
+			field.draw(ctx);
+			ctx.restore();
+		} else {
+			ctx.font = font(this.size, true);
+			ctx.fillStyle = theme.fg;
+			ctx.textAlign = "right";
+			ctx.fillText(field.value, w - 4, 22);
+		}
 		const cy = parts.y + 32;
 		if (this.drag) {
 			const tx = parts.x0 + 22, tw = parts.x1 - parts.x0 - 44;
@@ -296,6 +330,17 @@ export class Slider extends Widget {
 
 class Scrollable extends Widget {
 	scroll = 0;
+	imgs = new Map();
+	// loaded image for url, or null/false while loading/failed; repaints once it arrives
+	image(url) {
+		let img = this.imgs.get(url);
+		if (img === undefined) {
+			this.imgs.set(url, null);
+			loadImage(url).then((i) => this.imgs.set(url, i), () => this.imgs.set(url, false)).then(() => this.invalidate());
+			img = null;
+		}
+		return img;
+	}
 	contentH() { return this.h; }
 	maxScroll() { return Math.max(0, this.contentH() - this.h); }
 	canScroll() { return this.maxScroll() > 0; }
@@ -355,7 +400,13 @@ export class List extends Scrollable {
 				ctx.fillStyle = sel ? theme.accent : theme.surfaceHi;
 				ctx.fillRect(4, y + 2, w - 8, rowH - 4);
 			}
-			let textW = w - 40;
+			let textX = 20, textW = w - 40;
+			if (it.url) {
+				const img = this.image(it.url), s = rowH - 12;
+				if (img) drawCover(ctx, img, 14, y + 6, s);
+				textX = s + 28;
+				textW -= s + 8;
+			}
 			if (it.sub) {
 				ctx.font = font(this.size * 0.8);
 				ctx.fillStyle = sel ? theme.fg : theme.muted;
@@ -367,18 +418,24 @@ export class List extends Scrollable {
 			}
 			ctx.fillStyle = theme.fg;
 			ctx.textAlign = "left";
-			ctx.fillText(ellipsize(ctx, it.label, textW), 20, y + rowH / 2 + 1);
+			ctx.fillText(ellipsize(ctx, it.label, textW), textX, y + rowH / 2 + 1);
 			if (!sel) {
 				ctx.fillStyle = theme.border;
 				ctx.fillRect(20, y + rowH - 1, w - 40, 1);
 			}
 		}
 		this.drawBar(ctx);
+		if (this.outline) {
+			rrect(ctx, 0, 0, w, h, theme.radius * 0.7);
+			ctx.strokeStyle = theme.accent;
+			ctx.lineWidth = 4;
+			ctx.stroke();
+		}
 	}
 }
 
 // Tapping starts an in-place edit through keyboard.js: the field draws the hidden textarea's live value,
-// caret and selection. Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts.
+// caret and selection. Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts, onKey(e).
 export class TextField extends Widget {
 	constructor(o) {
 		super({ value: "", placeholder: "", size: 30, w: 400, h: 72, ...o });
@@ -394,6 +451,7 @@ export class TextField extends Widget {
 		this.ta = editText({
 			initial, multiline: this.multiline,
 			onInput: (v) => { this.value = v; this.onInput?.(v); },
+			onKey: this.onKey,
 			onSelection: () => { this.blink = true; this.invalidate(); },
 			onDone: (v) => { this.stop(); this.value = v; this.onDone?.(v); },
 			onCancel: () => { this.stop(); this.onCancel?.(); },
@@ -494,10 +552,90 @@ export class TextField extends Widget {
 	}
 }
 
+// A TextField over a fixed set of options [{ label, value, url? }]: tapping selects its text and opens a dropdown List
+// of the options containing the typed text (case-insensitive), overlaying the panel. Up/Down move the highlight,
+// Enter or a tap picks it; text that matches no option reverts. onChange(value) when the selection changes.
+export class Combo extends TextField {
+	constructor(o) {
+		super({ options: [], current: undefined, rows: 8, ...o, onInput: (q) => this.filter(q), onKey: (e) => this.key(e), onEdit: () => this.open(), onDone: (v) => this.done(v) });
+		this.items = this.options.map((it) => ({ ...it, lc: it.label.toLowerCase() }));
+		this.list = new List({ rowH: 56, size: this.size, outline: true, onSelect: (it) => { this.picked = it; commit(); } });
+		this.select(this.current);
+	}
+
+	select(value) {
+		this.current = value;
+		this.value = this.items.find((it) => it.value === value)?.label ?? String(value);
+		this.invalidate();
+	}
+
+	open() {
+		this.ta.select();
+		this.list.hover = false;
+		this.list.selected = this.current;
+		this.panel.add(this.list);
+		this.filter("");
+	}
+
+	stop() {
+		super.stop();
+		this.list.panel?.remove(this.list);
+	}
+
+	filter(q) {
+		const { list } = this, s = q.trim().toLowerCase();
+		list.setItems(s ? this.items.filter((it) => it.lc.includes(s)) : this.items);
+		if (!list.items.some((it) => it.value === list.selected)) list.selected = list.items[0]?.value;
+		this.place();
+		this.reveal(true);
+	}
+
+	// below the field, or above it when the panel has no room
+	place() {
+		const { list } = this, a = this.abs(), below = a.y + this.h + 6;
+		list.h = Math.min(this.rows, list.items.length) * list.rowH;
+		list.w = this.w;
+		list.x = a.x;
+		list.y = below + list.h <= this.panel.height ? below : Math.max(0, a.y - 6 - list.h);
+		list.visible = list.items.length > 0;
+	}
+
+	// scrolls the highlighted row into view, centered when asked
+	reveal(center) {
+		const { list } = this, top = list.items.findIndex((it) => it.value === list.selected) * list.rowH;
+		if (top < 0) return;
+		if (center) list.scroll = Math.max(0, top - Math.floor((list.h / list.rowH - 1) / 2) * list.rowH);
+		else list.scroll = Math.min(top, Math.max(list.scroll, top + list.rowH - list.h));
+		list.invalidate();
+	}
+
+	key(e) {
+		const { list } = this, i = list.items.findIndex((it) => it.value === list.selected);
+		if (e.key === "Enter") this.picked = list.items[i];
+		else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			e.preventDefault();
+			if (!list.items.length) return;
+			list.selected = list.items[Math.min(list.items.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))].value;
+			this.reveal(false);
+		}
+	}
+
+	done(v) {
+		const it = this.picked ?? this.items.find((o) => o.label === v);
+		this.picked = null;
+		if (it && it.value !== this.current) this.onChange?.(it.value);
+		this.select(it ? it.value : this.current);
+	}
+
+	draw(ctx) {
+		if (this.ta) this.place();
+		super.draw(ctx);
+	}
+}
+
 export class ImageGrid extends Scrollable {
 	constructor(o) {
 		super({ items: [], selected: undefined, cell: 200, gap: 12, w: 600, h: 600, ...o });
-		this.imgs = new Map();
 	}
 	grid() {
 		const cols = Math.max(1, Math.floor((this.w + this.gap) / (this.cell + this.gap)));
@@ -527,15 +665,6 @@ export class ImageGrid extends Scrollable {
 		this.onSelect?.(this.items[i], i);
 		this.invalidate();
 	}
-	image(url) {
-		let img = this.imgs.get(url);
-		if (img === undefined) {
-			this.imgs.set(url, null);
-			loadImage(url).then((i) => this.imgs.set(url, i), () => this.imgs.set(url, false)).then(() => this.invalidate());
-			img = null;
-		}
-		return img;
-	}
 	draw(ctx) {
 		const g = this.grid(), r = 14;
 		this.clip(ctx, theme.radius * 0.7);
@@ -552,10 +681,7 @@ export class ImageGrid extends Scrollable {
 			ctx.fillStyle = theme.surface;
 			ctx.fillRect(x, y, s, s);
 			const img = it.url ? this.image(it.url) : null;
-			if (img) {
-				const k = Math.min(img.naturalWidth, img.naturalHeight);
-				ctx.drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, x, y, s, s);
-			}
+			if (img) drawCover(ctx, img, x, y, s);
 			if (it.label) {
 				ctx.fillStyle = "rgba(0,0,0,0.6)";
 				ctx.fillRect(x, y + s - 40, s, 40);

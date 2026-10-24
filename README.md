@@ -41,8 +41,7 @@ The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to
 ## Limits
 
 - Images only: output nodes that produce video or audio are ignored.
-- Only widgets of the root graph that App mode exposes; subgraph and unsupported widgets are read-only
-  ("edit on desktop").
+- Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
   from VR.
 - Switching AR/VR inside the headset ends the session and requests a new one; if Quest Browser refuses

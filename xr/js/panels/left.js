@@ -1,6 +1,6 @@
-// Left panel: settings controls for store.groups.left. COMBO / IMAGE inputs open a picker that replaces the list inside the panel.
+// Left panel: settings controls for store.groups.left, all edited in place: sliders and text fields take typed values, COMBO / IMAGE inputs drop down a filtered option list.
 export function createLeftPanel({ THREE, store, client, ui }) {
-	const { Panel, Label, Button, Toggle, Slider, List, TextField, ImageGrid, ScrollView, stackY, theme } = ui;
+	const { Panel, Label, Toggle, Slider, Combo, TextField, ScrollView, stackY, theme } = ui;
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);
@@ -9,6 +9,13 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 
 	const decimals = (n) => (String(n).split(".")[1] ?? "").length;
 	const show = (v) => (typeof v === "object" && v !== null ? JSON.stringify(v) : String(v));
+	const typed = (text, original) => {
+		const t = text.trim();
+		if (typeof original === "number") return t && Number.isFinite(Number(t)) ? Number(t) : text;
+		if (typeof original === "boolean") return t === "true" ? true : t === "false" ? false : text;
+		if (typeof original !== "object") return text;
+		try { return JSON.parse(text); } catch { return text; }
+	};
 
 	let view = null;
 	let entries = [];
@@ -33,10 +40,20 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	}
 
 	function comboFor(input, label) {
-		const button = new Button({ text: show(store.get(input.key)), size: 28, onClick: () => openPicker(input, label) });
+		const options = input.options.map((o) => {
+			const name = String(o);
+			const option = { label: name, value: o };
+			if (input.type === "IMAGE") {
+				const parts = name.replaceAll("\\", "/").split("/");
+				const filename = parts.pop();
+				option.url = client.viewUrl({ filename, subfolder: parts.join("/"), type: "input" });
+			}
+			return option;
+		});
+		const combo = new Combo({ options, current: store.get(input.key), size: 28, onChange: (v) => store.set(input.key, v) });
 		return {
-			widgets: [new Label({ text: label, size: 24, color: theme.muted }), button],
-			update: () => { button.text = show(store.get(input.key)); button.invalidate(); },
+			widgets: [new Label({ text: label, size: 24, color: theme.muted }), combo],
+			update: () => combo.select(store.get(input.key)),
 		};
 	}
 
@@ -56,14 +73,17 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		return { widgets: [toggle], update: () => { toggle.value = Boolean(store.get(input.key)); toggle.invalidate(); } };
 	}
 
-	function readOnlyFor(input, label) {
+	// any other type: edited as text, converted back to the type of the original value on commit
+	function textFor(input, label) {
+		const field = new TextField({
+			value: show(store.get(input.key)),
+			onDone: (v) => {
+				if (v !== show(store.get(input.key))) store.set(input.key, typed(v, input.value));
+			},
+		});
 		return {
-			widgets: [
-				new Label({ text: label, size: 24, color: theme.muted }),
-				new Label({ text: show(store.get(input.key)), size: 28, wrap: true }),
-				new Label({ text: "edit on desktop", size: 24, color: theme.muted }),
-			],
-			update() {},
+			widgets: [new Label({ text: label, size: 24, color: theme.muted }), field],
+			update: () => { field.value = show(store.get(input.key)); field.invalidate(); },
 		};
 	}
 
@@ -75,7 +95,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			case "STRING": return stringFor(input, label);
 			case "COMBO":
 			case "IMAGE": return comboFor(input, label);
-			default: return readOnlyFor(input, label);
+			default: return textFor(input, label);
 		}
 	}
 
@@ -93,66 +113,9 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		view.setChildren(entries.length
 			? entries.flatMap((en) => en.widgets)
 			: [new Label({ text: "No settings in this workflow", size: 28, color: theme.muted, x: 12, y: 12, w: W - 60 })]);
-		showMain();
-	}
-
-	function showMain() {
-		for (const c of view.children) c.hover = c.pressed = false;
 		panel.clear();
 		panel.add(title);
 		panel.add(view);
-	}
-
-	// ---- picker ----
-	function openPicker(input, label) {
-		// opened from a click handler; swap widgets afterwards so the pointer state is not left on discarded widgets
-		queueMicrotask(() => buildPicker(input, label));
-	}
-
-	function buildPicker(input, label) {
-		const image = input.type === "IMAGE";
-		const current = store.get(input.key);
-		const all = input.options.map((o) => {
-			const name = String(o);
-			const item = { label: name, value: o, lc: name.toLowerCase() };
-			if (image) {
-				const parts = name.replaceAll("\\", "/").split("/");
-				const filename = parts.pop();
-				item.label = filename;
-				item.url = client.viewUrl({ filename, subfolder: parts.join("/"), type: "input" });
-			}
-			return item;
-		});
-		const pick = ({ value }) => {
-			store.set(input.key, value);
-			showMain();
-		};
-
-		const top = 200, listW = W - 48;
-		const count = new Label({ text: "", size: 26, color: theme.muted, align: "right", x: W - 24 - 200, y: 38, w: 200 });
-		const field = new TextField({ placeholder: "Filter", x: 24, y: 112, w: listW, onInput: (q) => apply(q) });
-		const results = image
-			? new ImageGrid({ x: 24, y: top, w: listW, h: H - top - 24, cell: 190, onSelect: pick })
-			: new List({ x: 24, y: top, w: listW, h: H - top - 24, size: 28, onSelect: pick });
-		const apply = (q) => {
-			const s = q.trim().toLowerCase();
-			const items = s ? all.filter((it) => it.lc.includes(s)) : all;
-			results.setItems(items);
-			results.selected = current;
-			count.setText(`${items.length} / ${all.length}`);
-			const idx = items.findIndex((it) => it.value === current);
-			if (idx >= 0) {
-				if (image) { const g = results.grid(); results.scroll = Math.floor(idx / g.cols) * g.step; } else results.scroll = Math.max(0, idx * results.rowH - results.h / 2);
-			}
-		};
-
-		panel.clear();
-		panel.add(new Button({ text: "‹ Back", x: 24, y: 24, w: 150, h: 72, onClick: showMain }));
-		panel.add(new Label({ text: label, size: 32, bold: true, x: 192, y: 24, w: W - 192 - 24 - 210, h: 72 }));
-		panel.add(count);
-		panel.add(field);
-		panel.add(results);
-		apply("");
 	}
 
 	store.addEventListener("load", rebuild);

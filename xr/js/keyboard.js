@@ -25,8 +25,9 @@ function textarea() {
 
 // Starts editing `initial` and returns the textarea (live value and selection). Call it from a user gesture.
 // onInput(v) on every change, onSelection() when the caret or selection may have moved,
-// onDone(v) on commit (blur, Enter in a single-line field), onCancel() on Escape after onInput(initial) reverted the live changes.
-export function editText({ initial = "", multiline = false, onInput, onSelection, onDone, onCancel }) {
+// onKey(e) before the key is handled, onDone(v) on commit (blur, Enter in a single-line field),
+// onCancel() on Escape after onInput(initial) reverted the live changes.
+export function editText({ initial = "", multiline = false, onInput, onSelection, onKey, onDone, onCancel }) {
 	active?.finish(true);
 	const ta = textarea();
 	const edit = new AbortController();
@@ -52,6 +53,7 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 	ta.addEventListener("keyup", onSelection, { signal });
 	document.addEventListener("selectionchange", onSelection, { signal });
 	ta.addEventListener("keydown", (e) => {
+		onKey?.(e);
 		if (e.key === "Escape") finish(false);
 		else if (e.key === "Enter" && (!multiline || e.ctrlKey)) { e.preventDefault(); finish(true); }
 	}, { signal });

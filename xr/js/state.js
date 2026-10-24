@@ -118,7 +118,10 @@ class Store extends EventTarget {
     buildPrompt() {
         const prompt = JSON.parse(JSON.stringify(this.snapshot.prompt));
         for (const input of this.inputs) {
-            if (input.type !== "UNSUPPORTED") prompt[input.nodeId].inputs[input.widget] = this.#values.get(input.key);
+            const value = this.#values.get(input.key);
+            // unsupported widget types are only written back once edited, and only into an input the prompt has
+            if (input.type === "UNSUPPORTED" && (value === input.value || !(input.widget in (prompt[input.nodeId]?.inputs ?? {})))) continue;
+            prompt[input.nodeId].inputs[input.widget] = value;
         }
         for (const node of this.snapshot.loraNodes) {
             const list = this.#loras.get(node.nodeId).map(l => ({ ...l }));
