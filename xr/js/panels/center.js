@@ -1,5 +1,7 @@
 // Center panel: status bar, image (mesh or XR quad layer), batch grid, history strip.
-const STAGE_W = 2.0, STAGE_H = 1.4, STAGE_Y = 0.1;
+// 16:9 stage centered on the group origin; main.js scales the group to the physical screen size
+export const STAGE_W = 2.0;
+const STAGE_H = STAGE_W * 9 / 16, STAGE_Y = 0;
 const BAR_H = 0.12, STRIP_H = 0.2, GAP = 0.03;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
 const STEREO_KEY = "appmode-xr.stereo";

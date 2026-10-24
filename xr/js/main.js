@@ -5,7 +5,7 @@ import * as keyboard from "./keyboard.js";
 import { showHelp } from "./help.js";
 import { ComfyClient } from "./comfy.js";
 import { store } from "./state.js";
-import { createCenterPanel } from "./panels/center.js";
+import { createCenterPanel, STAGE_W } from "./panels/center.js";
 import { createBottomPanel } from "./panels/bottom.js";
 import { createLeftPanel } from "./panels/left.js";
 import { createRightPanel } from "./panels/right.js";
@@ -25,10 +25,10 @@ ui.setRenderer(renderer);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 100);
 camera.rotation.order = "YXZ";
-const EYE_HEIGHT = 1.6;
-camera.position.set(0, EYE_HEIGHT, 0);
-const uiGroup = new THREE.Group();
-uiGroup.position.y = EYE_HEIGHT;
+const DESKTOP_EYE_HEIGHT = 1.6; // desktop fallback only; XR recenters on the head pose
+camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
+const uiGroup = new THREE.Group(); // origin = eye, -z = viewing direction
+uiGroup.position.y = DESKTOP_EYE_HEIGHT;
 scene.add(uiGroup);
 
 // dim room for VR / desktop; hidden in AR so passthrough shows
@@ -86,8 +86,8 @@ function onSessionEnd() {
 	keyboard.commit();
 	for (const ptr of pointers) releasePointer(ptr);
 	// three overwrites the camera pose while presenting
-	camera.position.set(0, EYE_HEIGHT, 0);
-	uiGroup.position.set(0, EYE_HEIGHT, 0);
+	camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
+	uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.rotation.y = yaw = pitch = 0;
 	$("overlay").hidden = $("hint").hidden = false;
 }
@@ -118,10 +118,14 @@ const needHelp = !window.isSecureContext || !navigator.xr;
 if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
 
 // ---- panels ----
-// layout in meters / degrees, eye at the origin
-const CENTER_POS = [0, 0, -2.0];
-const BOTTOM_POS = [0, -0.8, -1.05], BOTTOM_TILT = -40;
-const SIDE_DIST = 1.4, SIDE_YAW = 50, SIDE_Y = 0.05;
+// layout in meters / degrees, eye at the origin; panels are scaled groups, their canvases keep a fixed pixel layout
+// center: 16:9 screen of SCREEN_DIAGONAL_IN inches (+/-35 deg x +/-22 deg), status bar and history strip down to -29 deg
+const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
+const CENTER_SCALE = SCREEN_DIAGONAL_IN * 0.0254 * 16 / Math.hypot(16, 9) / STAGE_W;
+// bottom: top edge at -37 deg, face tilted at the eye
+const BOTTOM_SCALE = 0.35, BOTTOM_DIST = 0.6, BOTTOM_ANGLE = 45;
+// sides: inner edges at +/-39 deg
+const SIDE_SCALE = 0.6, SIDE_DIST = 0.75, SIDE_YAW = 58;
 const ctx = {
 	THREE, store, ui, scene, renderer, camera,
 	client: new ComfyClient(),
@@ -131,13 +135,21 @@ window.__xr = ctx;
 
 function side(group, dir) {
 	const a = THREE.MathUtils.degToRad(SIDE_YAW) * dir;
-	group.position.set(-Math.sin(a) * SIDE_DIST, SIDE_Y, -Math.cos(a) * SIDE_DIST);
+	group.scale.setScalar(SIDE_SCALE);
+	group.position.set(-Math.sin(a) * SIDE_DIST, 0, -Math.cos(a) * SIDE_DIST);
 	group.rotation.y = a;
 }
 
+function bottom(group) {
+	const a = THREE.MathUtils.degToRad(BOTTOM_ANGLE);
+	group.scale.setScalar(BOTTOM_SCALE);
+	group.position.set(0, -Math.sin(a) * BOTTOM_DIST, -Math.cos(a) * BOTTOM_DIST);
+	group.rotation.x = -a;
+}
+
 const panels = [
-	[createCenterPanel, (g) => g.position.set(...CENTER_POS)],
-	[createBottomPanel, (g) => { g.position.set(...BOTTOM_POS); g.rotation.x = THREE.MathUtils.degToRad(BOTTOM_TILT); }],
+	[createCenterPanel, (g) => { g.scale.setScalar(CENTER_SCALE); g.position.set(0, 0, -SCREEN_DISTANCE); }],
+	[createBottomPanel, bottom],
 	[createLeftPanel, (g) => side(g, 1)],
 	[createRightPanel, (g) => side(g, -1)],
 ].map(([create, place]) => {
@@ -275,13 +287,15 @@ const worldPoint = (ray, d) => ray.at(d, tmp.clone());
 
 function recenter() {
 	if (renderer.xr.isPresenting) {
-		// the XR camera's matrixWorld is only refreshed inside render(), so read the pose three decomposed this frame
+		// the XR camera's matrixWorld is only refreshed inside render(), so read the eye poses three decomposed this frame
 		const cam = renderer.xr.getCamera();
 		const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-		uiGroup.position.copy(cam.position);
+		uiGroup.position.set(0, 0, 0);
+		for (const eye of cam.cameras) uiGroup.position.add(eye.position);
+		uiGroup.position.divideScalar(cam.cameras.length);
 		uiGroup.rotation.y = Math.atan2(-dir.x, -dir.z);
 	} else {
-		uiGroup.position.set(0, EYE_HEIGHT, 0);
+		uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 		uiGroup.rotation.y = 0;
 		yaw = pitch = 0;
 	}
