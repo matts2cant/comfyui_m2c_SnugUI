@@ -1,6 +1,5 @@
 // Bottom panel: prompt text boxes on the left; seeds, generate / cancel and run status on the right.
-const MODES = ["fixed", "randomize", "increment"];
-const MODE_LABELS = { fixed: "Fixed", randomize: "Rand", increment: "Incr" };
+const MODES = [["fixed", "Fix"], ["randomize", "Rand"], ["increment", "Incr"]];
 
 export function createBottomPanel({ THREE, store, client, ui }) {
 	const { theme } = ui;
@@ -72,21 +71,22 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 				value.value = String(store.get(key));
 			},
 		});
-		const random = new ui.Button({ text: "Random", size: 24, w: 190, h: 48, onClick: () => store.randomizeSeed(key) });
-		const mode = new ui.Button({
-			size: 24, w: RW - 198, h: 48,
-			onClick: () => store.setSeedMode(key, MODES[(MODES.indexOf(store.seedMode(key)) + 1) % MODES.length]),
-		});
+		const step = (d) => {
+			const next = store.get(key) + d;
+			store.set(key, Math.min(Math.max(next, input.min ?? -Infinity), input.max ?? Infinity));
+		};
+		const minus = new ui.Button({ text: "−", size: 32, w: 64, h: 48, onClick: () => step(-1) });
+		const plus = new ui.Button({ text: "+", size: 32, w: 64, h: 48, onClick: () => step(1) });
+		const modes = MODES.map(([mode, text]) => new ui.Button({ text, size: 24, w: 104, h: 48, onClick: () => store.setSeedMode(key, mode) }));
 		return {
-			widgets: [label, value, random, mode],
+			widgets: [label, value, minus, plus, ...modes],
 			refresh() {
 				value.value = String(store.get(key));
-				mode.text = MODE_LABELS[store.seedMode(key)];
-				mode.toggled = store.seedMode(key) !== "fixed";
+				MODES.forEach(([mode], i) => { modes[i].toggled = store.seedMode(key) === mode; });
 			},
 			place(y) {
-				label.y = value.y = y; random.y = mode.y = y + 52;
-				label.x = random.x = 0; value.x = 144; mode.x = 198;
+				label.y = value.y = y; label.x = 0; value.x = 144;
+				[minus, plus, ...modes].forEach((b, i) => { b.y = y + 52; b.x = i < 2 ? i * 70 : 154 + (i - 2) * 108; });
 				return y + 108;
 			},
 		};
