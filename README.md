@@ -35,8 +35,8 @@ The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to
 - Status bar above the image: Grid (batch view), HD (see below), To VR / To AR (switches mode).
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
-- Keyboard: the first key you type replaces the existing text (it starts selected). Closing the keyboard
-  applies the text.
+- Text fields edit in place: tap one to get a caret (and the Quest keyboard), tap inside it to move the caret.
+  Closing the keyboard, tapping elsewhere or Enter (single-line fields) applies the text; Escape reverts it.
 
 ## Limits
 

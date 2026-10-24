@@ -1,5 +1,5 @@
 // Left panel: settings controls for store.groups.left. COMBO / IMAGE inputs open a picker that replaces the list inside the panel.
-export function createLeftPanel({ THREE, store, client, ui, keyboard }) {
+export function createLeftPanel({ THREE, store, client, ui }) {
 	const { Panel, Label, Button, Toggle, Slider, List, TextField, ImageGrid, ScrollView, stackY, theme } = ui;
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
@@ -43,7 +43,7 @@ export function createLeftPanel({ THREE, store, client, ui, keyboard }) {
 	function stringFor(input, label) {
 		const field = new TextField({
 			value: store.get(input.key), placeholder: "tap to edit",
-			onClick: () => keyboard.editText({ initial: store.get(input.key), placeholder: label, onDone: (v) => store.set(input.key, v) }),
+			onDone: (v) => store.set(input.key, v),
 		});
 		return {
 			widgets: [new Label({ text: label, size: 24, color: theme.muted }), field],
@@ -130,15 +130,13 @@ export function createLeftPanel({ THREE, store, client, ui, keyboard }) {
 
 		const top = 200, listW = W - 48;
 		const count = new Label({ text: "", size: 26, color: theme.muted, align: "right", x: W - 24 - 200, y: 38, w: 200 });
-		const field = new TextField({ placeholder: "Filter", x: 24, y: 112, w: listW });
+		const field = new TextField({ placeholder: "Filter", x: 24, y: 112, w: listW, onInput: (q) => apply(q) });
 		const results = image
 			? new ImageGrid({ x: 24, y: top, w: listW, h: H - top - 24, cell: 190, onSelect: pick })
 			: new List({ x: 24, y: top, w: listW, h: H - top - 24, size: 28, onSelect: pick });
 		const apply = (q) => {
 			const s = q.trim().toLowerCase();
 			const items = s ? all.filter((it) => it.lc.includes(s)) : all;
-			field.value = q;
-			field.invalidate();
 			results.setItems(items);
 			results.selected = current;
 			count.setText(`${items.length} / ${all.length}`);
@@ -147,7 +145,6 @@ export function createLeftPanel({ THREE, store, client, ui, keyboard }) {
 				if (image) { const g = results.grid(); results.scroll = Math.floor(idx / g.cols) * g.step; } else results.scroll = Math.max(0, idx * results.rowH - results.h / 2);
 			}
 		};
-		field.onClick = () => keyboard.editText({ initial: field.value, placeholder: "Filter", onInput: apply, onDone: apply });
 
 		panel.clear();
 		panel.add(new Button({ text: "‹ Back", x: 24, y: 24, w: 150, h: 72, onClick: showMain }));

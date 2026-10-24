@@ -10,6 +10,7 @@
 // Option callbacks (onClick, onChange, onSelect...) are plain properties, so `new Button({ onClick })`
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
+import { editText } from "./keyboard.js";
 
 let maxAnisotropy = 1;
 export function setRenderer(renderer) {
@@ -36,17 +37,38 @@ function ellipsize(ctx, text, maxW) {
 	return text.slice(0, lo) + "…";
 }
 
+// word-wrapped lines with the index of their first character in `text`
 function wrapLines(ctx, text, maxW) {
 	const lines = [];
+	let pos = 0;
 	for (const para of String(text).split("\n")) {
-		let line = "";
+		let line = "", start = pos;
 		for (const word of para.split(" ")) {
 			const test = line ? line + " " + word : word;
-			if (line && ctx.measureText(test).width > maxW) { lines.push(line); line = word; } else line = test;
+			if (line && ctx.measureText(test).width > maxW) { lines.push({ text: line, start }); start += line.length + 1; line = word; } else line = test;
 		}
-		lines.push(line);
+		lines.push({ text: line, start });
+		pos += para.length + 1;
 	}
 	return lines;
+}
+
+// index of the line holding character index idx
+function lineAt(lines, idx) {
+	let i = 0;
+	while (i + 1 < lines.length && lines[i + 1].start <= idx) i++;
+	return i;
+}
+
+// character index in `text` nearest to pixel x
+function colAt(ctx, text, x) {
+	let lo = 0, hi = text.length;
+	while (lo < hi) {
+		const mid = (lo + hi + 1) >> 1;
+		if (ctx.measureText(text.slice(0, mid)).width <= x) lo = mid; else hi = mid - 1;
+	}
+	if (lo < text.length && x - ctx.measureText(text.slice(0, lo)).width > ctx.measureText(text.slice(0, lo + 1)).width - x) lo++;
+	return lo;
 }
 
 function rrect(ctx, x, y, w, h, r) {
@@ -115,7 +137,7 @@ export class Label extends Widget {
 	lines() {
 		if (!this.wrap || this.w <= 0) return [String(this.text)];
 		measure.font = font(this.size, this.bold);
-		return wrapLines(measure, this.text, this.w);
+		return wrapLines(measure, this.text, this.w).map((l) => l.text);
 	}
 	relayout() { if (this.autoH) this.h = this.lines().length * this.lineH() + (this.wrap ? 0 : Math.round(this.size * 0.1)); }
 	setText(text) { this.text = text; this.relayout(); this.invalidate(); }
@@ -355,25 +377,117 @@ export class List extends Scrollable {
 	}
 }
 
+// Tapping starts an in-place edit through keyboard.js: the field draws the hidden textarea's live value,
+// caret and selection. Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts.
 export class TextField extends Widget {
-	constructor(o) { super({ value: "", placeholder: "", size: 30, w: 400, h: 72, ...o }); }
+	constructor(o) {
+		super({ value: "", placeholder: "", size: 30, w: 400, h: 72, ...o });
+		this.ta = null;
+		this.first = 0;
+		this.blink = true;
+	}
+
+	edit() {
+		const initial = this.value;
+		this.first = 0;
+		this.blink = true;
+		this.ta = editText({
+			initial, multiline: this.multiline,
+			onInput: (v) => { this.value = v; this.onInput?.(v); },
+			onSelection: () => { this.blink = true; this.invalidate(); },
+			onDone: (v) => { this.stop(); this.value = v; this.onDone?.(v); },
+			onCancel: () => { this.stop(); this.onCancel?.(); },
+		});
+		this.timer = setInterval(() => { this.blink = !this.blink; this.invalidate(); }, 500);
+		this.onEdit?.();
+		this.invalidate();
+	}
+
+	stop() {
+		clearInterval(this.timer);
+		this.ta = null;
+		this.invalidate();
+	}
+
+	// caret = the moving end of the selection
+	caret() {
+		const { selectionStart: s, selectionEnd: e, selectionDirection: d } = this.ta;
+		return d === "backward" ? s : e;
+	}
+
+	// lines and the window of them shown while editing; scrolls to keep the caret visible. Shared by draw() and clicks.
+	layout() {
+		measure.font = font(this.size);
+		const text = this.ta.value, inner = this.w - 40, lh = Math.round(this.size * 1.3), caret = this.caret();
+		if (!this.multiline) {
+			const dx = Math.max(0, measure.measureText(text.slice(0, caret)).width - inner + 2);
+			return { lines: [{ text, start: 0 }], first: 0, rows: 1, lh, top: (this.h - lh) / 2 + 1, dx, caret };
+		}
+		const lines = wrapLines(measure, text, inner);
+		const rows = Math.max(1, Math.floor((this.h - 32) / lh));
+		const cl = lineAt(lines, caret);
+		this.first = Math.max(0, Math.min(Math.max(this.first, cl - rows + 1), cl, lines.length - rows));
+		return { lines, first: this.first, rows, lh, top: 16, dx: 0, caret };
+	}
+
+	onClick(p) {
+		if (!this.ta) return this.edit();
+		const { lines, first, rows, lh, top, dx } = this.layout();
+		const i = Math.min(lines.length - 1, first + rows - 1, Math.max(first, first + Math.floor((p.ly - top) / lh)));
+		const idx = lines[i].start + colAt(measure, lines[i].text, p.lx - 20 + dx);
+		this.ta.setSelectionRange(idx, idx);
+		this.blink = true;
+		this.invalidate();
+	}
+
+	drawEdit(ctx) {
+		const { lines, first, rows, lh, top, dx, caret } = this.layout();
+		const { selectionStart: s, selectionEnd: e } = this.ta;
+		const width = (text) => measure.measureText(text).width;
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(20, 0, this.w - 40, this.h);
+		ctx.clip();
+		for (let i = first; i < Math.min(lines.length, first + rows); i++) {
+			const { text, start } = lines[i], y = top + lh * (i - first);
+			if (e > s && e > start && s <= start + text.length) {
+				const x0 = width(text.slice(0, Math.max(0, s - start))), x1 = width(text.slice(0, e - start)) + (e > start + text.length ? 8 : 0);
+				ctx.fillStyle = "rgba(76,141,255,0.45)";
+				ctx.fillRect(20 - dx + x0, y, x1 - x0, lh);
+			}
+			ctx.fillStyle = theme.fg;
+			ctx.fillText(text, 20 - dx, y + lh / 2);
+		}
+		if (!this.ta.value) {
+			ctx.fillStyle = theme.muted;
+			ctx.fillText(this.placeholder, 20, top + lh / 2);
+		}
+		const ci = lineAt(lines, caret);
+		if (this.blink && ci >= first && ci < first + rows) {
+			ctx.fillStyle = theme.fg;
+			ctx.fillRect(20 - dx + width(lines[ci].text.slice(0, caret - lines[ci].start)) - 1.5, top + lh * (ci - first) + 3, 3, lh - 6);
+		}
+		ctx.restore();
+	}
+
 	draw(ctx) {
 		const { w, h } = this, r = theme.radius * 0.7;
 		rrect(ctx, 0, 0, w, h, r);
 		ctx.fillStyle = theme.bg;
 		ctx.fill();
-		ctx.strokeStyle = this.hover ? theme.accent : theme.border;
-		ctx.lineWidth = 3;
+		ctx.strokeStyle = this.ta || this.hover ? theme.accent : theme.border;
+		ctx.lineWidth = this.ta ? 5 : 3;
 		ctx.stroke();
 		tint(ctx, this, 0, 0, w, h, r);
 		ctx.font = font(this.size);
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
+		if (this.ta) return this.drawEdit(ctx);
 		ctx.fillStyle = this.value ? theme.fg : theme.muted;
 		if (!this.multiline) { ctx.fillText(ellipsize(ctx, this.value || this.placeholder, w - 40), 20, h / 2 + 1); return; }
 		// multiline: word-wrapped from the top, clipped with "…" when it overflows the box
 		const lh = Math.round(this.size * 1.3);
-		const lines = wrapLines(ctx, this.value || this.placeholder, w - 40);
+		const lines = wrapLines(ctx, this.value || this.placeholder, w - 40).map((l) => l.text);
 		const max = Math.max(1, Math.floor((h - 32) / lh));
 		if (lines.length > max) { lines.length = max; lines[max - 1] = ellipsize(ctx, lines[max - 1] + "…", w - 40); }
 		lines.forEach((line, i) => ctx.fillText(line, 20, 16 + lh * (i + 0.5)));

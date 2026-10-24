@@ -23,7 +23,7 @@ function newLora(item) {
 	return { name: item.file_name, strength, clipStrength: Number(tips.clipStrength ?? tips.clip_strength ?? strength), active: true };
 }
 
-export function createRightPanel({ THREE, store, ui, keyboard }) {
+export function createRightPanel({ THREE, store, ui }) {
 	const { Label, Button, TextField, List, ImageGrid, ScrollView } = ui;
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "right", widthM: 0.85, heightM: 1.15 });
@@ -35,7 +35,14 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, w: W, h: 50 });
 	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90, w: W });
 	const stack = new ScrollView({ x: M, w: W });
-	const field = new TextField({ x: M, w: W, placeholder: "search LoRAs", onClick: () => startEdit() });
+	const field = new TextField({
+			x: M, w: W, placeholder: "search LoRAs",
+			onInput: (v) => setQuery(v),
+			onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
+			onCancel: () => { editing = false; syncVisible(); },
+			// runs after the field commits a still-open previous edit, whose onDone clears the flag
+			onEdit: () => { editing = true; syncVisible(); loadSuggest(); },
+		});
 	const suggest = new List({ x: M, w: W, rowH: 60, size: 28, onSelect: (it) => { suggest.selected = undefined; add(it.value); } });
 	const grid = new ImageGrid({ x: M, w: W, cell: 180, onSelect: (it) => { grid.selected = undefined; add(it.value); } });
 	const prev = new Button({ text: "‹ Prev", x: M, w: 180, h: 60, onClick: () => goto(page - 1) });
@@ -182,20 +189,6 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 		page = 1;
 		clearTimeout(timer);
 		timer = setTimeout(() => { loadGrid(); if (editing) loadSuggest(); }, now ? 0 : 250);
-	}
-
-	function startEdit() {
-		keyboard.editText({
-			initial: query,
-			placeholder: field.placeholder,
-			onInput: (v) => setQuery(v),
-			onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
-			onCancel: () => { editing = false; syncVisible(); },
-		});
-		// after editText: it commits a still-open previous edit, whose onDone clears the flag
-		editing = true;
-		syncVisible();
-		loadSuggest();
 	}
 
 	function add(item) {

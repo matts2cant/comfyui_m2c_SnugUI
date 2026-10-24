@@ -2,7 +2,7 @@
 const MODES = ["fixed", "randomize", "increment"];
 const SEED_ROW = 96;
 
-export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
+export function createBottomPanel({ THREE, store, client, ui }) {
 	const { theme } = ui;
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "bottom", widthM: 1.6, heightM: 0.5 });
@@ -51,7 +51,7 @@ export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 		const label = new ui.Label({ text: input.nodeTitle || input.label, size: 28, color: theme.muted, h: 44 });
 		const box = new ui.TextField({
 			multiline: true, size: 28, placeholder: "Tap to edit prompt",
-			onClick: () => keyboard.editText({ initial: store.get(input.key) ?? "", multiline: true, onInput: set, onDone: set }),
+			onInput: set, onDone: set,
 		});
 		return {
 			widgets: [label, box],
@@ -69,7 +69,11 @@ export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 		const label = new ui.Label({ text: input.label, size: 30, color: theme.muted, w: 220, h: 72 });
 		const value = new ui.TextField({
 			w: 330,
-			onClick: () => keyboard.editText({ initial: String(store.get(key)), onDone: (v) => { const n = Number(v.trim()); if (Number.isInteger(n)) store.set(key, n); } }),
+			onDone: (v) => {
+				const n = Number(v.trim());
+				if (Number.isInteger(n)) store.set(key, n);
+				value.value = String(store.get(key));
+			},
 		});
 		const random = new ui.Button({ text: "Random", size: 28, w: 200, onClick: () => store.randomizeSeed(key) });
 		const mode = new ui.Button({

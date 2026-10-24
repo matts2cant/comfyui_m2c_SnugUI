@@ -103,14 +103,17 @@ export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; cont
 Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"accent"|"danger", toggled},
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
-TextField{value, placeholder, onClick, multiline}, ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
+TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit}, ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 export function loadImage(url) -> Promise<HTMLImageElement>  // cached
 ```
-`keyboard.js`: `export function editText({ initial, multiline, placeholder, onInput(v), onDone(v), onCancel() })`.
-XR + `session.isSystemKeyboardSupported`: focus a hidden in-DOM `<textarea>`; Quest native keyboard; first key press
-REPLACES the value (expected); `input` events → onInput; `blur` → onDone(value). Desktop fallback: centered DOM overlay
-textarea with OK/Cancel (Enter = OK when not multiline). Only one edit at a time.
+`keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onDone(v), onCancel() }) -> textarea`,
+plus `commit()` and `isEditing()`. Editing is always in place: one hidden, focusable in-DOM `<textarea>` (Quest system keyboard in
+XR, physical keys on desktop) is focused synchronously from the click; the caret starts at the end. A TextField tap calls editText and
+draws the textarea's live value, blinking caret and selection itself (auto-scrolled to the caret); a tap inside it moves the caret.
+`input` → onInput; commit (onDone) on blur, Enter in a single-line field, `commit()`; Escape reverts (onInput(initial), onCancel).
+main.js commits when a press lands away from every TextField (on release) and keeps the textarea focused on canvas mousedown.
+Only one edit at a time.
 
 `comfy.js`:
 ```js
@@ -162,7 +165,7 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 - left panel: 0.85 x 1.15 m, at distance 1.4 m, yaw +40° (to the left), facing user.
 - right panel: 0.85 x 1.15 m, at distance 1.4 m, yaw -40°, facing user.
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, update(dt) }` where
-`ctx = { THREE, store, client, ui, keyboard, scene, renderer, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
+`ctx = { THREE, store, client, ui, scene, renderer, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### main.js
@@ -192,16 +195,16 @@ main.js positions the returned group per the layout above (panel modules build t
   Status bar: workflow name, progress, AR/VR toggle, HD toggle. Only images from `executed` events whose node is in
   snapshot.outputs (or any node if outputs is empty) and whose items are images (png/jpg/jpeg/webp).
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
-  placeholder "Tap to edit prompt"); tap → editText(initial = full text, multiline, live onInput) and store.set the whole text.
+  placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
   Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Batch − n +. Big Generate button,
   Cancel (interrupt) button, queued/running indicator.
 - left: scrollable list of controls from store.groups.left: COMBO → button showing value that opens a picker view inside the
-  panel (filter TextField via editText with live onInput + List + back); INT/FLOAT → Slider (respect min/max/step; when the
+  panel (filter TextField with live onInput + List + back); INT/FLOAT → Slider (respect min/max/step; when the
   range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle; STRING single-line → TextField; IMAGE → picker view with
   ImageGrid of options thumbnails (`/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
   UNSUPPORTED → read-only label "edit on desktop".
 - right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05), expandable
-  clip strength, remove ×. Library: search TextField (editText live onInput → debounced 250 ms autocomplete suggestions from
+  clip strength, remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from
   item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clip_strength ?? strength, active: true}` (dedupe by name).
@@ -211,7 +214,7 @@ main.js positions the returned group per the layout above (panel modules build t
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
   `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`.
-- ctx also has `camera`; `window.__xr = ctx` for debugging. keyboard.js has `setXRSession(session)` (main calls it).
+- ctx also has `camera`; `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: `objectInfo(class)` resolves to the class entry; client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: exports `applyLorasToText`; `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
 - Desktop snapshot POST goes to `/api/appmode-xr/snapshot` (ComfyUI mirrors routes under /api).

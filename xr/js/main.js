@@ -75,7 +75,7 @@ async function enter(m) {
 		session.end();
 		throw e;
 	}
-	keyboard.setXRSession(session);
+	keyboard.commit();
 	needRecenter = true;
 	$("overlay").hidden = $("hint").hidden = true;
 }
@@ -83,7 +83,7 @@ async function enter(m) {
 function onSessionEnd() {
 	mode = "desktop";
 	applyMode();
-	keyboard.setXRSession(null);
+	keyboard.commit();
 	for (const ptr of pointers) releasePointer(ptr);
 	// three overwrites the camera pose while presenting
 	camera.position.set(0, EYE_HEIGHT, 0);
@@ -123,7 +123,7 @@ const CENTER_POS = [0, 0, -2.0];
 const BOTTOM_POS = [0, -0.8, -1.05], BOTTOM_TILT = -40;
 const SIDE_DIST = 1.4, SIDE_YAW = 50, SIDE_Y = 0.05;
 const ctx = {
-	THREE, store, ui, keyboard, scene, renderer, camera,
+	THREE, store, ui, scene, renderer, camera,
 	client: new ComfyClient(),
 	xr: { isPresenting: () => renderer.xr.isPresenting, mode: () => mode, toggleMode },
 };
@@ -168,7 +168,7 @@ const plane = new THREE.Plane();
 const tmp = new THREE.Vector3();
 let meshes = [];
 const pointers = [];
-const newPointer = (id) => { const p = { id, panel: null, cap: null, hit: null }; pointers.push(p); return p; };
+const newPointer = (id) => { const p = { id, panel: null, cap: null, hit: null, outside: false }; pointers.push(p); return p; };
 
 function pick(ray) {
 	raycaster.ray.copy(ray);
@@ -203,8 +203,10 @@ function updatePointer(ptr, ray) {
 	return ptr.hit = hit;
 }
 
+// a press away from any text field commits the open edit once released, so a click on e.g. a suggestion still lands
 function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
+	ptr.outside = keyboard.isEditing() && !(hit?.panel.hitTest(hit.x, hit.y) instanceof ui.TextField);
 	if (!hit) return false;
 	ptr.cap = hit.panel;
 	hit.panel.pointer("down", hit.x, hit.y, ptr.id);
@@ -219,10 +221,11 @@ function releasePointer(ptr) {
 }
 
 function pointerUp(ptr, ray) {
-	if (!ptr.cap) return;
-	const panel = ptr.cap, q = project(panel, ray);
+	const panel = ptr.cap, q = panel && project(panel, ray);
 	ptr.cap = null;
 	if (q) panel.pointer("up", q.x, q.y, ptr.id);
+	if (ptr.outside) keyboard.commit();
+	ptr.outside = false;
 }
 
 // ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll, left squeeze = recenter ----
@@ -295,6 +298,7 @@ function mouseRay(e) {
 	raycaster.setFromCamera(ndc, camera);
 	return raycaster.ray.clone();
 }
+el.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); }); // keep the textarea focused
 el.addEventListener("pointerdown", (e) => {
 	if (e.button !== 0 || renderer.xr.isPresenting) return;
 	el.setPointerCapture(e.pointerId);
@@ -323,7 +327,7 @@ el.addEventListener("wheel", (e) => {
 	const hit = updatePointer(mouse, mouseRay(e));
 	hit?.panel.scroll(e.deltaY, hit.x, hit.y);
 }, { passive: false });
-addEventListener("keydown", (e) => { if (e.key === "r" && !(e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)) recenter(); });
+addEventListener("keydown", (e) => { if (e.key === "r") recenter(); });
 addEventListener("resize", () => {
 	camera.aspect = innerWidth / innerHeight;
 	camera.updateProjectionMatrix();
