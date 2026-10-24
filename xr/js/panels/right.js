@@ -30,7 +30,6 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 	group.add(panel.mesh);
 
 	let tab = 0;
-	const open = new Set(); // "nodeId|name" rows showing the clip strength
 	let query = "", page = 1, pages = 1, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
 
 	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, w: W, h: 50 });
@@ -43,49 +42,55 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 	const next = new Button({ text: "Next ›", x: M + W - 180, w: 180, h: 60, onClick: () => goto(page + 1) });
 	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, w: W - 380, h: 60 });
 
-	const isOpen = (node, l) => open.has(node.nodeId + "|" + l.name) || Number(l.clipStrength) !== Number(l.strength);
-
-	function stepper(x, y, value, onStep) {
-		return [
-			new Button({ text: "−", size: 38, x, y, w: 72, h: 60, onClick: () => onStep(-STEP) }),
-			new Label({ text: Number(value).toFixed(2), size: 30, bold: true, align: "center", x: x + 76, y, w: 110, h: 60 }),
-			new Button({ text: "+", size: 38, x: x + 190, y, w: 72, h: 60, onClick: () => onStep(STEP) }),
-		];
+	class Check extends ui.Widget {
+		draw(ctx) {
+			const s = 38, x = (this.w - s) / 2, y = (this.h - s) / 2;
+			if (this.hover || this.pressed) {
+				ctx.beginPath();
+				ctx.roundRect(0, 0, this.w, this.h, 12);
+				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fill();
+			}
+			ctx.beginPath();
+			ctx.roundRect(x, y, s, s, 8);
+			ctx.fillStyle = this.checked ? ui.theme.accent : ui.theme.surface;
+			ctx.fill();
+			ctx.lineWidth = 3;
+			ctx.strokeStyle = this.checked ? ui.theme.accent : ui.theme.border;
+			ctx.stroke();
+			if (!this.checked) return;
+			ctx.beginPath();
+			ctx.moveTo(x + 9, y + 20);
+			ctx.lineTo(x + 16, y + 27);
+			ctx.lineTo(x + 29, y + 11);
+			ctx.strokeStyle = "#fff";
+			ctx.lineWidth = 5;
+			ctx.lineCap = "round";
+			ctx.lineJoin = "round";
+			ctx.stroke();
+		}
 	}
 
 	function buildRows(node) {
 		const list = store.loras(node.nodeId);
-		const rw = W - 16;
+		const rw = W - 16, h = 60, pitch = 68;
 		const edit = (i, patch) => store.setLoras(node.nodeId, list.map((l, j) => j === i ? { ...l, ...patch } : l));
 		const rows = [];
-		let y = 0;
 		list.forEach((l, i) => {
-			const expanded = isOpen(node, l);
-			const step = (key) => (d) => {
-				const v = round2(Number(l[key]) + d);
-				edit(i, key === "strength" && !expanded ? { strength: v, clipStrength: v } : { [key]: v });
+			const y = i * pitch;
+			const step = (d) => {
+				const v = round2(Number(l.strength) + d);
+				edit(i, { strength: v, ...(Number(l.clipStrength) === Number(l.strength) && { clipStrength: v }) });
 			};
+			const rx = rw - 60 - 8 - 56 - 84 - 56; // left edge of the − button
 			rows.push(
-				new Label({ text: l.name, size: 30, color: l.active ? ui.theme.fg : ui.theme.muted, x: 0, y, w: rw - 80, h: 56 }),
-				new Button({ text: "×", size: 34, variant: "danger", x: rw - 68, y, w: 68, h: 56, onClick: () => store.setLoras(node.nodeId, list.filter((_, j) => j !== i)) }),
+				new Check({ checked: l.active, x: 0, y, w: 60, h, onClick: () => edit(i, { active: !l.active }) }),
+				new Label({ text: l.name, size: 30, color: l.active ? ui.theme.fg : ui.theme.muted, x: 68, y, w: rx - 68 - 8, h }),
+				new Button({ text: "−", size: 38, x: rx, y, w: 56, h, onClick: () => step(-STEP) }),
+				new Label({ text: Number(l.strength).toFixed(2), size: 30, bold: true, color: l.active ? ui.theme.fg : ui.theme.muted, align: "center", x: rx + 56, y, w: 84, h }),
+				new Button({ text: "+", size: 38, x: rx + 140, y, w: 56, h, onClick: () => step(STEP) }),
+				new Button({ text: "×", size: 34, variant: "danger", x: rw - 60, y, w: 60, h, onClick: () => store.setLoras(node.nodeId, list.filter((_, j) => j !== i)) }),
 			);
-			y += 62;
-			rows.push(
-				new Button({ text: l.active ? "On" : "Off", toggled: l.active, x: 0, y, w: 96, h: 60, onClick: () => edit(i, { active: !l.active }) }),
-				...stepper(112, y, l.strength, step("strength")),
-				new Button({
-					text: expanded ? "clip ▴" : "clip ▾", size: 26, x: rw - 150, y, w: 150, h: 60,
-					onClick: () => {
-						if (expanded) { open.delete(node.nodeId + "|" + l.name); edit(i, { clipStrength: Number(l.strength) }); } else { open.add(node.nodeId + "|" + l.name); render(); }
-					},
-				}),
-			);
-			y += 66;
-			if (expanded) {
-				rows.push(new Label({ text: "clip", size: 26, color: ui.theme.muted, x: 0, y, w: 96, h: 60 }), ...stepper(112, y, l.clipStrength, step("clipStrength")));
-				y += 66;
-			}
-			y += 18;
 		});
 		if (!list.length) rows.push(new Label({ text: "No LoRAs yet, pick one below", size: 28, color: ui.theme.muted, x: 0, y: 20, w: rw, h: 56 }));
 		return rows;
@@ -109,7 +114,7 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 		stack.w = W;
 		stack.setChildren(buildRows(nodes[tab]));
 		stack.y = y;
-		stack.h = Math.min(Math.max(stack.contentH(), 96), Math.round(panel.height * 0.4));
+		stack.h = Math.min(Math.max(stack.contentH(), 96), Math.round(panel.height * 0.5));
 		const top = y + stack.h + 16;
 		const areaY = top + 84, pagerY = panel.height - M - 60;
 		field.y = top;
@@ -203,7 +208,6 @@ export function createRightPanel({ THREE, store, ui, keyboard }) {
 
 	store.addEventListener("load", () => {
 		tab = 0;
-		open.clear();
 		render();
 		if (store.groups.lora.length) loadGrid();
 	});
