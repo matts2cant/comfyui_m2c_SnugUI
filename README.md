@@ -22,7 +22,7 @@ If the page opens without WebXR, it shows the same instructions with your addres
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter AR (passthrough) or Enter VR.
-4. Layout: image and history in the middle, prompt/seed/batch/Generate at the bottom, settings on the left,
+4. Layout: image and history in the middle, prompt/seed/Generate at the bottom, settings on the left,
    LoRAs on the right. Text fields open the Quest keyboard.
 
 The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters.

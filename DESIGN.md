@@ -33,7 +33,7 @@ xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot f
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
 xr/js/panels/center.js   image display, progress, batch grid, history strip, top status bar
-xr/js/panels/bottom.js   prompt chips, seed, batch, generate/cancel
+xr/js/panels/bottom.js   prompt chips, seed, generate/cancel
 xr/js/panels/left.js     settings controls
 xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
 ```
@@ -152,10 +152,9 @@ store.inputs                         // snapshot.inputs
 store.get(key) / store.set(key, v)   // dispatches "change" {key}
 store.seedMode(key) / setSeedMode(key, "fixed"|"randomize"|"increment")
 store.randomizeSeed(key)
-store.batchCount (1..8) / setBatchCount(n)
 store.loras(nodeId) -> [{name,strength,clipStrength,active}] / setLoras(nodeId, list)  // "change" {key:"lora:"+nodeId}
 store.buildPrompt() -> deep-cloned API prompt with all values + lora text/loras applied
-store.generate()                     // for i<batchCount: apply seed modes BEFORE queue (randomize: random int in [min, min(max, 2^53-1)];
+store.generate()                     // dispatches "generate"; apply seed modes BEFORE queue (randomize: random int in [min, min(max, 2^53-1)];
                                      // increment: +1), dispatch "change", queue(buildPrompt()); dispatches "queued" {prompt_id}; "error" {message}
 store.groups                         // from rules.js classify(): { prompts: [input], seeds: [input], left: [input], lora: [loraNode] }
 ```
@@ -205,7 +204,7 @@ main.js positions the returned group per the layout above (panel modules build t
   snapshot.outputs (or any node if outputs is empty) and whose items are images (png/jpg/jpeg/webp).
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
-  Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Batch − n +. Big Generate button,
+  Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Big Generate button,
   Cancel (interrupt) button, queued/running indicator.
 - left: scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
   panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");

@@ -50,7 +50,6 @@ class Store extends EventTarget {
     client = null;
     inputs = [];
     groups = { prompts: [], seeds: [], left: [], lora: [] };
-    batchCount = 1;
     #values = new Map();
     #seedModes = new Map();
     #loras = new Map();
@@ -100,11 +99,6 @@ class Store extends EventTarget {
         this.set(key, min + Math.floor(Math.random() * (max - min + 1)));
     }
 
-    setBatchCount(n) {
-        this.batchCount = Math.min(8, Math.max(1, Math.round(n)));
-        emit(this, "change", { key: "batchCount" });
-    }
-
     loras(nodeId) {
         return this.#loras.get(nodeId);
     }
@@ -143,13 +137,11 @@ class Store extends EventTarget {
     }
 
     async generate() {
-        emit(this, "generate", { count: this.batchCount });
+        emit(this, "generate");
         try {
-            for (let i = 0; i < this.batchCount; i++) {
-                this.applySeedModes();
-                const { prompt_id } = await this.client.queue(this.buildPrompt());
-                emit(this, "queued", { prompt_id });
-            }
+            this.applySeedModes();
+            const { prompt_id } = await this.client.queue(this.buildPrompt());
+            emit(this, "queued", { prompt_id });
         } catch (e) {
             emit(this, "error", { message: e.message });
         }

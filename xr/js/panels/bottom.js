@@ -1,4 +1,4 @@
-// Bottom panel: prompt text boxes on the left; batch count, seeds, generate / cancel and run status on the right.
+// Bottom panel: prompt text boxes on the left; seeds, generate / cancel and run status on the right.
 const MODES = ["fixed", "randomize", "increment"];
 const MODE_LABELS = { fixed: "Fixed", randomize: "Rand", increment: "Incr" };
 
@@ -15,12 +15,7 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 
 	// right column
 	const RX = 1110, RW = 466;
-	const batchN = new ui.Label({ text: "1", size: 36, bold: true, align: "center", x: RX + 264, y: 20, w: 70, h: 56 });
-	panel.add(new ui.Label({ text: "Batch", size: 30, color: theme.muted, x: RX, y: 20, w: 150, h: 56 }));
-	panel.add(new ui.Button({ text: "−", size: 36, x: RX + 162, y: 20, w: 90, h: 56, onClick: () => store.setBatchCount(store.batchCount - 1) }));
-	panel.add(batchN);
-	panel.add(new ui.Button({ text: "+", size: 36, x: RX + 346, y: 20, w: 90, h: 56, onClick: () => store.setBatchCount(store.batchCount + 1) }));
-	const seedView = panel.add(new ui.ScrollView({ x: RX, y: 84, w: RW, h: 0 }));
+	const seedView = panel.add(new ui.ScrollView({ x: RX, y: 20, w: RW, h: 0 }));
 	const generate = panel.add(new ui.Button({ text: "Generate", size: 48, variant: "accent", x: RX, w: RW, onClick: () => store.generate() }));
 	const cancel = panel.add(new ui.Button({ text: "Cancel", size: 28, variant: "danger", x: RX, y: 364, w: RW, h: 48, onClick: () => client.interrupt() }));
 	const status = panel.add(new ui.Label({ text: "", size: 24, wrap: true, x: RX, y: 418, w: RW, h: 62 }));
@@ -114,7 +109,6 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 
 	function refresh() {
 		for (const r of [...rows, ...seedRows]) r.refresh();
-		batchN.setText(String(store.batchCount));
 		layout();
 	}
 
