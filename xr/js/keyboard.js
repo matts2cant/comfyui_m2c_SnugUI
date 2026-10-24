@@ -12,26 +12,10 @@ export function commit() {
 	active?.finish(true);
 }
 
-// TODO: remove after keyboard experiment (kb*, kbDebug and the kbDebug label in panels/center.js)
-// URL switches: kb=input|textarea, kbvis=1, kbsel=end|none|all, kbdelay=1
-const query = new URLSearchParams(location.search);
-const kb = { el: query.get("kb") === "input" ? "input" : "textarea", vis: query.get("kbvis") === "1", sel: query.get("kbsel") ?? "end", delay: query.get("kbdelay") === "1" };
-export const kbDebug = [...query.keys()].some((k) => k.startsWith("kb")) ? { text: `kb=${kb.el} vis=${+kb.vis} sel=${kb.sel} delay=${+kb.delay}`, onChange: null } : null;
-function kbReport(ta, event) {
-	kbDebug.text = `kb=${kb.el} vis=${+kb.vis} sel=${kb.sel} delay=${+kb.delay} | ${event} len=${ta.value.length} sel=${ta.selectionStart}-${ta.selectionEnd}`;
-	kbDebug.onChange?.();
-}
-const kbSelect = (ta, len) => {
-	if (kb.sel === "end") ta.setSelectionRange(len, len);
-	else if (kb.sel === "all") ta.select();
-};
-
 function textarea() {
 	if (!hidden) {
-		hidden = document.createElement(kb.el);
-		if (kb.el === "input") hidden.type = "text";
+		hidden = document.createElement("textarea");
 		Object.assign(hidden.style, { position: "fixed", left: "0", top: "0", width: "1px", height: "1px", padding: "0", border: "0", opacity: "0.01", fontSize: "16px", pointerEvents: "none" });
-		if (kb.vis) Object.assign(hidden.style, { left: "20%", top: "40%", width: "60%", height: "auto", border: "2px solid #888", background: "#fff", color: "#000", opacity: "1", fontSize: "40px" });
 		// keys typed while editing must not reach page shortcuts
 		for (const type of ["keydown", "keyup", "keypress"]) hidden.addEventListener(type, (e) => e.stopPropagation());
 		document.body.append(hidden);
@@ -76,12 +60,6 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 	ta.addEventListener("blur", () => finish(true), { signal });
 
 	ta.focus();
-	kbSelect(ta, initial.length);
-	if (kb.delay) requestAnimationFrame(() => { if (active?.finish !== finish) return; ta.value = initial; kbSelect(ta, initial.length); kbDebug && kbReport(ta, "raf"); });
-	if (kbDebug) {
-		kbReport(ta, "focus");
-		for (const type of ["input", "keyup"]) ta.addEventListener(type, () => kbReport(ta, type), { signal });
-		document.addEventListener("selectionchange", () => kbReport(ta, "selchange"), { signal });
-	}
+	ta.setSelectionRange(initial.length, initial.length);
 	return ta;
 }

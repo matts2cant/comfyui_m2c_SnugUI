@@ -1,7 +1,5 @@
 // Center panel: status bar, image (mesh or XR quad layer), batch grid, history strip.
 // 16:9 stage centered on the group origin; main.js scales the group to the physical screen size
-import { kbDebug } from "../keyboard.js";
-
 export const STAGE_W = 2.0;
 const STAGE_H = STAGE_W * 9 / 16, STAGE_Y = 0;
 const BAR_H = 0.12, STRIP_H = 0.2, GAP = 0.03;
@@ -223,11 +221,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1790, y: 22, w: 180, h: 76, onClick: () => xr.toggleMode() }));
 
 	const grid = stage.add(new BatchGrid({ x: 20, y: 20, w: stage.width - 40, h: stage.height - 40, onSelect: (e) => { view = "single"; showEntry(e); } }));
-	// TODO: remove after keyboard experiment
-	if (kbDebug) {
-		const kbLabel = stage.add(new ui.Label({ text: kbDebug.text, size: 26, wrap: true, color: "#ffd24a", x: 40, y: stage.height - 110, w: stage.width - 80, h: 90 }));
-		kbDebug.onChange = () => kbLabel.setText(kbDebug.text);
-	}
 	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: 40, y: stage.height / 2 - 36, w: stage.width - 80, h: 72 }));
 
 	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { view = "single"; showEntry(e); } }));
