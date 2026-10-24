@@ -125,7 +125,7 @@ async function openInVR() {
     const linearData = app.rootGraph?.extra?.linearData;
     if (!linearData?.inputs?.length) return toast("warn", "Open in VR", "Configure App mode first");
     // opened before any await so the popup blocker sees the user gesture
-    const win = window.open("about:blank", "appmode-xr");
+    window.open(new URL("/appmode-xr", location.href).href, "appmode-xr");
     try {
         const res = await api.fetchApi("/appmode-xr/snapshot", {
             method: "POST",
@@ -133,10 +133,8 @@ async function openInVR() {
             body: JSON.stringify(await buildSnapshot(linearData)),
         });
         if (!res.ok) throw new Error(`server returned ${res.status}`);
-        if (win) win.location = "/appmode-xr";
         toast("success", "Open in VR", "Snapshot sent");
     } catch (err) {
-        win?.close();
         console.error("[AppModeXR]", err);
         toast("error", "Open in VR failed", err.message);
     }
