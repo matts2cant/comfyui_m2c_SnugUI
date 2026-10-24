@@ -2,6 +2,8 @@
 const STAGE_W = 2.0, STAGE_H = 1.4, STAGE_Y = 0.1;
 const BAR_H = 0.12, STRIP_H = 0.2, GAP = 0.03;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
+const STEREO_KEY = "appmode-xr.stereo";
+const STEREO_MODES = [["flat", "Flat"], ["lr", "3D L/R"], ["rl", "3D R/L"]];
 const THUMB = 512, LAYER_MAX = 3072;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 // the quad layer path is untested on hardware: it is off until the HD button is pressed; false disables the button
@@ -36,6 +38,15 @@ function loadHistory() {
 		return JSON.parse(localStorage.getItem(HISTORY_KEY)) ?? [];
 	} catch {
 		return [];
+	}
+}
+
+function loadStereo() {
+	try {
+		const mode = localStorage.getItem(STEREO_KEY);
+		return STEREO_MODES.some(([m]) => m === mode) ? mode : "flat";
+	} catch {
+		return "flat";
 	}
 }
 
@@ -199,9 +210,10 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	stripPanel.mesh.position.y = STAGE_Y - STAGE_H / 2 - GAP - STRIP_H / 2;
 	group.add(status.mesh, stage.mesh, stripPanel.mesh);
 
-	const nameLabel = status.add(new ui.Label({ text: "", size: 36, bold: true, x: 30, y: 0, w: 420, h: 120 }));
-	const progress = status.add(new ProgressBar({ x: 470, y: 0, w: 820, h: 120 }));
-	const queueLabel = status.add(new ui.Label({ text: "", size: 30, color: theme.muted, align: "center", x: 1310, y: 0, w: 170, h: 120 }));
+	const nameLabel = status.add(new ui.Label({ text: "", size: 36, bold: true, x: 30, y: 0, w: 280, h: 120 }));
+	const progress = status.add(new ProgressBar({ x: 325, y: 0, w: 640, h: 120 }));
+	const queueLabel = status.add(new ui.Label({ text: "", size: 30, color: theme.muted, align: "center", x: 975, y: 0, w: 120, h: 120 }));
+	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 1110 + [0, 118, 251][i], y: 22, w: [110, 125, 125][i], h: 76, onClick: () => setStereo(m) })));
 	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1500, y: 22, w: 140, h: 76, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
 	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1655, y: 22, w: 120, h: 76, onClick: () => { hd = !hd; } }));
 	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1790, y: 22, w: 180, h: 76, onClick: () => xr.toggleMode() }));
@@ -211,7 +223,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 
 	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { view = "single"; showEntry(e); } }));
 
-	// ---- image mesh and its hole-punch twin ----
+	// ---- image mesh, its hole-punch twin and the right-eye mesh ----
 	const plane = new THREE.PlaneGeometry(1, 1);
 	const imageMat = new THREE.MeshBasicMaterial({ toneMapped: false });
 	const imageMesh = new THREE.Mesh(plane, imageMat);
@@ -219,9 +231,13 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	const holeMesh = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({
 		blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.ZeroFactor,
 	}));
-	imageMesh.position.y = holeMesh.position.y = STAGE_Y;
-	imageMesh.visible = holeMesh.visible = false;
-	group.add(imageMesh, holeMesh);
+	// stereo modes: imageMesh is the left eye (layer 1 in XR), eyeMesh the right eye (layer 2)
+	const eyeMat = new THREE.MeshBasicMaterial({ toneMapped: false });
+	const eyeMesh = new THREE.Mesh(plane, eyeMat);
+	eyeMesh.layers.set(2);
+	imageMesh.position.y = holeMesh.position.y = eyeMesh.position.y = STAGE_Y;
+	imageMesh.visible = holeMesh.visible = eyeMesh.visible = false;
+	group.add(imageMesh, holeMesh, eyeMesh);
 
 	// ---- state ----
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
@@ -235,6 +251,9 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	let gridOn = false, singleOn = false;
 	let loadToken = 0;
 	let hd = false;
+	let stereo = loadStereo(), halves = [];
+	// live previews stay flat
+	const isSplit = () => stereo !== "flat" && !previewing;
 
 	const thumbOf = (e) => {
 		if (e.thumb === undefined) {
@@ -267,15 +286,47 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 		tex.minFilter = THREE.LinearMipmapLinearFilter;
 		tex.needsUpdate = true;
-		const first = !imageMat.map;
-		imageMat.map = tex;
-		if (first) imageMat.needsUpdate = true;
 		shownTex?.dispose();
 		shownTex = tex;
 		shown = img;
-		const k = Math.min(STAGE_W / img.naturalWidth, STAGE_H / img.naturalHeight);
-		imageMesh.scale.set(img.naturalWidth * k, img.naturalHeight * k, 1);
+		layoutImage();
+	}
+
+	// maps shownTex whole, or one half per eye in the stereo modes (L/R: left half is the left eye, R/L: crossed)
+	function layoutImage() {
+		const split = isSplit();
+		const w = shown.naturalWidth / (split ? 2 : 1);
+		const k = Math.min(STAGE_W / w, STAGE_H / shown.naturalHeight);
+		imageMesh.scale.set(w * k, shown.naturalHeight * k, 1);
 		holeMesh.scale.copy(imageMesh.scale);
+		eyeMesh.scale.copy(imageMesh.scale);
+		halves.forEach((t) => t.dispose());
+		halves = split ? [0, 0.5].map((x) => {
+			const half = shownTex.clone();
+			half.repeat.x = 0.5;
+			half.offset.x = x;
+			half.needsUpdate = true;
+			return half;
+		}) : [];
+		if (stereo === "rl") halves.reverse();
+		[imageMat.map, eyeMat.map] = split ? halves : [shownTex, null];
+		imageMat.needsUpdate = eyeMat.needsUpdate = true;
+	}
+
+	function setStereo(mode) {
+		stereo = mode;
+		try {
+			localStorage.setItem(STEREO_KEY, mode);
+		} catch {}
+		if (shown) layoutImage();
+		syncModeBtns();
+	}
+
+	function syncModeBtns() {
+		modeBtns.forEach((b, i) => {
+			b.toggled = STEREO_MODES[i][0] === stereo;
+			b.invalidate();
+		});
 	}
 
 	async function showEntry(entry) {
@@ -427,7 +478,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		const binding = session && ENABLE_QUAD_LAYER && !layerFailed ? renderer.xr.getBinding() : null;
 		hdSupported = !!binding;
 		let hole = false;
-		if (binding && hd && singleOn && !previewing) {
+		if (binding && hd && singleOn && !previewing && !isSplit()) {
 			const k = Math.min(1, LAYER_MAX / Math.max(shown.naturalWidth, shown.naturalHeight));
 			const pw = Math.round(shown.naturalWidth * k), ph = Math.round(shown.naturalHeight * k);
 			holeMesh.updateWorldMatrix(true, false);
@@ -460,6 +511,13 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		imageMesh.visible = singleOn && !hole;
 	}
 
+	// XR eyes render layers 1 (left) and 2 (right); the desktop camera only sees layer 0, so it shows the left eye there
+	function updateEyes() {
+		const split = singleOn && isSplit();
+		eyeMesh.visible = split;
+		imageMesh.layers.set(split && xr.isPresenting() ? 1 : 0);
+	}
+
 	function update() {
 		try {
 			updateLayer();
@@ -472,19 +530,22 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 			holeMesh.visible = false;
 			imageMesh.visible = singleOn;
 		}
+		updateEyes();
 		const modeText = { desktop: "Enter XR", ar: "To VR", vr: "To AR" }[xr.mode()];
 		if (modeBtn.text !== modeText) {
 			modeBtn.text = modeText;
 			modeBtn.invalidate();
 		}
-		if (hdBtn.toggled !== hd || hdBtn.disabled === hdSupported) {
+		const hdUsable = hdSupported && !isSplit();
+		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;
-			hdBtn.disabled = !hdSupported;
+			hdBtn.disabled = !hdUsable;
 			hdBtn.invalidate();
 		}
 	}
 
 	nameLabel.setText(store.snapshot?.workflowName ?? "No workflow");
+	syncModeBtns();
 	refresh();
 	if (history.length) showEntry(history[0]);
 	return { group, update };
