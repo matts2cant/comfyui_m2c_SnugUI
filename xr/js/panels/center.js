@@ -1,6 +1,6 @@
 // Center panel: status bar, image (mesh or XR quad layer), batch grid, history strip.
-const STAGE_W = 1.3, STAGE_H = 0.9, STAGE_Y = 0.1;
-const BAR_H = 0.1, STRIP_H = 0.14, GAP = 0.03;
+const STAGE_W = 2.0, STAGE_H = 1.4, STAGE_Y = 0.1;
+const BAR_H = 0.12, STRIP_H = 0.2, GAP = 0.03;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
 const THUMB = 512, LAYER_MAX = 3072;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
@@ -53,7 +53,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	class ProgressBar extends ui.Widget {
 		constructor(o) { super({ value: 0, max: 0, text: "Idle", error: false, ...o }); }
 		draw(ctx) {
-			const { w, h } = this, bh = 44, y = (h - bh) / 2;
+			const { w, h } = this, bh = 52, y = (h - bh) / 2;
 			ctx.save();
 			ctx.beginPath();
 			ctx.roundRect(0, y, w, bh, bh / 2);
@@ -65,7 +65,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 				ctx.fillRect(0, y, w * Math.min(1, this.value / this.max), bh);
 			}
 			ctx.restore();
-			ctx.font = `600 26px ${theme.font}`;
+			ctx.font = `600 30px ${theme.font}`;
 			ctx.fillStyle = this.error ? theme.danger : theme.fg;
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
@@ -74,7 +74,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	}
 
 	// horizontal strip of thumbnails; drags and scrolls sideways
-	const CELL = 116, STEP = 126, ARROW = 56;
+	const CELL = 170, STEP = 184, ARROW = 80, PAD = 15;
 	class HistoryStrip extends ui.Widget {
 		constructor(o) { super({ entries: [], selected: null, offset: 0, dragCapture: true, ...o }); }
 		viewW() { return this.w - 2 * (ARROW + 8); }
@@ -101,7 +101,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 		draw(ctx) {
 			const { w, h } = this, x0 = ARROW + 8;
 			if (!this.entries.length) {
-				ctx.font = `28px ${theme.font}`;
+				ctx.font = `38px ${theme.font}`;
 				ctx.fillStyle = theme.muted;
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
@@ -116,34 +116,34 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 				const x = x0 + i * STEP - this.offset;
 				if (x + CELL < x0 || x > x0 + this.viewW()) return;
 				ctx.beginPath();
-				ctx.roundRect(x, 12, CELL, CELL, 12);
+				ctx.roundRect(x, PAD, CELL, CELL, 16);
 				ctx.fillStyle = theme.surface;
 				ctx.fill();
 				const thumb = this.thumbOf(e);
 				if (thumb) {
 					ctx.save();
 					ctx.clip();
-					drawFit(ctx, thumb, x, 12, CELL, CELL);
+					drawFit(ctx, thumb, x, PAD, CELL, CELL);
 					ctx.restore();
 				}
 				if (e === this.selected) {
-					ctx.lineWidth = 5;
+					ctx.lineWidth = 7;
 					ctx.strokeStyle = theme.accent;
 					ctx.stroke();
 				}
 			});
 			ctx.restore();
 			if (!this.canScroll()) return;
-			ctx.font = `600 40px ${theme.font}`;
+			ctx.font = `600 56px ${theme.font}`;
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
 			for (const [x, t] of [[0, "‹"], [w - ARROW, "›"]]) {
 				ctx.beginPath();
-				ctx.roundRect(x, 12, ARROW, CELL, 14);
+				ctx.roundRect(x, PAD, ARROW, CELL, 20);
 				ctx.fillStyle = theme.surface;
 				ctx.fill();
 				ctx.fillStyle = theme.fg;
-				ctx.fillText(t, x + ARROW / 2, 12 + CELL / 2);
+				ctx.fillText(t, x + ARROW / 2, PAD + CELL / 2);
 			}
 		}
 	}
@@ -199,15 +199,15 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr }) {
 	stripPanel.mesh.position.y = STAGE_Y - STAGE_H / 2 - GAP - STRIP_H / 2;
 	group.add(status.mesh, stage.mesh, stripPanel.mesh);
 
-	const nameLabel = status.add(new ui.Label({ text: "", size: 30, bold: true, x: 24, y: 0, w: 276, h: 100 }));
-	const progress = status.add(new ProgressBar({ x: 316, y: 0, w: 460, h: 100 }));
-	const queueLabel = status.add(new ui.Label({ text: "", size: 26, color: theme.muted, align: "center", x: 786, y: 0, w: 120, h: 100 }));
-	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 26, x: 916, y: 18, w: 110, h: 64, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
-	const hdBtn = status.add(new ui.Button({ text: "HD", size: 26, x: 1036, y: 18, w: 100, h: 64, onClick: () => { hd = !hd; } }));
-	const modeBtn = status.add(new ui.Button({ text: "", size: 26, x: 1146, y: 18, w: 130, h: 64, onClick: () => xr.toggleMode() }));
+	const nameLabel = status.add(new ui.Label({ text: "", size: 36, bold: true, x: 30, y: 0, w: 420, h: 120 }));
+	const progress = status.add(new ProgressBar({ x: 470, y: 0, w: 820, h: 120 }));
+	const queueLabel = status.add(new ui.Label({ text: "", size: 30, color: theme.muted, align: "center", x: 1310, y: 0, w: 170, h: 120 }));
+	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1500, y: 22, w: 140, h: 76, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
+	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1655, y: 22, w: 120, h: 76, onClick: () => { hd = !hd; } }));
+	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1790, y: 22, w: 180, h: 76, onClick: () => xr.toggleMode() }));
 
 	const grid = stage.add(new BatchGrid({ x: 20, y: 20, w: stage.width - 40, h: stage.height - 40, onSelect: (e) => { view = "single"; showEntry(e); } }));
-	const empty = stage.add(new ui.Label({ text: "", size: 36, color: theme.muted, align: "center", x: 40, y: stage.height / 2 - 30, w: stage.width - 80, h: 60 }));
+	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: 40, y: stage.height / 2 - 36, w: stage.width - 80, h: 72 }));
 
 	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { view = "single"; showEntry(e); } }));
 

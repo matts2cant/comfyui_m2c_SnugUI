@@ -118,6 +118,10 @@ const needHelp = !window.isSecureContext || !navigator.xr;
 if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
 
 // ---- panels ----
+// layout in meters / degrees, eye at the origin
+const CENTER_POS = [0, 0, -2.0];
+const BOTTOM_POS = [0, -0.8, -1.05], BOTTOM_TILT = -40;
+const SIDE_DIST = 1.4, SIDE_YAW = 50, SIDE_Y = 0.05;
 const ctx = {
 	THREE, store, ui, keyboard, scene, renderer, camera,
 	client: new ComfyClient(),
@@ -126,14 +130,14 @@ const ctx = {
 window.__xr = ctx;
 
 function side(group, dir) {
-	const a = THREE.MathUtils.degToRad(40) * dir;
-	group.position.set(-Math.sin(a) * 1.4, 0, -Math.cos(a) * 1.4);
+	const a = THREE.MathUtils.degToRad(SIDE_YAW) * dir;
+	group.position.set(-Math.sin(a) * SIDE_DIST, SIDE_Y, -Math.cos(a) * SIDE_DIST);
 	group.rotation.y = a;
 }
 
 const panels = [
-	[createCenterPanel, (g) => g.position.set(0, 0.05, -1.7)],
-	[createBottomPanel, (g) => { g.position.set(0, -0.55, -1.2); g.rotation.x = -Math.PI / 6; }],
+	[createCenterPanel, (g) => g.position.set(...CENTER_POS)],
+	[createBottomPanel, (g) => { g.position.set(...BOTTOM_POS); g.rotation.x = THREE.MathUtils.degToRad(BOTTOM_TILT); }],
 	[createLeftPanel, (g) => side(g, 1)],
 	[createRightPanel, (g) => side(g, -1)],
 ].map(([create, place]) => {

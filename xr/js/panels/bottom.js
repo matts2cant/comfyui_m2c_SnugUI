@@ -1,5 +1,6 @@
 // Bottom panel: prompt text boxes, seeds, batch count, generate / cancel and run status.
 const MODES = ["fixed", "randomize", "increment"];
+const SEED_ROW = 96;
 
 export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 	const { theme } = ui;
@@ -49,15 +50,16 @@ export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 		const set = (v) => store.set(input.key, v);
 		const label = new ui.Label({ text: input.nodeTitle || input.label, size: 28, color: theme.muted, h: 44 });
 		const box = new ui.TextField({
-			multiline: true, size: 28, h: 180, placeholder: "Tap to edit prompt",
+			multiline: true, size: 28, placeholder: "Tap to edit prompt",
 			onClick: () => keyboard.editText({ initial: store.get(input.key) ?? "", multiline: true, onInput: set, onDone: set }),
 		});
 		return {
 			widgets: [label, box],
+			fill: true,
 			refresh: () => { box.value = String(store.get(input.key) ?? ""); },
-			place(y) {
-				label.x = box.x = 0; label.y = y; label.w = box.w = W; box.y = y + 52;
-				return box.y + box.h + 24;
+			place(y, h) {
+				label.x = box.x = 0; label.y = y; label.w = box.w = W; box.y = y + 52; box.h = h - 76;
+				return y + h;
 			},
 		};
 	}
@@ -84,14 +86,17 @@ export function createBottomPanel({ THREE, store, client, ui, keyboard }) {
 			place(y) {
 				label.y = value.y = random.y = mode.y = y;
 				label.x = 0; value.x = 232; random.x = 574; mode.x = 786;
-				return y + 72 + 24;
+				return y + SEED_ROW;
 			},
 		};
 	}
 
 	function layout() {
+		// prompt boxes share the height the seed rows leave; 12 is the scroll view's bottom pad, 24 the row gap
+		const fills = rows.filter((r) => r.fill).length;
+		const fillH = Math.floor((view.h + 12 - (rows.length - fills) * SEED_ROW) / fills);
 		let y = 0;
-		for (const r of rows) y = r.place(y);
+		for (const r of rows) y = r.place(y, fillH);
 		view.invalidate();
 	}
 
