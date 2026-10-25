@@ -66,7 +66,7 @@ class SizePicker extends Widget {
 }
 
 export function createLeftPanel({ THREE, store, client, ui }) {
-	const { Panel, Label, Toggle, Slider, Combo, TextField, ScrollView, stackY } = ui;
+	const { Panel, Label, Button, Toggle, Slider, Combo, TextField, ScrollView, stackY } = ui;
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);
@@ -177,23 +177,50 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		}
 	}
 
+	const tabKey = () => `appmode-xr.tab.${store.snapshot?.workflowName}`;
+
+	// the list of the active tab; clear() resets the scroll
+	function showTab(view, name) {
+		const list = entries.filter((en) => en.tab === name);
+		let y = 12;
+		for (const en of list) y = stackY(en.widgets, { x: 12, y, w: W - 60, gap: 8 }) + 14;
+		view.clear();
+		view.setChildren(list.flatMap((en) => en.widgets));
+	}
+
 	function rebuild() {
 		const inputs = store.groups.left;
 		const counts = new Map();
-		for (const i of inputs) counts.set(i.label, (counts.get(i.label) ?? 0) + 1);
+		for (const i of inputs) counts.set(i.tab + i.label, (counts.get(i.tab + i.label) ?? 0) + 1);
 		entries = inputs.map((input) => {
-			const label = counts.get(input.label) > 1 ? `${input.nodeTitle} › ${input.label}` : input.label;
-			return { key: input.key, ...controlFor(input, label) };
+			const label = counts.get(input.tab + input.label) > 1 ? `${input.nodeTitle} › ${input.label}` : input.label;
+			return { key: input.key, tab: input.tab, ...controlFor(input, label) };
 		});
-		const view = new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 });
-		let y = 12;
-		for (const en of entries) y = stackY(en.widgets, { x: 12, y, w: W - 60, gap: 8 }) + 14;
-		view.setChildren(entries.length
-			? entries.flatMap((en) => en.widgets)
-			: [new Label({ text: "No settings in this workflow", size: 28, color: theme.muted, x: 12, y: 12, w: W - 60 })]);
+		const tabs = [...new Set(entries.map((en) => en.tab))];
 		panel.clear();
 		panel.add(title);
-		panel.add(view);
+		if (tabs.length < 2) {
+			const view = panel.add(new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 }));
+			if (entries.length) showTab(view, tabs[0]);
+			else view.setChildren([new Label({ text: "No settings in this workflow", size: 28, color: theme.muted, x: 12, y: 12, w: W - 60 })]);
+			return;
+		}
+		const view = panel.add(new ScrollView({ x: 12, y: 156, w: W - 24, h: H - 168 }));
+		let saved = null;
+		try { saved = localStorage.getItem(tabKey()); } catch {}
+		const select = (name) => {
+			buttons.forEach((b, i) => { b.toggled = tabs[i] === name; });
+			showTab(view, name);
+		};
+		const bw = (W - 24 - GAP * (tabs.length - 1)) / tabs.length;
+		const buttons = tabs.map((name, i) => panel.add(new Button({
+			text: name, size: 28, x: 12 + i * (bw + GAP), y: 84, w: bw, h: 60,
+			onClick: () => {
+				try { localStorage.setItem(tabKey(), name); } catch {}
+				select(name);
+			},
+		})));
+		select(tabs.includes(saved) ? saved : tabs[0]);
 	}
 
 	store.addEventListener("load", rebuild);

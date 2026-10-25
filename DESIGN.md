@@ -183,6 +183,10 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 3. INT && (widget or label contains "seed" or control != null) → seeds (bottom)
 4. everything else (and any input without targets, before rules 2-3) → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
 
+Before the rules, each input is copied with its App-mode name parsed: a leading `[Tab] Label` (whitespace trimmed, both parts non-empty) gives
+`tab: "Tab"` and the bracket-free `label`; any other name gets `tab: "General"`. The groups hold these copies, so every panel shows stripped
+labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
+
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - everything on the plane z = -0.5 (eye at the origin). Screen: 32" diagonal at the aspect of what it shows (image; half width per eye in
   stereo; grid aspect; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js -> `screen.onResize`).
@@ -230,6 +234,10 @@ main.js positions the returned group per the layout above (panel modules build t
   INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
   STRING single-line → TextField; UNSUPPORTED type with targets → TextField on the value as text (JSON for objects), converted back to the
   original value's type on commit; state.js writes such a value into the prompt only after it was edited. Inputs without targets are read-only.
+  Tabs: the left inputs are grouped by `tab` in order of first appearance (App-mode order kept inside each tab). With one tab there is no
+  tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
+  and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` (try/catch) and falls back to the first tab
+  when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
 - right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05; clip
   strength follows while equal), remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from

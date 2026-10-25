@@ -27,6 +27,12 @@ If the page opens without WebXR, it shows the same instructions with your addres
 
 The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters.
 
+## Settings tabs
+
+Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the left panel.
+Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
+The selected tab is remembered per workflow. Prompts and seeds in the bottom panel only get the prefix stripped.
+
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.
