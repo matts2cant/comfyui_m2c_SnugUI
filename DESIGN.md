@@ -81,7 +81,7 @@ Canonical widgetId = `${rootGraph.id}:${encodeURIComponent(nodeId)}:${encodeURIC
 Subgraphs: the API prompt is flattened (ids like `260:12`, nested `a:b:c`), so widgets on a subgraph node are resolved empirically: the
 builder sets a unique sentinel on each, calls `graphToPrompt()` once, scans the prompt for it (`targets`, one widget may feed several
 inner nodes), then restores every value. Plain node widgets map straight to their own prompt input. An input with no targets is type
-UNSUPPORTED and read-only (left panel shows "edit on desktop"); `buildPrompt` writes each value to all of its targets.
+UNSUPPORTED and read-only (left panel shows "edit on desktop"), as is an entry whose widget is not found on its node; `buildPrompt` writes each value to all of its targets.
 An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidden JSON-string input `SizesState`, injected by the node's
 own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`

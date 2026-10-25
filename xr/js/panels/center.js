@@ -385,7 +385,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		refresh();
 	});
 
-	// each Generate press starts an empty batch; results land in the batch of their prompt
+	// each Generate press starts an empty batch; results land in the batch of their prompt until it ends
 	store.addEventListener("generate", () => {
 		batch = { results: [] };
 	});
@@ -408,13 +408,15 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	client.addEventListener("progress", ({ detail }) => setProgress({ value: detail.value, max: detail.max }));
 
 	for (const type of ["done", "interrupted"]) {
-		client.addEventListener(type, () => {
+		client.addEventListener(type, ({ detail }) => {
+			byPrompt.delete(detail.prompt_id);
 			setProgress({ value: 0, max: 0, text: type === "done" ? "Idle" : "Interrupted" });
 			endPreview();
 		});
 	}
 
 	client.addEventListener("error", ({ detail }) => {
+		byPrompt.delete(detail.prompt_id);
 		setProgress({ error: true, value: 0, max: 0, text: detail.message });
 		endPreview();
 	});

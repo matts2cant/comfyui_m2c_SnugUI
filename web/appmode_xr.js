@@ -109,7 +109,7 @@ async function findTargets(entries) {
         entries.forEach(({ widget }, i) => { if (sentinels[i] !== null) widget.value = originals[i]; });
     }
     return entries.map(({ node, name, widget }, i) => {
-        if (!node) return [];
+        if (!widget) return [];
         const baseName = name.replace(/#\d+$/u, "");
         if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : jsonTargets(node, widget, output);
         return Object.entries(output).flatMap(([nodeId, n]) =>
