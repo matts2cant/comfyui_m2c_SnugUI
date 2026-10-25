@@ -228,6 +228,12 @@ function project(panel, ray) {
 	return { panel, x: (pt.x / panel.widthM + 0.5) * panel.width, y: (0.5 - pt.y / panel.heightM) * panel.height, dist };
 }
 
+// distance to the 3D model when the ray reaches it before the panel it hits, else null
+function modelHit(ray, hit) {
+	const d = center.model.hit(ray);
+	return d !== null && !(hit && hit.dist < d) ? d : null;
+}
+
 // a drag on the 3D model turns it by MODEL_TURN times the change of the ray's yaw / pitch in the ui frame
 const MODEL_TURN = 3, UP = new THREE.Vector3(0, 1, 0), aimDir = new THREE.Vector3();
 function aimAngles(ray) {
@@ -259,11 +265,11 @@ function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
 	const target = hit?.panel.hitTest(hit.x, hit.y);
 	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
-	if (!hit) {
-		if (center.model.hit(ray) === null) return false;
+	if (modelHit(ray, hit) !== null) {
 		ptr.grab = aimAngles(ray);
 		return true;
 	}
+	if (!hit) return false;
 	ptr.cap = hit.panel;
 	hit.panel.pointer("down", hit.x, hit.y, ptr.id);
 	return true;
@@ -284,7 +290,8 @@ function pointerUp(ptr, ray) {
 	ptr.outside = false;
 }
 
-// ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll (zoom on the 3D model), left squeeze = recenter ----
+// ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll (zoom on the 3D model),
+// squeeze on the 3D model = grab it, left squeeze elsewhere = recenter ----
 const controllers = [0, 1].map((i) => {
 	const ptr = newPointer(i + 1);
 	const target = renderer.xr.getController(i);
@@ -301,12 +308,23 @@ const controllers = [0, 1].map((i) => {
 		worldRay.direction.set(0, 0, -1).transformDirection(target.matrixWorld);
 		return worldRay;
 	};
-	const c = { ptr, target, ray, dot, aim, source: null };
+	const c = { ptr, target, ray, dot, aim, source: null, holding: false };
+	const drop = () => {
+		if (c.holding) center.model.release(ptr.id);
+		c.holding = false;
+	};
 	target.addEventListener("connected", (e) => { c.source = e.data; ray.visible = e.data.targetRayMode !== "gaze"; });
-	target.addEventListener("disconnected", () => { c.source = null; ray.visible = dot.visible = false; releasePointer(ptr); });
+	target.addEventListener("disconnected", () => { c.source = null; ray.visible = dot.visible = false; releasePointer(ptr); drop(); });
 	target.addEventListener("selectstart", () => pointerDown(ptr, aim()));
 	target.addEventListener("selectend", () => pointerUp(ptr, aim()));
-	target.addEventListener("squeezestart", () => { if (c.source?.handedness === "left") recenter(); });
+	target.addEventListener("squeezestart", () => {
+		const r = aim();
+		if (modelHit(r, pick(r)) !== null) {
+			c.holding = true;
+			center.model.grab(ptr.id, target.matrixWorld);
+		} else if (c.source?.handedness === "left") recenter();
+	});
+	target.addEventListener("squeezeend", drop);
 	return c;
 });
 
@@ -319,15 +337,16 @@ function updateControllers(dt) {
 			continue;
 		}
 		const hit = updatePointer(c.ptr, c.aim());
-		const modelDist = hit ? null : center.model.hit(c.aim());
-		const d = hit ? hit.dist : modelDist ?? 1.5;
+		if (c.holding) center.model.drag(c.ptr.id, c.target.matrixWorld);
+		const modelDist = modelHit(c.aim(), hit);
+		const d = modelDist ?? hit?.dist ?? 1.5;
 		c.ray.scale.z = d;
 		c.dot.visible = !!hit || modelDist !== null;
 		if (c.dot.visible) c.dot.position.copy(worldPoint(c.aim(), d));
 		const stick = c.source.gamepad?.axes[3] ?? 0;
 		if (Math.abs(stick) <= 0.15) continue;
-		if (hit && c.ptr.panel) c.ptr.panel.scroll(stick * 900 * dt, hit.x, hit.y);
-		else if (modelDist !== null) center.model.zoom(Math.exp(-stick * 1.5 * dt));
+		if (modelDist !== null) center.model.zoom(Math.exp(-stick * 1.5 * dt));
+		else if (hit && c.ptr.panel) c.ptr.panel.scroll(stick * 900 * dt, hit.x, hit.y);
 	}
 }
 const worldPoint = (ray, d) => ray.at(d, tmp.clone());
@@ -349,8 +368,14 @@ function recenter() {
 	center.model.reset();
 }
 
-// ---- desktop fallback: drag to look (or turn the 3D model), click panels, wheel scrolls (or zooms the model) ----
-let yaw = 0, pitch = 0, look = null;
+// ---- desktop fallback: drag to look (or turn the 3D model), click panels, wheel scrolls (or zooms the model),
+// shift- or right-drag slides the model in the plane facing the camera through the point it was grabbed at ----
+let yaw = 0, pitch = 0, look = null, slide = null;
+const slidePose = new THREE.Matrix4();
+function slideTo(ray) {
+	if (ray.intersectPlane(slide, tmp)) slidePose.makeTranslation(tmp);
+	return slidePose;
+}
 const mouse = newPointer(0);
 const el = renderer.domElement;
 const ndc = new THREE.Vector2();
@@ -362,13 +387,22 @@ function mouseRay(e) {
 }
 el.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); }); // keep the textarea focused
 el.addEventListener("pointerdown", (e) => {
-	if (e.button !== 0 || renderer.xr.isPresenting) return;
+	if (renderer.xr.isPresenting) return;
+	const ray = mouseRay(e), d = modelHit(ray, pick(ray));
+	if ((e.button === 2 || e.button === 0 && e.shiftKey) && d !== null) {
+		el.setPointerCapture(e.pointerId);
+		slide = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), ray.at(d, new THREE.Vector3()));
+		center.model.grab(mouse.id, slideTo(ray));
+		return;
+	}
+	if (e.button !== 0) return;
 	el.setPointerCapture(e.pointerId);
-	if (!pointerDown(mouse, mouseRay(e))) look = { x: e.clientX, y: e.clientY };
+	if (!pointerDown(mouse, ray)) look = { x: e.clientX, y: e.clientY };
 });
 el.addEventListener("pointermove", (e) => {
 	if (renderer.xr.isPresenting) return;
-	if (look) {
+	if (slide) center.model.drag(mouse.id, slideTo(mouseRay(e)));
+	else if (look) {
 		yaw -= (e.clientX - look.x) * 0.004;
 		pitch = Math.max(-1.2, Math.min(1.2, pitch - (e.clientY - look.y) * 0.004));
 		look.x = e.clientX;
@@ -377,8 +411,11 @@ el.addEventListener("pointermove", (e) => {
 });
 el.addEventListener("pointerup", (e) => {
 	look = null;
+	if (slide) center.model.release(mouse.id);
+	slide = null;
 	pointerUp(mouse, mouseRay(e));
 });
+el.addEventListener("contextmenu", (e) => e.preventDefault());
 el.addEventListener("pointerleave", () => {
 	if (mouse.cap) return;
 	mouse.panel?.pointer("leave", 0, 0, mouse.id);
@@ -387,8 +424,8 @@ el.addEventListener("pointerleave", () => {
 el.addEventListener("wheel", (e) => {
 	e.preventDefault();
 	const ray = mouseRay(e), hit = updatePointer(mouse, ray);
-	if (hit) hit.panel.scroll(e.deltaY, hit.x, hit.y);
-	else if (center.model.hit(ray) !== null) center.model.zoom(Math.exp(-e.deltaY * 0.001));
+	if (modelHit(ray, hit) !== null) center.model.zoom(Math.exp(-e.deltaY * 0.001));
+	else if (hit) hit.panel.scroll(e.deltaY, hit.x, hit.y);
 }, { passive: false });
 addEventListener("keydown", (e) => { if (e.key === "r") recenter(); });
 addEventListener("resize", () => {

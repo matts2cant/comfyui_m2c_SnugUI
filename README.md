@@ -25,7 +25,8 @@ If the page opens without WebXR, it shows the same instructions with your addres
 4. Layout: image and history in the middle, prompt/seed/Generate at the bottom, settings on the left,
    LoRAs on the right. Text fields have an edit toolbar with a Quest keyboard button.
 
-The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters.
+The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters,
+shift- or right-drag moves the 3D model.
 
 ## Settings tabs
 
@@ -38,13 +39,15 @@ The selected tab is remembered per workflow. Prompts and seeds in the bottom pan
 If App mode marks several output nodes, a row of buttons under the status bar picks which one the screen shows (remembered per workflow).
 A dot marks an output with new results; the view never switches on its own. History and Grid follow the selected output.
 Outputs that save or preview a 3D model (Save 3D Model, Preview 3D...) show the GLB in front of you at the screen's size, just behind it.
-Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms, recenter resets it.
+Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms.
+Squeeze the grip while pointing at it to grab it: it follows the controller until you let go. Grab it with both grips to
+scale it (move the hands apart or together), turn it and move it. Recenter puts it back behind the screen at its first size.
 
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.
 - Thumbstick up/down: scroll the list or panel under the ray.
-- Left grip (squeeze): recenter the panels in front of you.
+- Grip (squeeze) on the 3D model: grab it. Left grip elsewhere: recenter the panels in front of you.
 - Status bar under the history strip: Flat / 3D L/R / 3D R/L (side-by-side 3D images), Grid (batch view), HD (see below).
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
@@ -59,4 +62,5 @@ Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the w
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
   from VR.
-- Quest-only paths (quad layer, system keyboard, hands) are untested on hardware.
+- Quest-only paths (quad layer, system keyboard, hands, grabbing) are untested on hardware. Hands pinch to click and
+  turn; grabbing with a hand only works if Quest Browser reports a hand squeeze.

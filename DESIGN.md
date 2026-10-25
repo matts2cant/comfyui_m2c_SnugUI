@@ -28,7 +28,7 @@ xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
 xr/js/main.js            bootstrap, renderer, scene, VR session, desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
-xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom, disposal
+xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
 xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
@@ -215,13 +215,22 @@ main.js positions the returned group per the layout above (panel modules build t
   room (simple floor grid + dim gradient sphere) in VR and on the desktop.
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
 - Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
-  convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze on left hand
-  (grip) → recenter(). Request 'hand-tracking' so hands appear as input sources (pinch = select).
+  convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze (grip) on the
+  3D model grabs it (below); a left squeeze elsewhere → recenter(), a right one does nothing. Request 'hand-tracking' so hands
+  appear as input sources (pinch = select). three's hand input sources only give select for a pinch; a squeeze from a hand
+  (if Quest Browser sends one) grabs like a controller's, otherwise hands can turn and zoom the model but not grab it.
 - Desktop fallback (no XR session): same scene, mouse drag to look around (yaw/pitch), wheel = scroll on hovered panel,
   mouse click = pointer events. This is the dev/test mode.
-- 3D model (center's `model`): a press that hits no panel but the model's box (`model.hit(ray)` -> distance) grabs it; while held, the
-  change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around its up axis, then pitch, clamped to ±90°). Thumbstick Y
-  (XR) or the wheel (desktop) over the model zooms it (0.25x..4x). The cursor dot also lands on the model's box. recenter() resets turn and zoom.
+- 3D model (center's `model`): the model is "hit" when the ray reaches its box (`model.hit(ray)` -> distance) before any panel
+  (main.js `modelHit`). A press on it turns it: while held, the
+  change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around the vertical, then pitch, clamped to ±90°). Thumbstick Y
+  (XR) or the wheel (desktop) over the model zooms it (0.25x..4x). The cursor dot also lands on the model's box.
+  Grab (`model.grab(id, worldMatrix)` / `drag` each frame / `release`): one squeezing controller carries the model rigidly
+  (target-ray pose, offset kept from the grab); with two the distance between them scales it (same 0.25x..4x), the vector
+  between them turns it (shortest rotation, no twist about that axis) and their midpoint moves it. A grab bakes the turn into a
+  held rotation that later turns apply on top of, and frees the model from the behind-the-screen push: it may come closer.
+  Desktop: shift- or right-drag on the model slides it in the plane facing the camera (a grab with a translation pose).
+  recenter() resets position, turn and zoom; a hand still holding carries it on from the reset pose.
 - Each frame: `Panel.updateAll()`, panels' `update(dt)`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
@@ -246,7 +255,7 @@ main.js positions the returned group per the layout above (panel modules build t
   quad layer and the stereo and HD buttons are off, and live previews are ignored while a 3D output is selected. The stage panel shows
   "Loading 3D model…" / the load error until the model is ready, then hides. model.js loads with GLTFLoader (materials as in the file),
   fits the scene's box into the stage width and height, centers it on the stage center (eye level) and pushes it back so the turned box's
-  front stays 1 cm behind the screen plane; a hemisphere and a directional light in its group light only it (the UI is unlit). A replaced
+  front stays 1 cm behind the screen plane (until grabbed); a hemisphere and a directional light in its group light only it (the UI is unlit). A replaced
   or stale model's geometries, materials and textures are disposed.
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
