@@ -1,12 +1,17 @@
 // Center panel: image (mesh or XR quad layer) or batch grid on a stage centered on the group origin, plus the status bar and
 // history strip panels. The stage takes the aspect of what it shows at the screen diagonal; main.js places everything.
-const BAR_W = 1.6, BAR_H = 0.12, STRIP_H = 0.2; // BAR_W matches the prompt panel
+// With several App-mode outputs the status bar gets a row of output buttons; results are kept per output.
+import { createModelView } from "../model.js";
+
+const BAR_W = 1.6, BAR_H = 0.12, BAR_H_OUTPUTS = 0.21, STRIP_H = 0.2; // BAR_W matches the prompt panel
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
 const STEREO_KEY = "appmode-xr.stereo";
+const OUTPUT_KEY = "appmode-xr.output"; // + .<workflowName>
 const STEREO_MODES = [["flat", "Flat"], ["lr", "3D L/R"], ["rl", "3D R/L"]];
 const THUMB = 512, LAYER_MAX = 3072;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
+const MODEL_EXT = /\.(glb|gltf)$/i;
 const FLIP_Y = true; // layer textures follow GL row order, bottom row first
 
 // not ui.js's cached loader: preview blob URLs are one-shot
@@ -52,8 +57,18 @@ function loadStereo() {
 
 function saveHistory(history) {
 	try {
-		localStorage.setItem(HISTORY_KEY, JSON.stringify(history.map(({ filename, subfolder, type }) => ({ filename, subfolder, type }))));
+		localStorage.setItem(HISTORY_KEY, JSON.stringify(history.map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
 	} catch {}
+}
+
+// images from ui.images; 3D files from ui["3d"] (Save 3D Model, Preview 3D (Advanced)...) or ui.result[0] (Preview 3D: a
+// path under output/). Only formats the page can show.
+function resultFiles({ images = [], result, "3d": saved } = {}) {
+	const path = typeof result?.[0] === "string" ? result[0].replaceAll("\\", "/") : null;
+	const i = path?.lastIndexOf("/");
+	const models = saved ?? (path ? [{ filename: path.slice(i + 1), subfolder: path.slice(0, Math.max(i, 0)), type: "output" }] : []);
+	const pick = (kind) => ({ filename, subfolder, type }) => ({ filename, subfolder, type, kind });
+	return [...images.filter((f) => IMAGE_EXT.test(f.filename)).map(pick("image")), ...models.filter((f) => MODEL_EXT.test(f.filename)).map(pick("3d"))];
 }
 
 export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen }) {
@@ -200,6 +215,44 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		}
 	}
 
+	// output switch button; a dot marks results that came in since the output was last shown
+	class OutputButton extends ui.Button {
+		draw(ctx) {
+			super.draw(ctx);
+			if (!this.fresh) return;
+			ctx.beginPath();
+			ctx.arc(this.w - 16, 16, 9, 0, Math.PI * 2);
+			ctx.fillStyle = theme.accent;
+			ctx.fill();
+		}
+	}
+
+	// history / grid tile of a 3D result: a cube outline over the file name
+	function modelThumb(filename) {
+		const c = document.createElement("canvas");
+		c.width = c.height = 256;
+		const g = c.getContext("2d");
+		const x = 128, y = 100, r = 64, dx = r * Math.cos(Math.PI / 6), dy = r / 2;
+		g.beginPath();
+		g.moveTo(x, y - r);
+		for (const [px, py] of [[x + dx, y - dy], [x + dx, y + dy], [x, y + r], [x - dx, y + dy], [x - dx, y - dy], [x, y - r]]) g.lineTo(px, py);
+		g.moveTo(x - dx, y - dy);
+		g.lineTo(x, y);
+		g.lineTo(x + dx, y - dy);
+		g.moveTo(x, y);
+		g.lineTo(x, y + r);
+		g.lineWidth = 8;
+		g.lineJoin = "round";
+		g.strokeStyle = theme.accent;
+		g.stroke();
+		g.font = `24px ${theme.font}`;
+		g.fillStyle = theme.fg;
+		g.textAlign = "center";
+		g.textBaseline = "middle";
+		g.fillText(filename, x, 212, 236);
+		return c;
+	}
+
 	// ---- panels ----
 	const status = new ui.Panel({ name: "center-status", widthM: BAR_W, heightM: BAR_H });
 	const stage = new ui.Panel({ name: "center-stage", widthM: 1, heightM: 1, pxPerM: screen.pxPerM }); // sized by fitStage
@@ -210,14 +263,17 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const progress = status.add(new ProgressBar({ x: 262, y: 0, w: 420, h: 120 }));
 	const queueLabel = status.add(new ui.Label({ text: "", size: 28, color: theme.muted, align: "center", x: 686, y: 0, w: 104, h: 120 }));
 	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 800 + [0, 112, 232][i], y: 22, w: [104, 112, 112][i], h: 76, onClick: () => setStereo(m) })));
-	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1160, y: 22, w: 110, h: 76, onClick: () => { view = gridOn ? "single" : "grid"; refresh(); } }));
+	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1160, y: 22, w: 110, h: 76, onClick: () => { out.view = gridOn ? "single" : "grid"; refresh(); } }));
 	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1280, y: 22, w: 90, h: 76, onClick: () => { hd = !hd; } }));
 	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1380, y: 22, w: 200, h: 76, onClick: () => xr.toggleMode() }));
 
-	const grid = stage.add(new BatchGrid({ onSelect: (e) => { view = "single"; showEntry(e); } }));
+	const grid = stage.add(new BatchGrid({ onSelect: (e) => { out.view = "single"; showEntry(e); } }));
 	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", h: 72 }));
 
-	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { view = "single"; showEntry(e); } }));
+	const strip = stripPanel.add(new HistoryStrip({ x: 0, y: 0, w: stripPanel.width, h: stripPanel.height, onSelect: (e) => { out.view = "single"; showEntry(e); } }));
+
+	const model = createModelView();
+	group.add(model.group);
 
 	// ---- image mesh, its hole-punch twin and the right-eye mesh ----
 	const plane = new THREE.PlaneGeometry(1, 1);
@@ -236,12 +292,15 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// ---- state ----
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
-	const byPrompt = new Map();
-	let batch = null;          // batch the grid shows
-	let view = "single";       // "single" | "grid"
-	let current = null;        // history entry on show
+	const byPrompt = new Map(); // prompt_id -> Map(output nodeId -> batch)
+	let runBatches = new Map();
+	// per output: { nodeId (null = any node), title, kind, batch (results of its last run), current (entry on show),
+	// view ("single" | "grid"), fresh (results not shown yet) }
+	let outputs = [], out = null, outBtns = [];
 	let shown = null;          // HTMLImageElement on the mesh / layer
+	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
+	let modelOn = false, stage3d = false, modelError = "", modelToken = 0;
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let gridOn = false, singleOn = false;
@@ -253,6 +312,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const isSplit = () => stereo !== "flat" && !previewing;
 
 	const thumbOf = (e) => {
+		if (e.kind === "3d") return e.thumb ??= modelThumb(e.filename);
 		if (e.thumb === undefined) {
 			e.thumb = null;
 			loadImg(e.url).then((img) => { e.thumb = makeThumb(img); }, () => { e.thumb = false; }).then(() => { stage.invalidate(); stripPanel.invalidate(); });
@@ -260,31 +320,80 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		return e.thumb;
 	};
 	grid.thumbOf = strip.thumbOf = thumbOf;
-	strip.entries = history;
+
+	// history entries go to the output that made them; older entries and other workflows' go to the first output of their kind
+	const ownerOf = (e) => outputs.find((o) => o.nodeId === e.node) ?? outputs.find((o) => o.kind === (e.kind ?? "image")) ?? outputs[0];
+	const outputKey = () => `${OUTPUT_KEY}.${store.snapshot?.workflowName}`;
+
+	// output buttons in a second status bar row, only with two outputs or more; per-output state survives a snapshot reload
+	function loadOutputs() {
+		const list = store.outputs.length ? store.outputs : [{ nodeId: null, title: "", kind: "image" }];
+		outputs = list.map((o) => ({ batch: null, current: null, view: "single", fresh: false, ...outputs.find((p) => p.nodeId === o.nodeId), ...o }));
+		for (const b of outBtns) status.remove(b);
+		const bw = (status.width - 48 - 12 * (outputs.length - 1)) / outputs.length;
+		outBtns = outputs.length < 2 ? [] : outputs.map((o, i) => status.add(new OutputButton({
+			text: o.title, size: 26, x: 24 + i * (bw + 12), y: 116, w: bw, h: 76,
+			onClick: () => {
+				try { localStorage.setItem(outputKey(), o.nodeId); } catch {}
+				select(o);
+			},
+		})));
+		status.resize(BAR_W, outBtns.length ? BAR_H_OUTPUTS : BAR_H);
+		screen.onResize();
+		let saved = null;
+		try { saved = localStorage.getItem(outputKey()); } catch {}
+		select(outputs.find((o) => o.nodeId === saved) ?? outputs[0]);
+	}
+
+	function select(o) {
+		out = o;
+		o.fresh = false;
+		o.current ??= history.find((e) => ownerOf(e) === o) ?? null;
+		previewing = false;
+		strip.offset = 0;
+		const { current } = o;
+		if (current && current !== (current.kind === "3d" ? model.entry : shownEntry)) return showEntry(current);
+		// an image output without results shows nothing; a 3D one keeps the stage as it is
+		if (!current && o.kind === "image") shown = shownEntry = null;
+		refresh();
+	}
 
 	function refresh() {
-		const results = batch?.results ?? [];
-		gridOn = !previewing && view === "grid" && results.length >= 2;
-		singleOn = !gridOn && !!shown;
-		stage.mesh.visible = !singleOn;
+		const results = out.batch?.results ?? [];
+		const { current } = out;
+		gridOn = !previewing && out.view === "grid" && results.length >= 2;
+		modelOn = !gridOn && !previewing && current?.kind === "3d";
+		stage3d = modelOn || !gridOn && out.kind === "3d";
+		singleOn = !gridOn && !modelOn && !!shown;
+		model.group.visible = modelOn && model.entry === current;
+		stage.mesh.visible = !singleOn && !model.group.visible;
 		grid.visible = gridOn;
 		grid.items = results;
 		grid.selected = strip.selected = current;
-		empty.visible = !gridOn && !shown;
-		empty.setText(store.snapshot ? "No images yet" : "Send a workflow from ComfyUI (Open in VR / Alt+V)");
+		strip.entries = history.filter((e) => ownerOf(e) === out);
+		empty.visible = !gridOn && !singleOn && !model.group.visible;
+		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
+			: modelOn ? modelError || "Loading 3D model…" : out.kind === "3d" ? "No 3D models yet" : "No images yet");
 		gridBtn.visible = results.length >= 2;
 		gridBtn.toggled = gridOn;
+		for (const b of modeBtns) b.disabled = stage3d;
+		outBtns.forEach((b, i) => {
+			b.toggled = outputs[i] === out;
+			b.fresh = outputs[i].fresh;
+		});
 		for (const p of [stage, stripPanel, status]) p.invalidate();
 		fitStage();
 	}
 
-	// stage = screen diagonal at the aspect of the grid / displayed image (half width per eye in stereo); same-aspect previews keep it
+	// stage = screen diagonal at the aspect of the grid / displayed image (half width per eye in stereo); same-aspect previews keep it.
+	// 3D keeps the stage as it was, so the panels around it stay put.
 	function fitStage() {
 		let a = EMPTY_ASPECT;
 		if (gridOn) {
-			const { cols, rows } = gridDims(batch.results.length);
+			const { cols, rows } = gridDims(out.batch.results.length);
 			a = cols / rows;
 		} else if (singleOn) a = shown.naturalWidth / (isSplit() ? 2 : 1) / shown.naturalHeight;
+		else if (stage3d) a = stageAspect || EMPTY_ASPECT;
 		if (Math.abs(a / stageAspect - 1) < ASPECT_EPS) return;
 		stageAspect = a;
 		const h = screen.diagonal / Math.hypot(1, a), w = h * a;
@@ -298,12 +407,13 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		imageMesh.scale.set(w, h, 1);
 		holeMesh.scale.copy(imageMesh.scale);
 		eyeMesh.scale.copy(imageMesh.scale);
+		model.setStage(w, h);
 		screen.w = w;
 		screen.h = h;
 		screen.onResize();
 	}
 
-	function setShown(img) {
+	function setShown(img, entry) {
 		const tex = new THREE.Texture(img);
 		tex.colorSpace = THREE.SRGBColorSpace;
 		tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -312,6 +422,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		shownTex?.dispose();
 		shownTex = tex;
 		shown = img;
+		shownEntry = entry;
 		layoutImage();
 	}
 
@@ -349,8 +460,9 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	}
 
 	async function showEntry(entry) {
-		current = entry;
+		out.current = entry;
 		const token = ++loadToken;
+		if (entry.kind === "3d") return showModel(entry);
 		refresh();
 		let img;
 		try {
@@ -361,7 +473,25 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		if (token !== loadToken) return;
 		if (!entry.thumb) entry.thumb = makeThumb(img);
 		previewing = false;
-		setShown(img);
+		setShown(img, entry);
+		refresh();
+	}
+
+	async function showModel(entry) {
+		const token = ++modelToken;
+		modelError = "";
+		refresh();
+		if (model.entry === entry) return;
+		let loaded;
+		try {
+			loaded = await model.load(entry.url);
+		} catch (e) {
+			console.warn(e);
+			if (token === modelToken) modelError = "Could not load " + entry.filename;
+			return refresh();
+		}
+		if (token !== modelToken) return model.discard(loaded);
+		model.show(loaded, entry);
 		refresh();
 	}
 
@@ -370,7 +500,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		previewEpoch++;
 		if (!previewing) return;
 		previewing = false;
-		if (current) showEntry(current);
+		if (out.current) showEntry(out.current);
 		else {
 			shown = null;
 			refresh();
@@ -382,16 +512,17 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	store.addEventListener("load", () => {
 		nameLabel.setText(store.snapshot?.workflowName ?? "No workflow");
-		refresh();
+		loadOutputs();
 	});
 
-	// each Generate press starts an empty batch; results land in the batch of their prompt until it ends
+	// each Generate press starts empty batches; results land in their output's batch of their prompt until it ends
 	store.addEventListener("generate", () => {
-		batch = { results: [] };
+		runBatches = new Map();
+		for (const o of outputs) o.batch = null;
 	});
 
 	store.addEventListener("queued", ({ detail }) => {
-		byPrompt.set(detail.prompt_id, batch);
+		byPrompt.set(detail.prompt_id, runBatches);
 		setProgress({ error: false, text: "Queued" });
 		refresh();
 	});
@@ -421,7 +552,9 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		endPreview();
 	});
 
+	// live previews only show while an image output is selected
 	client.addEventListener("preview", async ({ detail }) => {
+		if (out.kind === "3d") return;
 		const token = ++loadToken, epoch = previewEpoch;
 		let img;
 		try {
@@ -431,25 +564,32 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		}
 		if (token !== loadToken || epoch !== previewEpoch) return;
 		previewing = true;
-		setShown(img);
+		setShown(img, null);
 		refresh();
 	});
 
+	// results of an output that is not on show only mark its button: the selection never changes on its own
 	client.addEventListener("executed", ({ detail }) => {
-		const outputs = store.snapshot?.outputs;
-		if (outputs?.length && !outputs.includes(String(detail.node))) return;
-		const images = (detail.output?.images ?? []).filter((i) => IMAGE_EXT.test(i.filename));
-		if (!images.length) return;
-		if (!byPrompt.has(detail.prompt_id)) byPrompt.set(detail.prompt_id, { results: [] });
-		batch = byPrompt.get(detail.prompt_id);
-		const entries = images.map(({ filename, subfolder, type }) => ({ filename, subfolder, type, url: client.viewUrl({ filename, subfolder, type }) }));
+		const o = outputs.find((o) => o.nodeId === null || o.nodeId === String(detail.node));
+		const files = o ? resultFiles(detail.output) : [];
+		if (!files.length) return;
+		if (!byPrompt.has(detail.prompt_id)) byPrompt.set(detail.prompt_id, new Map());
+		const batches = byPrompt.get(detail.prompt_id);
+		if (!batches.has(o.nodeId)) batches.set(o.nodeId, { results: [] });
+		const batch = o.batch = batches.get(o.nodeId);
+		const entries = files.map((f) => ({ ...f, node: o.nodeId, url: client.viewUrl(f) }));
 		batch.results.push(...entries);
 		history.unshift(...[...entries].reverse());
 		history.length = Math.min(history.length, HISTORY_MAX);
-		strip.offset = 0;
 		saveHistory(history);
-		view = batch.results.length >= 2 ? "grid" : "single";
-		showEntry(entries[entries.length - 1]);
+		o.view = batch.results.length >= 2 ? "grid" : "single";
+		o.current = entries[entries.length - 1];
+		if (o !== out) {
+			o.fresh = true;
+			return refresh();
+		}
+		strip.offset = 0;
+		showEntry(o.current);
 	});
 
 	// ---- XR quad layer (HD) ----
@@ -558,7 +698,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			modeBtn.text = modeText;
 			modeBtn.invalidate();
 		}
-		const hdUsable = hdSupported && !isSplit();
+		const hdUsable = hdSupported && !isSplit() && !stage3d;
 		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;
 			hdBtn.disabled = !hdUsable;
@@ -568,7 +708,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	nameLabel.setText(store.snapshot?.workflowName ?? "No workflow");
 	syncModeBtns();
-	refresh();
-	if (history.length) showEntry(history[0]);
-	return { group, status, strip: stripPanel, update };
+	loadOutputs();
+	return { group, status, strip: stripPanel, update, model };
 }

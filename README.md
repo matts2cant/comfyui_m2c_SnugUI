@@ -33,6 +33,13 @@ Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in
 Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
 The selected tab is remembered per workflow. Prompts and seeds in the bottom panel only get the prefix stripped.
 
+## Several outputs and 3D models
+
+If App mode marks several output nodes, a row of buttons under the status bar picks which one the screen shows (remembered per workflow).
+A dot marks an output with new results; the view never switches on its own. History and Grid follow the selected output.
+Outputs that save or preview a 3D model (Save 3D Model, Preview 3D...) show the GLB in front of you at the screen's size, just behind it.
+Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms, recenter resets it.
+
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.
@@ -47,7 +54,8 @@ The selected tab is remembered per workflow. Prompts and seeds in the bottom pan
 
 ## Limits
 
-- Images only: output nodes that produce video or audio are ignored.
+- Images and GLB/glTF models only: video, audio and other 3D formats (OBJ, STL, FBX, splats...) are ignored.
+- Large models (1M triangles, tens of MB) are untested on the Quest.
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
   from VR.

@@ -233,7 +233,7 @@ const plane = new THREE.Plane();
 const tmp = new THREE.Vector3();
 let meshes = [];
 const pointers = [];
-const newPointer = (id) => { const p = { id, panel: null, cap: null, hit: null, outside: false }; pointers.push(p); return p; };
+const newPointer = (id) => { const p = { id, panel: null, cap: null, hit: null, outside: false, grab: null }; pointers.push(p); return p; };
 
 function pick(ray) {
 	raycaster.ray.copy(ray);
@@ -255,7 +255,20 @@ function project(panel, ray) {
 	return { panel, x: (pt.x / panel.widthM + 0.5) * panel.width, y: (0.5 - pt.y / panel.heightM) * panel.height, dist };
 }
 
+// a drag on the 3D model turns it by MODEL_TURN times the change of the ray's yaw / pitch in the ui frame
+const MODEL_TURN = 3, UP = new THREE.Vector3(0, 1, 0), aimDir = new THREE.Vector3();
+function aimAngles(ray) {
+	const d = aimDir.copy(ray.direction).applyAxisAngle(UP, -uiGroup.rotation.y);
+	return { yaw: Math.atan2(d.x, -d.z), pitch: Math.asin(d.y) };
+}
+
 function updatePointer(ptr, ray) {
+	if (ptr.grab) {
+		const a = aimAngles(ray);
+		center.model.turn((a.yaw - ptr.grab.yaw) * MODEL_TURN, (ptr.grab.pitch - a.pitch) * MODEL_TURN);
+		ptr.grab = a;
+		return ptr.hit = null;
+	}
 	if (ptr.cap) {
 		const q = project(ptr.cap, ray);
 		if (q) ptr.cap.pointer("move", q.x, q.y, ptr.id);
@@ -273,7 +286,11 @@ function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
 	const target = hit?.panel.hitTest(hit.x, hit.y);
 	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
-	if (!hit) return false;
+	if (!hit) {
+		if (center.model.hit(ray) === null) return false;
+		ptr.grab = aimAngles(ray);
+		return true;
+	}
 	ptr.cap = hit.panel;
 	hit.panel.pointer("down", hit.x, hit.y, ptr.id);
 	return true;
@@ -283,18 +300,18 @@ function pointerDown(ptr, ray) {
 function releasePointer(ptr) {
 	ptr.cap?.pointer("up", -1e6, -1e6, ptr.id);
 	ptr.panel?.pointer("leave", 0, 0, ptr.id);
-	ptr.panel = ptr.cap = null;
+	ptr.panel = ptr.cap = ptr.grab = null;
 }
 
 function pointerUp(ptr, ray) {
 	const panel = ptr.cap, q = panel && project(panel, ray);
-	ptr.cap = null;
+	ptr.cap = ptr.grab = null;
 	if (q) panel.pointer("up", q.x, q.y, ptr.id);
 	if (ptr.outside) keyboard.commit();
 	ptr.outside = false;
 }
 
-// ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll, left squeeze = recenter ----
+// ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll (zoom on the 3D model), left squeeze = recenter ----
 const controllers = [0, 1].map((i) => {
 	const ptr = newPointer(i + 1);
 	const target = renderer.xr.getController(i);
@@ -329,12 +346,15 @@ function updateControllers(dt) {
 			continue;
 		}
 		const hit = updatePointer(c.ptr, c.aim());
-		const d = hit ? hit.dist : 1.5;
+		const modelDist = hit ? null : center.model.hit(c.aim());
+		const d = hit ? hit.dist : modelDist ?? 1.5;
 		c.ray.scale.z = d;
-		c.dot.visible = !!hit;
-		if (hit) c.dot.position.copy(worldPoint(c.aim(), d));
+		c.dot.visible = !!hit || modelDist !== null;
+		if (c.dot.visible) c.dot.position.copy(worldPoint(c.aim(), d));
 		const stick = c.source.gamepad?.axes[3] ?? 0;
-		if (hit && c.ptr.panel && Math.abs(stick) > 0.15) c.ptr.panel.scroll(stick * 900 * dt, hit.x, hit.y);
+		if (Math.abs(stick) <= 0.15) continue;
+		if (hit && c.ptr.panel) c.ptr.panel.scroll(stick * 900 * dt, hit.x, hit.y);
+		else if (modelDist !== null) center.model.zoom(Math.exp(-stick * 1.5 * dt));
 	}
 }
 const worldPoint = (ray, d) => ray.at(d, tmp.clone());
@@ -353,9 +373,10 @@ function recenter() {
 		uiGroup.rotation.y = 0;
 		yaw = pitch = 0;
 	}
+	center.model.reset();
 }
 
-// ---- desktop fallback: drag to look, click panels, wheel scrolls ----
+// ---- desktop fallback: drag to look (or turn the 3D model), click panels, wheel scrolls (or zooms the model) ----
 let yaw = 0, pitch = 0, look = null;
 const mouse = newPointer(0);
 const el = renderer.domElement;
@@ -392,8 +413,9 @@ el.addEventListener("pointerleave", () => {
 });
 el.addEventListener("wheel", (e) => {
 	e.preventDefault();
-	const hit = updatePointer(mouse, mouseRay(e));
-	hit?.panel.scroll(e.deltaY, hit.x, hit.y);
+	const ray = mouseRay(e), hit = updatePointer(mouse, ray);
+	if (hit) hit.panel.scroll(e.deltaY, hit.x, hit.y);
+	else if (center.model.hit(ray) !== null) center.model.zoom(Math.exp(-e.deltaY * 0.001));
 }, { passive: false });
 addEventListener("keydown", (e) => { if (e.key === "r") recenter(); });
 addEventListener("resize", () => {

@@ -169,6 +169,20 @@ function buildLoraNode([nodeId, node]) {
     };
 }
 
+// 3D output nodes (Save 3D Model, Preview 3D...) take a MESH or FILE_3D* input; anything else is shown as images
+const MODEL_INPUT = /(^|,)(MESH|FILE_3D)/u;
+
+async function buildOutput(nodeId, output) {
+    const node = output[nodeId];
+    const def = node && await nodeDef(node.class_type);
+    const specs = Object.values({ ...def?.input?.required, ...def?.input?.optional });
+    return {
+        nodeId,
+        title: node?._meta?.title ?? nodeId,
+        kind: specs.some(([type]) => typeof type === "string" && MODEL_INPUT.test(type)) ? "3d" : "image",
+    };
+}
+
 async function buildSnapshot(linearData) {
     const entries = linearData.inputs.map(resolveEntry);
     const targets = await findTargets(entries);
@@ -180,7 +194,7 @@ async function buildSnapshot(linearData) {
         prompt: output,
         previewMethod: app.extensionManager.setting.get("Comfy.Execution.PreviewMethod"),
         inputs: await Promise.all(entries.map((entry, i) => buildInput(entry, targets[i], output))),
-        outputs: (linearData.outputs ?? []).map(String),
+        outputs: await Promise.all((linearData.outputs ?? []).map((id) => buildOutput(String(id), output))),
         loraNodes: Object.entries(output).filter(([, n]) => LORA_CLASSES.includes(n.class_type)).map(buildLoraNode),
     };
 }

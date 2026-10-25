@@ -24,9 +24,11 @@ __init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}
 ../web/appmode_xr.js     desktop extension (package-level web/): button, Alt+V, snapshot builder
 data/                    runtime data (snapshot.json) — gitignored
 xr/index.html            VR page shell
-xr/vendor/               three.module.js — vendored three.js r170
+xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
+                         three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
 xr/js/main.js            bootstrap, renderer, scene, XR session (AR/VR), desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
+xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom, disposal
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
 xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
@@ -66,7 +68,10 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
     value,                             // current value
     control: "fixed"|"randomize"|"increment"|"decrement"|null   // linked control_after_generate value, if any
   } ],
-  outputs: ["9"],                      // extra.linearData.outputs as API node ids
+  outputs: [ {                         // one per extra.linearData.outputs entry
+    nodeId: "9", title: "Save Image",  // API node id, prompt _meta.title
+    kind: "image"|"3d"                 // "3d" when the node's class has a MESH / FILE_3D* input (Save 3D Model, Preview 3D...)
+  } ],                                 // older snapshots hold bare id strings: state.js reads them as image outputs
   loraNodes: [ {                       // every LoRA Manager node with LoRA support in the prompt:
     nodeId, classType, title,          // "Lora Loader (LoraManager)", "Lora Stacker (LoraManager)", "WanVideo Lora Select (LoraManager)"
     text: "<lora:a:0.6>",              // prompt[nodeId].inputs.text
@@ -165,6 +170,7 @@ export const store  // EventTarget-based singleton
 store.snapshot; store.client         // set by main
 store.load(snapshot)                 // resets values from snapshot, seeds, loras; dispatches "load"
 store.inputs                         // snapshot.inputs
+store.outputs                        // snapshot.outputs as {nodeId, title, kind} (bare ids -> kind "image", title from the prompt)
 store.get(key) / store.set(key, v)   // dispatches "change" {key}
 store.seedMode(key) / setSeedMode(key, "fixed"|"randomize"|"increment")
 store.randomizeSeed(key)
@@ -192,9 +198,10 @@ labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
   stereo; grid aspect; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js -> `screen.onResize`).
 - under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge.
 - left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller).
-- all panels use scale 0.35; main.js `layout()` is the single place that positions them.
+- all panels use scale 0.35; main.js `layout()` is the single place that positions them (center calls `screen.onResize()` when the
+  stage or the status bar changes size).
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center and
-bottom; main.js also reads `panel`, and center's `status` / `strip` panels) where
+bottom; main.js also reads `panel`, and center's `status` / `strip` panels and `model`) where
 `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
@@ -213,6 +220,9 @@ main.js positions the returned group per the layout above (panel modules build t
   (grip) → recenter(). Request 'hand-tracking' so hands appear as input sources (pinch = select).
 - Desktop fallback (no XR session): same scene, mouse drag to look around (yaw/pitch), wheel = scroll on hovered panel,
   mouse click = pointer events. This is the dev/test mode.
+- 3D model (center's `model`): a press that hits no panel but the model's box (`model.hit(ray)` -> distance) grabs it; while held, the
+  change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around its up axis, then pitch, clamped to ±90°). Thumbstick Y
+  (XR) or the wheel (desktop) over the model zooms it (0.25x..4x). The cursor dot also lands on the model's box. recenter() resets turn and zoom.
 - Each frame: `Panel.updateAll()`, panels' `update(dt)`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
@@ -223,8 +233,22 @@ main.js positions the returned group per the layout above (panel modules build t
   previews from "preview" events while running; progress bar (value/max) + queue remaining in the status bar; batch results
   as a grid; history strip (session list, also persisted to localStorage, last 50) — tap thumbnail to show it.
   Status bar: workflow name, progress, queue, Flat / 3D L/R / 3D R/L (side-by-side image, one half per eye on XR layers 1/2,
-  persisted; previews stay flat; HD is off in 3D), Grid, HD, AR/VR toggle. Only images from `executed` events whose node is in
-  snapshot.outputs (or any node if outputs is empty) and whose items are images (png/jpg/jpeg/webp).
+  persisted; previews stay flat; HD is off in 3D), Grid, HD, AR/VR toggle.
+  Outputs: with two outputs or more the status bar grows a second row (height 0.21 instead of 0.12) of `OutputButton`s, one per output
+  labelled with its title (ellipsized), the shown one `toggled`; selection is manual only and kept in localStorage
+  `appmode-xr.output.<workflowName>` (try/catch, falls back to the first output). With no outputs one catch-all output takes every node.
+  Results come from `executed` events whose node is an output: images from `ui.images` (png/jpg/jpeg/webp) and 3D files (glb/gltf) from
+  `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
+  `ui.result[0]` = a path under output/ (deprecated Preview 3D); the same shapes the frontend's readModel3DOutput reads. Each output keeps
+  its own batch (per prompt), current entry and Grid state; a result for an output not on show only sets a dot on its button.
+  History entries carry `node` (output id) and `kind`; the strip and grid show the selected output's entries; entries whose node is not an
+  output (older entries, other workflows) go to the first output of their kind, else the first output. 3D tiles are a cube outline + file name.
+  3D: when the shown entry is a model (or the selected output is 3D) the stage keeps its last size so no panel moves, the image mesh /
+  quad layer and the stereo and HD buttons are off, and live previews are ignored while a 3D output is selected. The stage panel shows
+  "Loading 3D model…" / the load error until the model is ready, then hides. model.js loads with GLTFLoader (materials as in the file),
+  fits the scene's box into the stage width and height, centers it on the stage center (eye level) and pushes it back so the turned box's
+  front stays 1 cm behind the screen plane; a hemisphere and a directional light in its group light only it (the UI is unlit). A replaced
+  or stale model's geometries, materials and textures are disposed.
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
   Seed row per seed input: value field, −/+, mode radio Fix/Rand/Incr. Big Generate button,

@@ -49,6 +49,7 @@ class Store extends EventTarget {
     snapshot = null;
     client = null;
     inputs = [];
+    outputs = [];
     groups = { prompts: [], seeds: [], left: [], lora: [] };
     #values = new Map();
     #seedModes = new Map();
@@ -58,6 +59,8 @@ class Store extends EventTarget {
     load(snapshot) {
         this.snapshot = snapshot;
         this.inputs = snapshot.inputs;
+        // snapshots before the output switch list bare node ids: image outputs
+        this.outputs = snapshot.outputs.map(o => typeof o === "object" ? o : { nodeId: o, title: snapshot.prompt[o]?._meta?.title ?? o, kind: "image" });
         this.groups = classify(snapshot.inputs, snapshot.loraNodes);
         this.#values.clear();
         this.#seedModes.clear();
