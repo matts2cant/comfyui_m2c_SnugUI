@@ -22,7 +22,6 @@ served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a
 ```
 __init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}); paths below are relative to `appmode_xr/`
 ../web/appmode_xr.js     desktop extension (package-level web/): button, Alt+V, snapshot builder
-data/                    runtime data (snapshot.json) — gitignored
 xr/index.html            VR page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
@@ -45,7 +44,7 @@ xr/js/panels/lights.js   lighting presets panel: the model's lights, PMREM envir
 - `GET /appmode-xr` → `xr/index.html` (Cache-Control: no-cache). `GET /appmode-xr/static/{path}` → files under `xr/`
   (no-cache, correct JS MIME `text/javascript`, path containment enforced).
 - `POST /appmode-xr/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
-  `data/snapshot.json`, keeps it in memory, broadcasts `PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": id})`
+  `<ComfyUI user directory>/appmode_xr/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": id})`
   (no sid → all sockets). Returns `{"id": id}`.
 - `GET /appmode-xr/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present.
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).

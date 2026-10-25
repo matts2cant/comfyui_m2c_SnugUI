@@ -3,6 +3,7 @@ import time
 import uuid
 from pathlib import Path
 
+import folder_paths
 from aiohttp import web
 from server import PromptServer
 
@@ -11,7 +12,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 
 ROOT = Path(__file__).resolve().parent
 XR_DIR = ROOT / "xr"
-SNAPSHOT_FILE = ROOT / "data" / "snapshot.json"
+SNAPSHOT_FILE = Path(folder_paths.get_user_directory()) / "appmode_xr" / "snapshot.json"
 NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 snapshot = None
@@ -19,7 +20,7 @@ if SNAPSHOT_FILE.is_file():
     try:
         snapshot = json.loads(SNAPSHOT_FILE.read_text(encoding="utf-8"))
     except ValueError:
-        print("[appmode-xr] ignoring unreadable data/snapshot.json")
+        print(f"[appmode-xr] ignoring unreadable {SNAPSHOT_FILE}")
 
 routes = PromptServer.instance.routes
 
