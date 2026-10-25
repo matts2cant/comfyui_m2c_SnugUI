@@ -1,4 +1,4 @@
-// Bootstrap: renderer, scene, XR sessions (AR/VR), desktop fallback, pointer input, panel layout.
+// Bootstrap: renderer, scene, VR session, desktop fallback, pointer input, panel layout.
 import * as THREE from "three";
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
@@ -13,7 +13,8 @@ import { createRightPanel } from "./panels/right.js";
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setClearColor(0x06080c);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
@@ -31,7 +32,7 @@ const uiGroup = new THREE.Group(); // origin = eye, -z = viewing direction
 uiGroup.position.y = DESKTOP_EYE_HEIGHT;
 scene.add(uiGroup);
 
-// dim room for VR / desktop; hidden in AR so passthrough shows
+// dim room around the panels
 const room = new THREE.Group();
 room.add(new THREE.GridHelper(12, 24, 0x2a3446, 0x1a2230));
 {
@@ -50,26 +51,16 @@ room.add(new THREE.GridHelper(12, 24, 0x2a3446, 0x1a2230));
 }
 scene.add(room);
 
-let mode = "desktop";
-const support = { ar: false, vr: false };
-function applyMode() {
-	room.visible = mode !== "ar";
-	renderer.setClearColor(0x06080c, mode === "ar" ? 0 : 1);
-}
-applyMode();
-
 // ---- XR session ----
 let needRecenter = false;
 
-async function enter(m) {
-	const session = await navigator.xr.requestSession(m === "ar" ? "immersive-ar" : "immersive-vr", {
+async function enter() {
+	const session = await navigator.xr.requestSession("immersive-vr", {
 		optionalFeatures: ["local-floor", "hand-tracking", "layers"],
 	});
 	session.addEventListener("end", onSessionEnd, { once: true });
 	try {
 		renderer.xr.setReferenceSpaceType(session.enabledFeatures.includes("local-floor") ? "local-floor" : "local");
-		mode = m;
-		applyMode();
 		await renderer.xr.setSession(session);
 	} catch (e) {
 		session.end();
@@ -78,12 +69,10 @@ async function enter(m) {
 	keyboard.setXR(true);
 	keyboard.commit();
 	needRecenter = true;
-	$("overlay").hidden = $("hint").hidden = true;
+	$("enter-vr").hidden = $("hint").hidden = true;
 }
 
 function onSessionEnd() {
-	mode = "desktop";
-	applyMode();
 	keyboard.setXR(false);
 	keyboard.commit();
 	for (const ptr of pointers) releasePointer(ptr);
@@ -91,30 +80,14 @@ function onSessionEnd() {
 	camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.rotation.y = yaw = pitch = 0;
-	$("overlay").hidden = $("hint").hidden = false;
+	$("enter-vr").hidden = $("hint").hidden = false;
 }
 
-const reportError = (e) => { $("hint").textContent = "Could not start XR session: " + e.message; console.error(e); };
-
-function toggleMode() {
-	const session = renderer.xr.getSession();
-	if (!session) return enter(support.ar ? "ar" : "vr").catch(reportError);
-	const target = mode === "ar" ? "vr" : "ar";
-	if (!support[target]) return;
-	// only one immersive session can exist, so the new one is requested from the end event (the select's transient user activation)
-	session.addEventListener("end", () => enter(target).catch(reportError), { once: true });
-	session.end();
-}
-
-for (const m of ["ar", "vr"]) $("enter-" + m).onclick = () => enter(m).catch(reportError);
-
-for (const m of ["ar", "vr"]) {
-	navigator.xr?.isSessionSupported("immersive-" + m).catch(() => false).then((ok) => {
-		support[m] = ok;
-		$("enter-" + m).hidden = !ok;
-		if (m === "ar") $("enter-vr").classList.toggle("secondary", ok);
-	});
-}
+$("enter-vr").onclick = () => enter().catch((e) => {
+	$("hint").textContent = "Could not start VR session: " + e.message;
+	console.error(e);
+});
+navigator.xr?.isSessionSupported("immersive-vr").catch(() => false).then((ok) => { $("enter-vr").hidden = !ok; });
 
 const needHelp = !window.isSecureContext || !navigator.xr;
 if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
@@ -133,7 +106,7 @@ const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: 1000 / PANEL_SCA
 const ctx = {
 	THREE, store, ui, scene, renderer, camera, screen,
 	client: new ComfyClient(),
-	xr: { isPresenting: () => renderer.xr.isPresenting, mode: () => mode, toggleMode },
+	xr: { isPresenting: () => renderer.xr.isPresenting },
 };
 window.__xr = ctx;
 

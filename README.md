@@ -21,7 +21,7 @@ If the page opens without WebXR, it shows the same instructions with your addres
 1. On the desktop, configure App mode for your workflow (choose the inputs and outputs).
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
-3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter AR (passthrough) or Enter VR.
+3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter VR.
 4. Layout: image and history in the middle, prompt/seed/Generate at the bottom, settings on the left,
    LoRAs on the right. Text fields have an edit toolbar with a Quest keyboard button.
 
@@ -45,7 +45,7 @@ Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the w
 - Trigger or hand pinch: click. Drag on sliders and lists.
 - Thumbstick up/down: scroll the list or panel under the ray.
 - Left grip (squeeze): recenter the panels in front of you.
-- Status bar under the history strip: Flat / 3D L/R / 3D R/L (side-by-side 3D images), Grid (batch view), HD (see below), To VR / To AR (switches mode).
+- Status bar under the history strip: Flat / 3D L/R / 3D R/L (side-by-side 3D images), Grid (batch view), HD (see below).
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
 - Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, Del, arrows, Select all, Done). Tap to move
@@ -59,6 +59,4 @@ Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the w
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
   from VR.
-- Switching AR/VR inside the headset ends the session and requests a new one; if Quest Browser refuses
-  without a fresh click, press Enter AR / Enter VR again.
 - Quest-only paths (quad layer, system keyboard, hands) are untested on hardware.

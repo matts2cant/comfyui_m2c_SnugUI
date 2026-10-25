@@ -260,12 +260,11 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	group.add(stage.mesh);
 
 	const nameLabel = status.add(new ui.Label({ text: "", size: 34, bold: true, x: 24, y: 0, w: 230, h: 120 }));
-	const progress = status.add(new ProgressBar({ x: 262, y: 0, w: 420, h: 120 }));
-	const queueLabel = status.add(new ui.Label({ text: "", size: 28, color: theme.muted, align: "center", x: 686, y: 0, w: 104, h: 120 }));
-	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 800 + [0, 112, 232][i], y: 22, w: [104, 112, 112][i], h: 76, onClick: () => setStereo(m) })));
-	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1160, y: 22, w: 110, h: 76, onClick: () => { out.view = gridOn ? "single" : "grid"; refresh(); } }));
-	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1280, y: 22, w: 90, h: 76, onClick: () => { hd = !hd; } }));
-	const modeBtn = status.add(new ui.Button({ text: "", size: 30, x: 1380, y: 22, w: 200, h: 76, onClick: () => xr.toggleMode() }));
+	const progress = status.add(new ProgressBar({ x: 262, y: 0, w: 630, h: 120 }));
+	const queueLabel = status.add(new ui.Label({ text: "", size: 28, color: theme.muted, align: "center", x: 896, y: 0, w: 104, h: 120 }));
+	const modeBtns = STEREO_MODES.map(([m, text], i) => status.add(new ui.Button({ text, size: 26, x: 1010 + [0, 112, 232][i], y: 22, w: [104, 112, 112][i], h: 76, onClick: () => setStereo(m) })));
+	const gridBtn = status.add(new ui.Button({ text: "Grid", size: 30, x: 1370, y: 22, w: 110, h: 76, onClick: () => { out.view = gridOn ? "single" : "grid"; refresh(); } }));
+	const hdBtn = status.add(new ui.Button({ text: "HD", size: 30, x: 1490, y: 22, w: 90, h: 76, onClick: () => { hd = !hd; } }));
 
 	const grid = stage.add(new BatchGrid({ onSelect: (e) => { out.view = "single"; showEntry(e); } }));
 	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", h: 72 }));
@@ -693,11 +692,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			imageMesh.visible = singleOn;
 		}
 		updateEyes();
-		const modeText = { desktop: "Enter XR", ar: "To VR", vr: "To AR" }[xr.mode()];
-		if (modeBtn.text !== modeText) {
-			modeBtn.text = modeText;
-			modeBtn.invalidate();
-		}
 		const hdUsable = hdSupported && !isSplit() && !stage3d;
 		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;

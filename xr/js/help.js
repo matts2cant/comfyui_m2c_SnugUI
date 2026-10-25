@@ -22,7 +22,7 @@ export function showHelp({ insecure }) {
 	const origin = location.origin;
 	const backdrop = el("div", { position: "fixed", inset: "0", background: "rgba(0,0,0,0.78)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 900, overflow: "auto" }, document.body);
 	const box = el("div", { background: "#161a22", border: "1px solid #323a49", borderRadius: "16px", padding: "24px 28px", margin: "16px", width: "min(680px, 94vw)", font: "17px/1.5 system-ui, sans-serif", color: "#e8ecf2" }, backdrop);
-	el("h2", { margin: "0 0 6px", fontSize: "24px" }, box, insecure ? "One-time setup for VR / AR" : "WebXR not available");
+	el("h2", { margin: "0 0 6px", fontSize: "24px" }, box, insecure ? "One-time setup for VR" : "WebXR not available");
 	if (!insecure) {
 		el("p", { margin: "8px 0", color: "#8c96a8" }, box, "This browser does not expose WebXR. Open this page in Meta Quest Browser. You can still use the desktop preview below.");
 	} else {

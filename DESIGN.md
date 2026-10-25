@@ -26,7 +26,7 @@ data/                    runtime data (snapshot.json) — gitignored
 xr/index.html            VR page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
-xr/js/main.js            bootstrap, renderer, scene, XR session (AR/VR), desktop fallback, input, layout, recenter
+xr/js/main.js            bootstrap, renderer, scene, VR session, desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom, disposal
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
@@ -202,7 +202,7 @@ labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
   stage or the status bar changes size).
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center and
 bottom; main.js also reads `panel`, and center's `status` / `strip` panels and `model`) where
-`ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
+`ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### main.js
@@ -210,10 +210,9 @@ main.js positions the returned group per the layout above (panel modules build t
   explaining how to enable WebXR on Quest Browser: `chrome://flags` → "Insecure origins treated as secure" → add
   `http://<location.host>` (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN.
   Only show the help on Quest/XR-capable UA or when navigator.xr is missing; dismissible.
-- Buttons (DOM, 2D): "Enter AR" (passthrough, default when `isSessionSupported('immersive-ar')`) and "Enter VR".
-  requestSession inside the click handler; optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. In AR clear alpha 0;
-  in VR show a dark room (simple floor grid + dim gradient). An in-XR toggle (center status bar) ends the session and
-  starts the other mode (needs a user gesture: trigger select counts).
+- VR only (`immersive-vr`, no AR / passthrough). DOM button "Enter VR", shown when `isSessionSupported('immersive-vr')`;
+  requestSession inside the click handler; optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a dark
+  room (simple floor grid + dim gradient sphere) in VR and on the desktop.
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
 - Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
   convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze on left hand
@@ -233,7 +232,7 @@ main.js positions the returned group per the layout above (panel modules build t
   previews from "preview" events while running; progress bar (value/max) + queue remaining in the status bar; batch results
   as a grid; history strip (session list, also persisted to localStorage, last 50) — tap thumbnail to show it.
   Status bar: workflow name, progress, queue, Flat / 3D L/R / 3D R/L (side-by-side image, one half per eye on XR layers 1/2,
-  persisted; previews stay flat; HD is off in 3D), Grid, HD, AR/VR toggle.
+  persisted; previews stay flat; HD is off in 3D), Grid, HD.
   Outputs: with two outputs or more the status bar grows a second row (height 0.21 instead of 0.12) of `OutputButton`s, one per output
   labelled with its title (ellipsized), the shown one `toggled`; selection is manual only and kept in localStorage
   `appmode-xr.output.<workflowName>` (try/catch, falls back to the first output). With no outputs one catch-all output takes every node.

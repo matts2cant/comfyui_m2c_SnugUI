@@ -10,7 +10,6 @@
 	#overlay { position: fixed; left: 0; right: 0; bottom: 24px; display: flex; gap: 12px; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
 	#overlay > * { pointer-events: auto; }
 	#overlay button { padding: 14px 28px; border: 0; border-radius: 12px; background: #4c8dff; color: #fff; font: 600 18px system-ui, sans-serif; cursor: pointer; }
-	#overlay button.secondary { background: #303846; }
 	#hint { position: fixed; left: 16px; top: 12px; color: #8c96a8; font-size: 14px; z-index: 10; }
 	[hidden] { display: none !important; }
 </style>
@@ -19,8 +18,7 @@
 <body>
 <div id="hint">Desktop preview: drag to look, wheel to scroll, click to press. R recenters.</div>
 <div id="overlay">
-	<button id="enter-ar" hidden>Enter AR</button>
-	<button id="enter-vr" class="secondary" hidden>Enter VR</button>
+	<button id="enter-vr" hidden>Enter VR</button>
 </div>
 <script type="module" src="/appmode-xr/static/js/main.js"></script>
 </body>
