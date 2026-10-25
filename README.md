@@ -1,6 +1,6 @@
-# comfyui-appmode-xr
+# AppMode XR
 
-Personal ComfyUI extension: tweak an App-mode workflow and generate from a Meta Quest 3 (Quest Browser, WebXR).
+Part of the `ComfyUI_matts2cant` package. Personal ComfyUI extension: tweak an App-mode workflow and generate from a Meta Quest 3 (Quest Browser, WebXR).
 An "Open in VR" button snapshots the current App-mode workflow; ComfyUI serves a WebXR page at `/appmode-xr`
 with the inputs on floating panels and the result image in the middle. No internet or CDN at runtime
 (three.js is vendored in `xr/vendor/`).

@@ -1,15 +1,15 @@
-# comfyui-appmode-xr — design spec (source of truth for all agents)
+# AppMode XR — design spec (source of truth for all agents)
 
 Personal-use ComfyUI extension: an "Open in VR" button snapshots the current App-mode workflow; a WebXR page
 served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a Meta Quest 3 (standalone Quest Browser).
 
 ## Hard rules
-- Only create/modify files inside `custom_nodes/comfyui-appmode-xr/`. Never touch ComfyUI core, other custom nodes,
+- Only create/modify files inside `custom_nodes/ComfyUI_matts2cant/`. Never touch ComfyUI core, other custom nodes,
   the venv (no pip installs), Comfy Desktop config, or `%APPDATA%`.
 - No CDN / internet at runtime. Libraries are vendored in `xr/vendor/`.
 - Plain ES modules, no build step, no npm deps at runtime. Modern JS (Quest Browser = recent Chromium).
 - Match a hand-written style: small direct code, sparse useful comments, no defensive boilerplate.
-- Only `web/appmode_xr.js` may live under `web/` (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
+- Only `../web/appmode_xr.js` (package-level `web/`) may hold this feature's frontend code (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
 - No git commits unless your task says so.
 
 ## Environment facts
@@ -20,8 +20,8 @@ served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a
 
 ## File layout & ownership
 ```
-__init__.py              server: routes + snapshot store (WEB_DIRECTORY="./web", NODE_CLASS_MAPPINGS={})
-web/appmode_xr.js        desktop extension: button, Alt+V, snapshot builder
+__init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}); paths below are relative to `appmode_xr/`
+../web/appmode_xr.js     desktop extension (package-level web/): button, Alt+V, snapshot builder
 data/                    runtime data (snapshot.json) — gitignored
 xr/index.html            VR page shell
 xr/vendor/               three.module.js (+ three.core.js if the version splits it) — vendored three.js r17x
@@ -47,7 +47,7 @@ xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
 - `GET /appmode-xr/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present.
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).
 
-## Snapshot schema (built by `web/appmode_xr.js`)
+## Snapshot schema (built by `../web/appmode_xr.js`)
 ```js
 {
   version: 1, id, created,            // id/created set by server
@@ -87,7 +87,7 @@ own graphToPrompt hook) resolves to the string input that parses to an object sh
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
 gets a dedicated type (`PIXAROMA_SIZES`: left-panel size picker, in the size group); other JSON widgets are UNSUPPORTED text edits.
 
-## Desktop extension (`web/appmode_xr.js`)
+## Desktop extension (`../web/appmode_xr.js`)
 - `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
   keybindings: [{combo:{key:"v", alt:true}, commandId:"AppModeXR.Open"}], actionBarButtons: [{icon, label:"Open in VR", tooltip, onClick}] })`.
 - On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else build snapshot, POST, then
