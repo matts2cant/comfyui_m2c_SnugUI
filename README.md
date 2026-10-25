@@ -43,6 +43,11 @@ Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the w
 Squeeze the grip while pointing at it to grab it: it follows the controller until you let go. Grab it with both grips to
 scale it (move the hands apart or together), turn it and move it. Recenter puts it back behind the screen at its first size.
 
+While a 3D output is shown, a Lighting button appears right of LoRAs. It opens a panel of lighting presets (Neutral studio,
+High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour) that change the model's lights, its
+reflections and the room around you. The choice is remembered. Panels and images are not affected; with an image output the
+room stays dark.
+
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.

@@ -38,6 +38,7 @@ xr/js/panels/center.js   image display, batch grid, history strip, status bar
 xr/js/panels/bottom.js   prompt boxes, seeds, generate/cancel, run status
 xr/js/panels/left.js     settings controls
 xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
+xr/js/panels/lights.js   lighting presets panel: the model's lights, PMREM environments, the room (grid + gradient sphere)
 ```
 
 ## Server (`__init__.py`)
@@ -196,12 +197,17 @@ labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - everything on the plane z = -0.5 (eye at the origin). Screen: 32" diagonal at the aspect of what it shows (image; half width per eye in
   stereo; grid aspect; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js -> `screen.onResize`).
-- under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge.
-- left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller).
-- all panels use scale 0.35; main.js `layout()` is the single place that positions them (center calls `screen.onResize()` when the
-  stage or the status bar changes size).
+- under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge,
+  a "Lighting" toggle right of the LoRAs one, shown only while a 3D output is on show (center's `is3d()`).
+- left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller); the
+  lighting panel the same, right of the LoRA panel (in its place when the LoRA panel is hidden). Open states in localStorage
+  `appmode-xr.sides` = {left, right, lights} (lights closed by default).
+- all panels use scale 0.35; main.js `layout()` is the single place that positions them and sets their visibility (center calls
+  `screen.onResize()` when the stage or the status bar changes size, or when `is3d()` flips); it also calls the lighting panel's
+  `setActive(is3d)`.
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center and
-bottom; main.js also reads `panel`, and center's `status` / `strip` panels and `model`) where
+bottom; main.js also reads `panel`, and center's `status` / `strip` panels, `model` and `is3d()`; the lighting panel is
+`createLightsPanel(ctx, center.model) -> { group, panel, room, setActive(on) }`, main.js adds `room` to the scene) where
 `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
@@ -211,8 +217,8 @@ main.js positions the returned group per the layout above (panel modules build t
   `http://<location.host>` (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN.
   Only show the help on Quest/XR-capable UA or when navigator.xr is missing; dismissible.
 - VR only (`immersive-vr`, no AR / passthrough). DOM button "Enter VR", shown when `isSessionSupported('immersive-vr')`;
-  requestSession inside the click handler; optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a dark
-  room (simple floor grid + dim gradient sphere) in VR and on the desktop.
+  requestSession inside the click handler; optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a room
+  (floor grid + gradient sphere, from lights.js) in VR and on the desktop. No tone mapping (renderer default).
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
 - Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
   convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze (grip) on the
@@ -255,7 +261,9 @@ main.js positions the returned group per the layout above (panel modules build t
   quad layer and the stereo and HD buttons are off, and live previews are ignored while a 3D output is selected. The stage panel shows
   "Loading 3D model…" / the load error until the model is ready, then hides. model.js loads with GLTFLoader (materials as in the file),
   fits the scene's box into the stage width and height, centers it on the stage center (eye level) and pushes it back so the turned box's
-  front stays 1 cm behind the screen plane (until grabbed); a hemisphere and a directional light in its group light only it (the UI is unlit). A replaced
+  front stays 1 cm behind the screen plane (until grabbed); key / fill / rim directional lights and a hemisphere in its group, set by the
+  lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
+  their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
@@ -275,6 +283,17 @@ main.js positions the returned group per the layout above (panel modules build t
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from
   item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
+- lights: title + 7 preset `Button`s (the current one `toggled`), applied instantly, no sliders: Neutral studio (default), High-key studio,
+  Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting` (try/catch).
+  Each preset (table in lights.js) gives key / fill / rim `[color, intensity, x, y, z]` (x y z towards the light in the stage frame,
+  +z towards the viewer), the hemisphere `[sky, ground, intensity]`, a 3-stop sky gradient (top, horizon, bottom) and `env`
+  `[panel side, radiance gain]`. While active (3D on show): the room's sphere is repainted with the preset gradient and
+  `scene.environment` is the preset's PMREM: `PMREMGenerator.fromScene` of a small scene (the same gradient on a sphere plus one
+  emissive square per light, in its direction and color), generated on first use and cached per preset (one generator kept). Inactive:
+  the room gradient is the original dark one and `scene.environment` is null, so image views render exactly as before.
+  `scene.environmentRotation.y` follows the ui yaw on recenter so reflections turn with the lights. Only the model's
+  MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
+  At most 3 directional lights, no shadows.
 
 ## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping

@@ -1,6 +1,6 @@
 // 3D model on the stage: a glTF / GLB fitted into the stage's width and height, centered on it and kept behind the screen
-// plane until the hands move it, lit by its own hemisphere + directional light (the UI is unlit). The center panel adds
-// `group` at the stage center.
+// plane until the hands move it, lit by its key / fill / rim lights and hemisphere (set by the lighting preset; the UI is
+// unlit). The center panel adds `group` at the stage center.
 import * as THREE from "three";
 import { GLTFLoader } from "../vendor/GLTFLoader.js";
 
@@ -25,10 +25,11 @@ export function createModelView() {
 	const loader = new GLTFLoader();
 	const group = new THREE.Group();
 	const pivot = new THREE.Group(); // turn and zoom around the model's box center
-	const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-	sun.position.set(0.4, 1, 1);
-	sun.target = pivot;
-	group.add(pivot, sun, new THREE.HemisphereLight(0xffffff, 0x445066, 2));
+	// aimed at the stage center, so their directions stay put while the model is moved
+	const lights = [new THREE.DirectionalLight(), new THREE.DirectionalLight(), new THREE.DirectionalLight()];
+	for (const l of lights) l.target = group;
+	const hemi = new THREE.HemisphereLight();
+	group.add(pivot, hemi, ...lights);
 	group.visible = false;
 
 	const box = new THREE.Box3(), size = new THREE.Vector3();
@@ -142,6 +143,18 @@ export function createModelView() {
 		zoom(k) {
 			scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scale * k));
 			place();
+		},
+
+		// preset (panels/lights.js): key / fill / rim [color, intensity, x, y, z] towards the light, hemi [sky, ground, intensity]
+		light({ key, fill, rim, hemi: [sky, ground, strength] }) {
+			[key, fill, rim].forEach(([color, intensity, x, y, z], i) => {
+				lights[i].color.set(color);
+				lights[i].intensity = intensity;
+				lights[i].position.set(x, y, z);
+			});
+			hemi.color.set(sky);
+			hemi.groundColor.set(ground);
+			hemi.intensity = strength;
 		},
 
 		// id: the hand; world: its pose (Matrix4), followed rigidly

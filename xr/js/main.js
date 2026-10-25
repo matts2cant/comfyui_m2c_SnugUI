@@ -9,6 +9,7 @@ import { createCenterPanel } from "./panels/center.js";
 import { createBottomPanel } from "./panels/bottom.js";
 import { createLeftPanel } from "./panels/left.js";
 import { createRightPanel } from "./panels/right.js";
+import { createLightsPanel } from "./panels/lights.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -31,25 +32,6 @@ camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 const uiGroup = new THREE.Group(); // origin = eye, -z = viewing direction
 uiGroup.position.y = DESKTOP_EYE_HEIGHT;
 scene.add(uiGroup);
-
-// dim room around the panels
-const room = new THREE.Group();
-room.add(new THREE.GridHelper(12, 24, 0x2a3446, 0x1a2230));
-{
-	const c = document.createElement("canvas");
-	c.width = 2;
-	c.height = 256;
-	const g = c.getContext("2d");
-	const grad = g.createLinearGradient(0, 0, 0, 256);
-	grad.addColorStop(0, "#0f1626");
-	grad.addColorStop(1, "#06080c");
-	g.fillStyle = grad;
-	g.fillRect(0, 0, 2, 256);
-	const tex = new THREE.CanvasTexture(c);
-	tex.colorSpace = THREE.SRGBColorSpace;
-	room.add(new THREE.Mesh(new THREE.SphereGeometry(40, 24, 16), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false })));
-}
-scene.add(room);
 
 // ---- XR session ----
 let needRecenter = false;
@@ -79,7 +61,7 @@ function onSessionEnd() {
 	// three overwrites the camera pose while presenting
 	camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
-	uiGroup.rotation.y = yaw = pitch = 0;
+	uiGroup.rotation.y = scene.environmentRotation.y = yaw = pitch = 0;
 	$("enter-vr").hidden = $("hint").hidden = false;
 }
 
@@ -94,8 +76,9 @@ if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !
 
 // ---- panels ----
 // Everything sits on the vertical plane z = -SCREEN_DISTANCE (eye at the origin). The screen is SCREEN_DIAGONAL_IN inches at the
-// aspect of what it shows; top to bottom under it: history strip, status bar, prompt panel (toggle buttons at its edges).
-// Side panels sit beside the screen, yawed at the eye. Every panel group has PANEL_SCALE, so px density and fonts match.
+// aspect of what it shows; top to bottom under it: history strip, status bar, prompt panel (toggle buttons at its edges, the
+// lighting one only while a 3D output is shown). Side panels sit beside the screen, yawed at the eye, the lighting panel right
+// of the LoRA panel. Every panel group has PANEL_SCALE, so px density and fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
 const PANEL_SCALE = 0.35;
 const GAP_SCREEN_STRIP = 0.012, GAP_STRIP_STATUS = 0.012, GAP_STATUS_PROMPT = 0.003, GAP_TOGGLE = 0.003, GAP_SIDE = 0.02;
@@ -110,7 +93,7 @@ const ctx = {
 };
 window.__xr = ctx;
 
-const sides = { left: true, right: true };
+const sides = { left: true, right: true, lights: false };
 try {
 	Object.assign(sides, JSON.parse(localStorage.getItem(SIDES_KEY)));
 } catch {}
@@ -132,28 +115,31 @@ function sideToggle(name, text) {
 		} catch {}
 		layout();
 	};
-	return { group: panelGroup(panel), panel, name };
+	return { group: panelGroup(panel), panel };
 }
 
 const center = createCenterPanel(ctx);
 const bottom = createBottomPanel(ctx);
 const settings = createLeftPanel(ctx);
 const loras = createRightPanel(ctx);
-const toggles = [sideToggle("left", "Settings"), sideToggle("right", "LoRAs")];
-const sidePanels = { left: settings, right: loras };
+const lights = createLightsPanel(ctx, center.model);
+scene.add(lights.room);
+const toggles = { left: sideToggle("left", "Settings"), right: sideToggle("right", "LoRAs"), lights: sideToggle("lights", "Lighting") };
 const stripGroup = panelGroup(center.strip), statusGroup = panelGroup(center.status);
 const promptGroup = bottom.group;
 const animated = [center, bottom];
-for (const g of [center.group, stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) uiGroup.add(g);
-for (const g of [stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) g.scale.setScalar(PANEL_SCALE);
+const scaled = [stripGroup, statusGroup, promptGroup, settings.group, loras.group, lights.group, ...Object.values(toggles).map((t) => t.group)];
+for (const g of [center.group, ...scaled]) uiGroup.add(g);
+for (const g of scaled) g.scale.setScalar(PANEL_SCALE);
 
-// side panel with its inner edge on the plane at |x| = innerX, yawed so its center faces the eye
-function placeSide(group, panel, dir, innerX, y) {
+// side panel with its inner edge at (|x|, -z) = (innerX, innerZ), yawed so its center faces the eye; returns the next panel's inner edge
+function placeSide(group, panel, dir, innerX, innerZ, y) {
 	const half = panel.widthM * PANEL_SCALE / 2;
 	let a = 0;
-	for (let i = 0; i < 4; i++) a = Math.atan2(innerX + half * Math.cos(a), SCREEN_DISTANCE - half * Math.sin(a));
+	for (let i = 0; i < 4; i++) a = Math.atan2(innerX + half * Math.cos(a), innerZ - half * Math.sin(a));
 	group.rotation.y = a * dir;
-	group.position.set(-dir * (innerX + half * Math.cos(a)), y, -(SCREEN_DISTANCE - half * Math.sin(a)));
+	group.position.set(-dir * (innerX + half * Math.cos(a)), y, -(innerZ - half * Math.sin(a)));
+	return [innerX + (2 * half + GAP_SIDE) * Math.cos(a), innerZ - (2 * half + GAP_SIDE) * Math.sin(a)];
 }
 
 function layout() {
@@ -172,14 +158,22 @@ function layout() {
 	const [promptW, promptH] = sizeOf(bottom.panel);
 	at(promptGroup, 0, y - promptH / 2);
 
-	for (const t of toggles) {
-		const dir = t.name === "left" ? 1 : -1, [toggleW] = sizeOf(t.panel);
-		at(t.group, -dir * (promptW / 2 + GAP_TOGGLE + toggleW / 2), y - promptH / 2);
-		const sidePanel = sidePanels[t.name];
-		sidePanel.group.visible = sides[t.name];
-		const sideH = sidePanel.panel.heightM * PANEL_SCALE;
-		placeSide(sidePanel.group, sidePanel.panel, dir, w / 2 + GAP_SIDE, h >= sideH ? h / 2 - sideH / 2 : 0);
-	}
+	const [toggleW] = sizeOf(toggles.left.panel), toggleX = promptW / 2 + GAP_TOGGLE + toggleW / 2, toggleY = y - promptH / 2;
+	at(toggles.left.group, -toggleX, toggleY);
+	at(toggles.right.group, toggleX, toggleY);
+	at(toggles.lights.group, toggleX + toggleW + GAP_TOGGLE, toggleY);
+
+	// side panels top aligned with the screen, centered at eye level when taller
+	const top = (panel) => Math.max(0, h / 2 - panel.heightM * PANEL_SCALE / 2);
+	const is3d = center.is3d();
+	settings.group.visible = sides.left;
+	loras.group.visible = sides.right;
+	toggles.lights.group.visible = is3d;
+	lights.group.visible = is3d && sides.lights;
+	lights.setActive(is3d);
+	placeSide(settings.group, settings.panel, 1, w / 2 + GAP_SIDE, SCREEN_DISTANCE, top(settings.panel));
+	const next = placeSide(loras.group, loras.panel, -1, w / 2 + GAP_SIDE, SCREEN_DISTANCE, top(loras.panel));
+	placeSide(lights.group, lights.panel, -1, ...(sides.right ? next : [w / 2 + GAP_SIDE, SCREEN_DISTANCE]), top(lights.panel));
 }
 
 screen.onResize = layout;
@@ -365,6 +359,7 @@ function recenter() {
 		uiGroup.rotation.y = 0;
 		yaw = pitch = 0;
 	}
+	scene.environmentRotation.y = uiGroup.rotation.y; // the model's reflections turn with its lights
 	center.model.reset();
 }
 

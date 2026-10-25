@@ -300,6 +300,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
 	let modelOn = false, stage3d = false, modelError = "", modelToken = 0;
+	let is3d = false;          // a 3D output (or a model) is on show: main.js shows the lighting toggle
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let gridOn = false, singleOn = false;
@@ -363,6 +364,8 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		gridOn = !previewing && out.view === "grid" && results.length >= 2;
 		modelOn = !gridOn && !previewing && current?.kind === "3d";
 		stage3d = modelOn || !gridOn && out.kind === "3d";
+		const was3d = is3d;
+		is3d = modelOn || out.kind === "3d";
 		singleOn = !gridOn && !modelOn && !!shown;
 		model.group.visible = modelOn && model.entry === current;
 		stage.mesh.visible = !singleOn && !model.group.visible;
@@ -382,6 +385,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		});
 		for (const p of [stage, stripPanel, status]) p.invalidate();
 		fitStage();
+		if (is3d !== was3d) screen.onResize();
 	}
 
 	// stage = screen diagonal at the aspect of the grid / displayed image (half width per eye in stereo); same-aspect previews keep it.
@@ -703,5 +707,5 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	nameLabel.setText(store.snapshot?.workflowName ?? "No workflow");
 	syncModeBtns();
 	loadOutputs();
-	return { group, status, strip: stripPanel, update, model };
+	return { group, status, strip: stripPanel, update, model, is3d: () => is3d };
 }
