@@ -36,15 +36,15 @@ export function createRightPanel({ THREE, store, ui }) {
 	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90, w: W });
 	const stack = new ScrollView({ x: M, w: W });
 	const field = new TextField({
-			x: M, w: W, placeholder: "search LoRAs", barAbove: true,
-			onInput: (v) => setQuery(v),
-			onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
-			onCancel: () => { editing = false; syncVisible(); },
-			// runs after the field commits a still-open previous edit, whose onDone clears the flag
-			onEdit: () => { editing = true; syncVisible(); loadSuggest(); },
-		});
+		x: M, w: W, placeholder: "search LoRAs", barAbove: true,
+		onInput: (v) => setQuery(v),
+		onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
+		onCancel: () => { editing = false; syncVisible(); },
+		// runs after the field commits a still-open previous edit, whose onDone clears the flag
+		onEdit: () => { editing = true; syncVisible(); loadSuggest(); },
+	});
 	const suggest = new List({ x: M, w: W, rowH: 60, size: 28, onSelect: (it) => { suggest.selected = undefined; add(it.value); } });
-	const grid = new ImageGrid({ x: M, w: W, cell: 180, onSelect: (it) => { grid.selected = undefined; add(it.value); } });
+	const grid = new ImageGrid({ x: M, w: W, cell: 180, onSelect: (it) => add(it.value) });
 	const prev = new Button({ text: "‹ Prev", x: M, w: 180, h: 60, onClick: () => goto(page - 1) });
 	const next = new Button({ text: "Next ›", x: M + W - 180, w: 180, h: 60, onClick: () => goto(page + 1) });
 	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, w: W - 380, h: 60 });
@@ -55,7 +55,7 @@ export function createRightPanel({ THREE, store, ui }) {
 			if (this.hover || this.pressed) {
 				ctx.beginPath();
 				ctx.roundRect(0, 0, this.w, this.h, 12);
-				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fillStyle = this.pressed ? ui.theme.pressed : ui.theme.hover;
 				ctx.fill();
 			}
 			ctx.beginPath();
@@ -172,7 +172,7 @@ export function createRightPanel({ THREE, store, ui }) {
 		try {
 			const res = await listLoras(query, 8);
 			if (id === suggestSeq) suggest.setItems(res.items.map((it) => ({ label: it.model_name || it.file_name, sub: it.base_model, value: it })));
-		} catch (e) {
+		} catch {
 			if (id === suggestSeq) suggest.setItems([]);
 		}
 	}
@@ -183,8 +183,6 @@ export function createRightPanel({ THREE, store, ui }) {
 	}
 
 	function setQuery(v, now) {
-		field.value = v;
-		field.invalidate();
 		query = v;
 		page = 1;
 		clearTimeout(timer);

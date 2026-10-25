@@ -34,7 +34,7 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		showStatus();
 	}
 	client.addEventListener("status", (e) => { remaining = e.detail.queueRemaining; showStatus(); });
-	client.addEventListener("executing", (e) => { running = e.detail.node != null; showStatus(); });
+	client.addEventListener("executing", () => { running = true; showStatus(); });
 	client.addEventListener("done", () => { running = false; showStatus(); });
 	client.addEventListener("interrupted", () => { running = false; showStatus(); });
 	client.addEventListener("error", (e) => { running = false; showError(e.detail.message); });
@@ -51,7 +51,6 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		});
 		return {
 			widgets: [label, box],
-			fill: true,
 			refresh: () => { box.value = String(store.get(input.key) ?? ""); },
 			place(y, h) {
 				label.x = box.x = 0; label.y = y; label.w = box.w = W; box.y = y + 52; box.h = h - 76;

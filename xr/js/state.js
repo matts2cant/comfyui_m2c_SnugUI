@@ -27,7 +27,7 @@ function cleanupLoraSyntax(text) {
     return cleaned.replace(/(^,)|(,$)/g, "").replace(/,\s*/g, ", ").trim();
 }
 
-export function applyLorasToText(text, loras) {
+function applyLorasToText(text, loras) {
     const byName = new Map();
     for (const lora of loras) if (lora && lora.name) byName.set(lora.name, lora);
     const kept = new Set();

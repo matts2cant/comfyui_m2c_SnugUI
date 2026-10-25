@@ -7,10 +7,9 @@ const STEREO_KEY = "appmode-xr.stereo";
 const STEREO_MODES = [["flat", "Flat"], ["lr", "3D L/R"], ["rl", "3D R/L"]];
 const THUMB = 512, LAYER_MAX = 3072;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
-// the quad layer path is untested on hardware: it is off until the HD button is pressed; false disables the button
-const ENABLE_QUAD_LAYER = true;
 const FLIP_Y = true; // layer textures follow GL row order, bottom row first
 
+// not ui.js's cached loader: preview blob URLs are one-shot
 const loadImg = (url) => new Promise((resolve, reject) => {
 	const img = new Image();
 	img.onload = () => resolve(img);
@@ -247,7 +246,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let gridOn = false, singleOn = false;
 	let loadToken = 0;
-	let hd = false;
+	let hd = false;            // quad layer, untested on hardware: off until the HD button is pressed
 	let stereo = loadStereo(), halves = [];
 	let stageAspect = 0;
 	// live previews stay flat
@@ -386,7 +385,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		refresh();
 	});
 
-	// each generate() press starts a new batch; its prompts' results land in it
+	// each Generate press starts an empty batch; results land in the batch of their prompt
 	store.addEventListener("generate", () => {
 		batch = { results: [] };
 	});
@@ -496,7 +495,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			quad = uploaded = null;
 			inLayers = false;
 		}
-		const binding = session && ENABLE_QUAD_LAYER && !layerFailed ? renderer.xr.getBinding() : null;
+		const binding = session && !layerFailed ? renderer.xr.getBinding() : null;
 		hdSupported = !!binding;
 		let hole = false;
 		if (binding && hd && singleOn && !previewing && !isSplit()) {

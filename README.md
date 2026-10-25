@@ -32,7 +32,7 @@ The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to
 - Trigger or hand pinch: click. Drag on sliders and lists.
 - Thumbstick up/down: scroll the list or panel under the ray.
 - Left grip (squeeze): recenter the panels in front of you.
-- Status bar above the image: Grid (batch view), HD (see below), To VR / To AR (switches mode).
+- Status bar under the history strip: Flat / 3D L/R / 3D R/L (side-by-side 3D images), Grid (batch view), HD (see below), To VR / To AR (switches mode).
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
 - Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, Del, arrows, Select all, Done). Tap to move

@@ -48,5 +48,4 @@ export function showHelp({ insecure }) {
 	}
 	const close = el("button", { marginTop: "10px", padding: "10px 22px", border: "0", borderRadius: "8px", background: "#303846", color: "#e8ecf2", font: "inherit", cursor: "pointer" }, box, "Continue to desktop preview");
 	close.onclick = () => backdrop.remove();
-	return { close: close.onclick };
 }

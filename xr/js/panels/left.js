@@ -9,19 +9,19 @@ const sizeOf = (pair, state) => orient(pair, state.orientation).map((n) => snapD
 const sizeText = (pair, state) => sizeOf(pair, state).join(" × ");
 
 // resolution presets as a two-column grid under a W × H title and a portrait / landscape switch
+const BTN_H = 64, GAP = 8, ORIENT_Y = 60, SIZES_Y = ORIENT_Y + BTN_H + 14, ROW = BTN_H + GAP;
 class SizePicker extends Widget {
 	constructor(o) {
 		super({ label: "", value: null, ...o });
 		this.relayout();
 	}
 	relayout() {
-		const rows = Math.ceil(this.value.sizes.length / 2);
-		this.h = 48 + 12 + 64 + 14 + rows * 72;
+		this.h = SIZES_Y + Math.ceil(this.value.sizes.length / 2) * ROW;
 	}
 	parts() {
-		const { w } = this, half = (w - 8) / 2, list = [];
-		["portrait", "landscape"].forEach((o, i) => list.push({ x: i * (half + 8), y: 60, w: half, h: 64, orientation: o, text: o === "portrait" ? "Portrait" : "Landscape" }));
-		this.value.sizes.forEach((pair, i) => list.push({ x: (i % 2) * (half + 8), y: 138 + (i >> 1) * 72, w: half, h: 64, selected: i, text: sizeText(pair, this.value) }));
+		const half = (this.w - GAP) / 2, list = [];
+		["portrait", "landscape"].forEach((o, i) => list.push({ x: i * (half + GAP), y: ORIENT_Y, w: half, h: BTN_H, orientation: o, text: o === "portrait" ? "Portrait" : "Landscape" }));
+		this.value.sizes.forEach((pair, i) => list.push({ x: (i % 2) * (half + GAP), y: SIZES_Y + (i >> 1) * ROW, w: half, h: BTN_H, selected: i, text: sizeText(pair, this.value) }));
 		return list.map((b, id) => ({ ...b, id }));
 	}
 	partAt(p) { return this.parts().find((b) => p.lx >= b.x && p.lx < b.x + b.w && p.ly >= b.y && p.ly < b.y + b.h) ?? null; }
@@ -55,7 +55,7 @@ class SizePicker extends Widget {
 			ctx.fillStyle = on ? theme.accent : theme.surface;
 			ctx.fill();
 			if (this.hover && b.id === this.hot?.id) {
-				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
 				ctx.fill();
 			}
 			ctx.font = `600 ${b.orientation ? 28 : 30}px ${theme.font}`;
@@ -66,7 +66,7 @@ class SizePicker extends Widget {
 }
 
 export function createLeftPanel({ THREE, store, client, ui }) {
-	const { Panel, Label, Toggle, Slider, Combo, TextField, ScrollView, stackY, theme } = ui;
+	const { Panel, Label, Toggle, Slider, Combo, TextField, ScrollView, stackY } = ui;
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);
@@ -74,6 +74,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	const title = new Label({ text: "Settings", size: 40, bold: true, x: 24, y: 24, w: W - 48 });
 
 	const decimals = (n) => (String(n).split(".")[1] ?? "").length;
+	const caption = (text) => new Label({ text, size: 24, color: theme.muted });
 	const show = (v) => (typeof v === "object" && v !== null ? JSON.stringify(v) : String(v));
 	const typed = (text, original) => {
 		const t = text.trim();
@@ -83,7 +84,6 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		try { return JSON.parse(text); } catch { return text; }
 	};
 
-	let view = null;
 	let entries = [];
 
 	// ---- main list ----
@@ -93,12 +93,11 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		const value = Number(store.get(input.key));
 		const min = input.min ?? Math.min(0, value);
 		const max = input.max ?? Math.max(100, value * 2);
-		const steps = (max - min) / step;
+		const steps = (max - min) / step, drag = steps <= 2000;
 		const dec = Math.max(decimals(step), decimals(input.round));
 		const slider = new Slider({
-			label, min, max, step, value,
-			drag: steps <= 2000,
-			bigStep: steps <= 2000 ? undefined : step * 10 ** Math.max(1, Math.floor(Math.log10(steps) / 2)),
+			label, min, max, step, value, drag,
+			bigStep: drag ? undefined : step * 10 ** Math.max(1, Math.floor(Math.log10(steps) / 2)),
 			format: float ? (v) => Number(v).toFixed(dec) : undefined,
 			onChange: (v) => store.set(input.key, v),
 		});
@@ -118,7 +117,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		});
 		const combo = new Combo({ options, current: store.get(input.key), size: 28, onChange: (v) => store.set(input.key, v) });
 		return {
-			widgets: [new Label({ text: label, size: 24, color: theme.muted }), combo],
+			widgets: [caption(label), combo],
 			update: () => combo.select(store.get(input.key)),
 		};
 	}
@@ -129,7 +128,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			onDone: (v) => store.set(input.key, v),
 		});
 		return {
-			widgets: [new Label({ text: label, size: 24, color: theme.muted }), field],
+			widgets: [caption(label), field],
 			update: () => { field.value = store.get(input.key); field.invalidate(); },
 		};
 	}
@@ -148,7 +147,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			},
 		});
 		return {
-			widgets: [new Label({ text: label, size: 24, color: theme.muted }), field],
+			widgets: [caption(label), field],
 			update: () => { field.value = show(store.get(input.key)); field.invalidate(); },
 		};
 	}
@@ -161,7 +160,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	function readOnlyFor(input, label) {
 		const value = show(input.value);
 		const text = `${value.length > 120 ? `${value.slice(0, 120)}…` : value}  (edit on desktop)`;
-		return { widgets: [new Label({ text: label, size: 24, color: theme.muted }), new Label({ text, size: 26, wrap: true })], update() {} };
+		return { widgets: [caption(label), new Label({ text, size: 26, wrap: true })], update() {} };
 	}
 
 	function controlFor(input, label) {
@@ -186,7 +185,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			const label = counts.get(input.label) > 1 ? `${input.nodeTitle} › ${input.label}` : input.label;
 			return { key: input.key, ...controlFor(input, label) };
 		});
-		view = new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 });
+		const view = new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 });
 		let y = 12;
 		for (const en of entries) y = stackY(en.widgets, { x: 12, y, w: W - 60, gap: 8 }) + 14;
 		view.setChildren(entries.length

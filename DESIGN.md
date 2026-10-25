@@ -24,7 +24,7 @@ __init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}
 ../web/appmode_xr.js     desktop extension (package-level web/): button, Alt+V, snapshot builder
 data/                    runtime data (snapshot.json) — gitignored
 xr/index.html            VR page shell
-xr/vendor/               three.module.js (+ three.core.js if the version splits it) — vendored three.js r17x
+xr/vendor/               three.module.js — vendored three.js r170
 xr/js/main.js            bootstrap, renderer, scene, XR session (AR/VR), desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
@@ -32,8 +32,8 @@ xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
-xr/js/panels/center.js   image display, progress, batch grid, history strip, top status bar
-xr/js/panels/bottom.js   prompt chips, seed, generate/cancel
+xr/js/panels/center.js   image display, batch grid, history strip, status bar
+xr/js/panels/bottom.js   prompt boxes, seeds, generate/cancel, run status
 xr/js/panels/left.js     settings controls
 xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
 ```
@@ -90,14 +90,14 @@ gets a dedicated type (`PIXAROMA_SIZES`: left-panel size picker, in the size gro
 ## Desktop extension (`../web/appmode_xr.js`)
 - `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
   keybindings: [{combo:{key:"v", alt:true}, commandId:"AppModeXR.Open"}], actionBarButtons: [{icon, label:"Open in VR", tooltip, onClick}] })`.
-- On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else build snapshot, POST, then
-  `window.open("/appmode-xr", "appmode-xr")`. Toast success/error via `app.extensionManager.toast`.
+- On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else `window.open("/appmode-xr",
+  "appmode-xr")` first (before any await, for the popup blocker), then build the snapshot and POST it. Toast success/error via `app.extensionManager.toast`.
 
 ## VR page architecture
 ### Shared contracts (implement exactly; panels depend on them)
 `ui.js`:
 ```js
-export const theme = { bg, panel, fg, muted, accent, danger, font: "system-ui, sans-serif", radius: 18 }
+export const theme = { bg, panel, surface, surfaceHi, border, fg, muted, accent, danger, pressed, hover, font: "system-ui, sans-serif", radius: 18 }
 export class Panel {                // a canvas-textured plane
   constructor({ name, widthM, heightM, pxPerM = 1000 })   // canvas = round(widthM*pxPerM) x round(heightM*pxPerM), max 2048
   mesh                              // THREE.Mesh, add to scene/group; mesh.userData.panel = this
@@ -114,9 +114,9 @@ Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
-Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable, cached image loading),
+Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
-export function loadImage(url) -> Promise<HTMLImageElement>  // cached
+List/ImageGrid thumbnails (`url`) load through a module-level image cache.
 ```
 `keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
 plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()` and `erase(dir)`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
@@ -146,7 +146,6 @@ export class ComfyClient extends EventTarget {
   queue(prompt, previewMethod) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id, extra_data: {preview_method}}; throws Error(message) on 4xx with node_errors summary
   interrupt()                       // POST /interrupt
   viewUrl({filename, subfolder, type})
-  objectInfo(classType)             // cached GET /object_info/{class}
   // events (CustomEvent detail): "snapshot" {id} | "status" {queueRemaining} | "executing" {node, prompt_id}
   // | "progress" {value, max, node, prompt_id} | "preview" {url (blob URL), prompt_id?} | "executed" {node, output, prompt_id}
   // | "done" {prompt_id} (executing with node null / execution_success) | "error" {prompt_id, message} | "interrupted" {prompt_id}
@@ -181,8 +180,8 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 `rules.js` — `classify(inputs, loraNodes)`, ordered rules, first match wins:
 1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by right panel via loraNodes)
 2. STRING && multiline → prompts (bottom)
-3. INT && (widget is "seed"/"noise_seed" or contains "seed" or control != null) → seeds (bottom)
-4. everything else → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
+3. INT && (widget or label contains "seed" or control != null) → seeds (bottom)
+4. everything else (and any input without targets, before rules 2-3) → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - everything on the plane z = -0.5 (eye at the origin). Screen: 32" diagonal at the aspect of what it shows (image; half width per eye in
@@ -190,8 +189,9 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 - under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge.
 - left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller).
 - all panels use scale 0.35; main.js `layout()` is the single place that positions them.
-Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, update(dt) }` where
-`ctx = { THREE, store, client, ui, scene, renderer, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
+Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center and
+bottom; main.js also reads `panel`, and center's `status` / `strip` panels) where
+`ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting(), mode() /* "ar"|"vr"|"desktop" */, toggleMode() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### main.js
@@ -218,31 +218,30 @@ main.js positions the returned group per the layout above (panel modules build t
   projection layer doesn't cover it; toggle "HD layer" in status bar to fall back to a mesh), mesh texture otherwise. Live
   previews from "preview" events while running; progress bar (value/max) + queue remaining in the status bar; batch results
   as a grid; history strip (session list, also persisted to localStorage, last 50) — tap thumbnail to show it.
-  Status bar: workflow name, progress, AR/VR toggle, HD toggle. Only images from `executed` events whose node is in
+  Status bar: workflow name, progress, queue, Flat / 3D L/R / 3D R/L (side-by-side image, one half per eye on XR layers 1/2,
+  persisted; previews stay flat; HD is off in 3D), Grid, HD, AR/VR toggle. Only images from `executed` events whose node is in
   snapshot.outputs (or any node if outputs is empty) and whose items are images (png/jpg/jpeg/webp).
 - bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
   placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
-  Seed row per seed input: value, 🎲 randomize-now, mode toggle fixed/randomize/increment. Big Generate button,
+  Seed row per seed input: value field, −/+, mode radio Fix/Rand/Incr. Big Generate button,
   Cancel (interrupt) button, queued/running indicator.
 - left: scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
   panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
   INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
   STRING single-line → TextField; UNSUPPORTED type with targets → TextField on the value as text (JSON for objects), converted back to the
   original value's type on commit; state.js writes such a value into the prompt only after it was edited. Inputs without targets are read-only.
-- right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05), expandable
-  clip strength, remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
+- right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05; clip
+  strength follows while equal), remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from
   item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). Selecting adds `{name: item.file_name,
-  strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clip_strength ?? strength, active: true}` (dedupe by name).
+  strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
 
-## Implementation notes (wave 1, binding for wave 2)
+## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
   `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`.
-- ctx also has `camera`; `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
-- comfy.js: `objectInfo(class)` resolves to the class entry; client sends feature_flags supports_preview_metadata (previews carry prompt_id).
-- state.js: exports `applyLorasToText`; `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
+- `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
+- comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
+- state.js: `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
 - Desktop snapshot POST goes to `/api/appmode-xr/snapshot` (ComfyUI mirrors routes under /api).
-- Wave-2 panel agents: edit ONLY your panel file. Need a new widget? Define it in your panel file. Found a bug in a shared
-  file? Don't fix it — report it (file, line, fix) in your final report.

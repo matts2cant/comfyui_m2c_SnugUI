@@ -170,7 +170,7 @@ const toggles = [sideToggle("left", "Settings"), sideToggle("right", "LoRAs")];
 const sidePanels = { left: settings, right: loras };
 const stripGroup = panelGroup(center.strip), statusGroup = panelGroup(center.status);
 const promptGroup = bottom.group;
-const panels = [center, bottom, settings, loras];
+const animated = [center, bottom];
 for (const g of [center.group, stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) uiGroup.add(g);
 for (const g of [stripGroup, statusGroup, promptGroup, settings.group, loras.group, ...toggles.map((t) => t.group)]) g.scale.setScalar(PANEL_SCALE);
 
@@ -223,7 +223,7 @@ async function loadSnapshot() {
 }
 store.client = ctx.client;
 ctx.client.addEventListener("snapshot", loadSnapshot);
-try { ctx.client.connect(); } catch (e) { console.warn("comfy connect failed", e); }
+ctx.client.connect();
 loadSnapshot();
 
 // ---- pointer input (shared by XR controllers and the mouse) ----
@@ -411,7 +411,7 @@ renderer.setAnimationLoop(() => {
 	meshes = [];
 	uiGroup.traverseVisible((o) => { if (o.userData.panel) meshes.push(o); });
 	updateControllers(dt);
-	for (const p of panels) p.update?.(dt);
+	for (const p of animated) p.update(dt);
 	ui.Panel.updateAll();
 	renderer.render(scene, camera);
 });

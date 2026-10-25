@@ -21,6 +21,7 @@ export function setRenderer(renderer) {
 export const theme = {
 	bg: "#0b0e13", panel: "#161a22", surface: "#242a35", surfaceHi: "#303846", border: "#323a49",
 	fg: "#e8ecf2", muted: "#8c96a8", accent: "#4c8dff", danger: "#e5484d",
+	pressed: "rgba(0,0,0,0.28)", hover: "rgba(255,255,255,0.1)", // tints over a control
 	font: "system-ui, sans-serif", radius: 18,
 };
 
@@ -86,12 +87,12 @@ function rrect(ctx, x, y, w, h, r) {
 function tint(ctx, wd, x, y, w, h, r) {
 	if (wd.disabled || !(wd.pressed || wd.hover)) return;
 	rrect(ctx, x, y, w, h, r);
-	ctx.fillStyle = wd.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+	ctx.fillStyle = wd.pressed ? theme.pressed : theme.hover;
 	ctx.fill();
 }
 
 const imageCache = new Map();
-export function loadImage(url) {
+function loadImage(url) {
 	let p = imageCache.get(url);
 	if (!p) {
 		p = new Promise((resolve, reject) => {
@@ -212,7 +213,7 @@ export class Slider extends Widget {
 	constructor(o) {
 		super({ label: "", min: 0, max: 1, step: 0.01, value: 0, drag: true, size: 28, w: 400, h: 124, ...o });
 		this.field = new TextField({
-			size: this.size, y: 0, h: 48, parent: this, panel: this.panel, compact: true,
+			size: this.size, h: 48, parent: this, compact: true,
 			onEdit: () => this.field.selectAll(),
 			onDone: (v) => {
 				const n = Number(v.trim().replace(",", "."));
@@ -317,7 +318,7 @@ export class Slider extends Widget {
 			ctx.fill();
 			if (this.hover && b === this.hotBtn || this.pressed && b === this.downBtn) {
 				rrect(ctx, b.x, b.y, b.w, b.h, 14);
-				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
 				ctx.fill();
 			}
 			ctx.font = font(b.t.length > 1 ? 28 : 38, true);
@@ -486,7 +487,7 @@ export class EditBar extends Widget {
 			ctx.fillStyle = b.text === "Done" ? theme.accent : theme.surface;
 			ctx.fill();
 			if (b === lit) {
-				ctx.fillStyle = this.pressed ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.1)";
+				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
 				ctx.fill();
 			}
 			ctx.fillStyle = theme.fg;
@@ -750,7 +751,7 @@ export class Combo extends TextField {
 
 export class ImageGrid extends Scrollable {
 	constructor(o) {
-		super({ items: [], selected: undefined, cell: 200, gap: 12, w: 600, h: 600, ...o });
+		super({ items: [], cell: 200, gap: 12, w: 600, h: 600, ...o });
 	}
 	grid() {
 		const cols = Math.max(1, Math.floor((this.w + this.gap) / (this.cell + this.gap)));
@@ -775,10 +776,7 @@ export class ImageGrid extends Scrollable {
 	}
 	onClick(p) {
 		const i = this.itemAt(p);
-		if (i < 0) return;
-		this.selected = this.items[i].value;
-		this.onSelect?.(this.items[i], i);
-		this.invalidate();
+		if (i >= 0) this.onSelect?.(this.items[i], i);
 	}
 	draw(ctx) {
 		const g = this.grid(), r = 14;
@@ -811,12 +809,6 @@ export class ImageGrid extends Scrollable {
 				ctx.fillRect(x, y, s, s);
 			}
 			ctx.restore();
-			if (this.selected !== undefined && it.value === this.selected) {
-				rrect(ctx, x + 2, y + 2, s - 4, s - 4, r);
-				ctx.strokeStyle = theme.accent;
-				ctx.lineWidth = 5;
-				ctx.stroke();
-			}
 		}
 		this.drawBar(ctx);
 	}
@@ -834,7 +826,6 @@ export class ScrollView extends Scrollable {
 		for (const c of children) { c.parent = this; c.setPanel(this.panel); }
 		this.invalidate();
 	}
-	add(child) { this.setChildren([...this.children, child]); }
 	clear() { this.scroll = 0; this.setChildren([]); }
 	setPanel(panel) {
 		super.setPanel(panel);
@@ -956,12 +947,6 @@ export class Panel {
 		this.invalidate();
 	}
 	invalidate() { this.dirty = true; }
-	dispose() {
-		Panel.all.delete(this);
-		this.texture.dispose();
-		this.mesh.geometry.dispose();
-		this.mesh.material.dispose();
-	}
 
 	draw() {
 		const { ctx } = this;

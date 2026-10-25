@@ -31,7 +31,6 @@ export class ComfyClient extends EventTarget {
     #previewUrl = null;
     #lastDone = null;
     #queued = new Set();
-    #objectInfo = new Map();
 
     #emit(type, detail) {
         this.dispatchEvent(new CustomEvent(type, { detail }));
@@ -138,16 +137,5 @@ export class ComfyClient extends EventTarget {
 
     viewUrl({ filename, subfolder = "", type = "output" }) {
         return `/view?${new URLSearchParams({ filename, subfolder, type })}`;
-    }
-
-    objectInfo(classType) {
-        if (!this.#objectInfo.has(classType)) {
-            const info = fetch(`/object_info/${encodeURIComponent(classType)}`)
-                .then(res => res.json())
-                .then(json => json[classType]);
-            info.catch(() => this.#objectInfo.delete(classType));
-            this.#objectInfo.set(classType, info);
-        }
-        return this.#objectInfo.get(classType);
     }
 }

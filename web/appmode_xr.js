@@ -31,6 +31,8 @@ async function nodeDef(classType) {
     return defCache.get(classType);
 }
 
+const WIDGET_KINDS = { number: "INT", combo: "COMBO", toggle: "BOOLEAN", boolean: "BOOLEAN", text: "STRING", customtext: "STRING", string: "STRING" };
+
 // input spec (of the first prompt target) -> snapshot type/fields; the App-mode widget only decides when there is no spec
 function describeInput(spec, widget) {
     const opts = spec?.[1] ?? {};
@@ -60,8 +62,6 @@ function describeInput(spec, widget) {
             return { type: "UNSUPPORTED" };
     }
 }
-
-const WIDGET_KINDS = { number: "INT", combo: "COMBO", toggle: "BOOLEAN", boolean: "BOOLEAN", text: "STRING", customtext: "STRING", string: "STRING" };
 
 // "260:12:5" -> node 5 inside subgraph node 12 inside subgraph node 260
 function nodeByExecutionId(id) {
@@ -108,10 +108,10 @@ async function findTargets(entries) {
     } finally {
         entries.forEach(({ widget }, i) => { if (sentinels[i] !== null) widget.value = originals[i]; });
     }
-    return entries.map(({ node, name }, i) => {
+    return entries.map(({ node, name, widget }, i) => {
         if (!node) return [];
         const baseName = name.replace(/#\d+$/u, "");
-        if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : jsonTargets(node, entries[i].widget, output);
+        if (sentinels[i] === null) return baseName in (output[node.id]?.inputs ?? {}) ? [{ nodeId: String(node.id), input: baseName, classType: output[node.id].class_type }] : jsonTargets(node, widget, output);
         return Object.entries(output).flatMap(([nodeId, n]) =>
             Object.entries(n.inputs).filter(([, v]) => v === sentinels[i]).map(([input]) => ({ nodeId, input, classType: n.class_type })));
     });
