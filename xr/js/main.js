@@ -51,6 +51,9 @@ async function enter() {
 	keyboard.setXR(true);
 	keyboard.commit();
 	needRecenter = true;
+	exit.disabled = false;
+	open = null; // each session starts with the side panels hidden
+	layout();
 	$("enter-vr").hidden = $("hint").hidden = true;
 }
 
@@ -63,6 +66,8 @@ function onSessionEnd() {
 	uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.rotation.y = scene.environmentRotation.y = yaw = pitch = 0;
 	$("enter-vr").hidden = $("hint").hidden = false;
+	exit.disabled = true;
+	toggles.invalidate();
 }
 
 $("enter-vr").onclick = () => enter().catch((e) => {
@@ -75,14 +80,16 @@ const needHelp = !window.isSecureContext || !navigator.xr;
 if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
 
 // ---- panels ----
-// Everything sits on the vertical plane z = -SCREEN_DISTANCE (eye at the origin). The screen is SCREEN_DIAGONAL_IN inches at the
-// aspect of what it shows; top to bottom under it: history strip, status bar, prompt panel (toggle buttons at its edges, the
-// lighting one only while a 3D output is shown). Side panels sit beside the screen, yawed at the eye, the lighting panel right
-// of the LoRA panel. Every panel group has PANEL_SCALE, so px density and fonts match.
+// The screen is SCREEN_DIAGONAL_IN inches at the aspect of what it shows, on the vertical plane z = -SCREEN_DISTANCE (eye at the
+// origin). Under it the lectern, tilted LECTERN_TILT back about its top edge: the output tiles (left) and the output-type panel
+// (right) in a band at the top when shown, the prompt panel below them and the toggle column right of it. The side slot stands
+// upright right of the toggle column (and clear of the screen), its bottom edge level with the prompt panel's back edge, turned
+// SIDE_YAW toward the viewer; it shows one side panel at a time, at SIDE_SCALE. Every other panel group has PANEL_SCALE, so px
+// density and fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
-const PANEL_SCALE = 0.35;
-const GAP_SCREEN_STRIP = 0.012, GAP_STRIP_STATUS = 0.012, GAP_STATUS_PROMPT = 0.003, GAP_TOGGLE = 0.003, GAP_SIDE = 0.02;
-const SIDES_KEY = "appmode-xr.sides";
+const PANEL_SCALE = 0.35, SIDE_SCALE = PANEL_SCALE * 1.5;
+const LECTERN_TILT = Math.PI / 4, SIDE_YAW = 28 * Math.PI / 180;
+const GAP_SCREEN = 0.012, GAP = 0.006, GAP_SIDE = 0.02;
 
 // size of the screen, filled in by the center panel whenever the displayed aspect changes
 const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: 1000 / PANEL_SCALE, w: 0, h: 0, onResize() {} };
@@ -93,29 +100,10 @@ const ctx = {
 };
 window.__xr = ctx;
 
-const sides = { left: true, right: true, lights: false };
-try {
-	Object.assign(sides, JSON.parse(localStorage.getItem(SIDES_KEY)));
-} catch {}
-
 function panelGroup(panel) {
 	const group = new THREE.Group();
 	group.add(panel.mesh);
 	return group;
-}
-
-// button panel on the prompt panel's edge that shows / hides a side panel
-function sideToggle(name, text) {
-	const panel = new ui.Panel({ name: "toggle-" + name, widthM: 0.18, heightM: 0.5 });
-	const button = panel.add(new ui.Button({ text, size: 28, x: 12, y: 12, w: panel.width - 24, h: panel.height - 24, toggled: sides[name] }));
-	button.onClick = () => {
-		sides[name] = button.toggled = !sides[name];
-		try {
-			localStorage.setItem(SIDES_KEY, JSON.stringify(sides));
-		} catch {}
-		layout();
-	};
-	return { group: panelGroup(panel), panel };
 }
 
 const center = createCenterPanel(ctx);
@@ -124,56 +112,64 @@ const settings = createLeftPanel(ctx);
 const loras = createRightPanel(ctx);
 const lights = createLightsPanel(ctx, center.model);
 scene.add(lights.room);
-const toggles = { left: sideToggle("left", "Settings"), right: sideToggle("right", "LoRAs"), lights: sideToggle("lights", "Lighting") };
-const stripGroup = panelGroup(center.strip), statusGroup = panelGroup(center.status);
-const promptGroup = bottom.group;
-const animated = [center, bottom];
-const scaled = [stripGroup, statusGroup, promptGroup, settings.group, loras.group, lights.group, ...Object.values(toggles).map((t) => t.group)];
-for (const g of [center.group, ...scaled]) uiGroup.add(g);
-for (const g of scaled) g.scale.setScalar(PANEL_SCALE);
 
-// side panel with its inner edge at (|x|, -z) = (innerX, innerZ), yawed so its center faces the eye; returns the next panel's inner edge
-function placeSide(group, panel, dir, innerX, innerZ, y) {
-	const half = panel.widthM * PANEL_SCALE / 2;
-	let a = 0;
-	for (let i = 0; i < 4; i++) a = Math.atan2(innerX + half * Math.cos(a), innerZ - half * Math.sin(a));
-	group.rotation.y = a * dir;
-	group.position.set(-dir * (innerX + half * Math.cos(a)), y, -(innerZ - half * Math.sin(a)));
-	return [innerX + (2 * half + GAP_SIDE) * Math.cos(a), innerZ - (2 * half + GAP_SIDE) * Math.sin(a)];
-}
+// side panels, in toggle column order: [name, icon, { group, panel }]
+const SIDES = [
+	["gallery", "images", { group: panelGroup(center.gallery), panel: center.gallery }],
+	["lora", "layers", loras],
+	["light", "sun", lights],
+	["config", "settings", settings],
+];
+let open = null; // the side panel on show; every session starts with none
+
+// round icon buttons that work like tabs (pressing the open one closes it), then Exit
+const toggles = new ui.Panel({ name: "toggles", widthM: 0.14, heightM: 0.6, bg: null });
+const tabs = SIDES.map(([name, icon], i) => toggles.add(new ui.Button({
+	icon, round: true, x: 20, y: 14 + i * 118, w: 100, h: 100,
+	onClick: () => {
+		open = open === name ? null : name;
+		layout();
+	},
+})));
+// ends the XR session; disabled (a no-op) on the desktop
+const exit = toggles.add(new ui.Button({ icon: "x", round: true, disabled: true, x: 20, y: 14 + SIDES.length * 118, w: 100, h: 100, onClick: () => renderer.xr.getSession()?.end() }));
+
+const lectern = new THREE.Group();
+lectern.rotation.x = -LECTERN_TILT;
+const tilesGroup = panelGroup(center.tiles), kindGroup = panelGroup(center.kind), togglesGroup = panelGroup(toggles);
+const onLectern = [tilesGroup, kindGroup, bottom.group, togglesGroup];
+const sideGroups = SIDES.map(([, , side]) => side.group);
+lectern.add(...onLectern);
+uiGroup.add(center.group, lectern, ...sideGroups);
+for (const g of onLectern) g.scale.setScalar(PANEL_SCALE);
+for (const g of sideGroups) g.scale.setScalar(SIDE_SCALE);
 
 function layout() {
 	const { w, h } = screen;
-	const at = (group, x, y) => group.position.set(x, y, -SCREEN_DISTANCE);
-	const sizeOf = (panel) => [panel.widthM * PANEL_SCALE, panel.heightM * PANEL_SCALE];
-	at(center.group, 0, 0);
+	const size = (panel, k = PANEL_SCALE) => [panel.widthM * k, panel.heightM * k];
+	center.group.position.set(0, 0, -SCREEN_DISTANCE);
 
-	let y = -h / 2 - GAP_SCREEN_STRIP;
-	const [, stripH] = sizeOf(center.strip);
-	at(stripGroup, 0, y - stripH / 2);
-	y -= stripH + GAP_STRIP_STATUS;
-	const [, statusH] = sizeOf(center.status);
-	at(statusGroup, 0, y - statusH / 2);
-	y -= statusH + GAP_STATUS_PROMPT;
-	const [promptW, promptH] = sizeOf(bottom.panel);
-	at(promptGroup, 0, y - promptH / 2);
+	// lectern frame: origin at the middle of its top edge, x right, y up the slope; panels are placed by their top edge
+	lectern.position.set(0, -h / 2 - GAP_SCREEN, -SCREEN_DISTANCE);
+	const at = (group, panel, x, top) => group.position.set(x, -top - size(panel)[1] / 2, 0);
+	const [promptW] = size(bottom.panel), [togglesW] = size(toggles);
+	const band = center.tiles.mesh.visible || center.kind.mesh.visible ? size(center.tiles)[1] + GAP : 0;
+	at(tilesGroup, center.tiles, (size(center.tiles)[0] - promptW) / 2, 0);
+	at(kindGroup, center.kind, (promptW - size(center.kind)[0]) / 2, 0);
+	at(bottom.group, bottom.panel, 0, band);
+	at(togglesGroup, toggles, promptW / 2 + GAP + togglesW / 2, band);
+	tabs.forEach((b, i) => { b.toggled = SIDES[i][0] === open; });
+	toggles.invalidate();
 
-	const [toggleW] = sizeOf(toggles.left.panel), toggleX = promptW / 2 + GAP_TOGGLE + toggleW / 2, toggleY = y - promptH / 2;
-	at(toggles.left.group, -toggleX, toggleY);
-	at(toggles.right.group, toggleX, toggleY);
-	at(toggles.lights.group, toggleX + toggleW + GAP_TOGGLE, toggleY);
-
-	// side panels top aligned with the screen, centered at eye level when taller
-	const top = (panel) => Math.max(0, h / 2 - panel.heightM * PANEL_SCALE / 2);
-	const is3d = center.is3d();
-	settings.group.visible = sides.left;
-	loras.group.visible = sides.right;
-	toggles.lights.group.visible = is3d;
-	lights.group.visible = is3d && sides.lights;
-	lights.setActive(is3d);
-	placeSide(settings.group, settings.panel, 1, w / 2 + GAP_SIDE, SCREEN_DISTANCE, top(settings.panel));
-	const next = placeSide(loras.group, loras.panel, -1, w / 2 + GAP_SIDE, SCREEN_DISTANCE, top(loras.panel));
-	placeSide(lights.group, lights.panel, -1, ...(sides.right ? next : [w / 2 + GAP_SIDE, SCREEN_DISTANCE]), top(lights.panel));
+	// side slot: the bottom edge of the panel sits on the prompt panel's back edge, its inner edge at innerX
+	const backY = lectern.position.y - band * Math.cos(LECTERN_TILT), backZ = -SCREEN_DISTANCE + band * Math.sin(LECTERN_TILT);
+	const innerX = Math.max(promptW / 2 + GAP + togglesW, w / 2) + GAP_SIDE;
+	for (const [name, , { group, panel }] of SIDES) {
+		const [sw, sh] = size(panel, SIDE_SCALE);
+		group.visible = name === open;
+		group.rotation.y = -SIDE_YAW;
+		group.position.set(innerX + sw / 2 * Math.cos(SIDE_YAW), backY + sh / 2, backZ + sw / 2 * Math.sin(SIDE_YAW));
+	}
 }
 
 screen.onResize = layout;
@@ -438,7 +434,7 @@ renderer.setAnimationLoop(() => {
 	meshes = [];
 	uiGroup.traverseVisible((o) => { if (o.userData.panel) meshes.push(o); });
 	updateControllers(dt);
-	for (const p of animated) p.update(dt);
+	center.update(dt);
 	ui.Panel.updateAll();
 	renderer.render(scene, camera);
 });

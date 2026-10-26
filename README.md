@@ -22,38 +22,42 @@ If the page opens without WebXR, it shows the same instructions with your addres
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter VR.
-4. Layout: image and history in the middle, prompt/seed/Generate at the bottom, settings on the left,
-   LoRAs on the right. Text fields have an edit toolbar with a Quest keyboard button.
+4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompts, seeds, progress,
+   Generate, Cancel). A column of round buttons right of it opens one side panel at a time beside the screen: Gallery,
+   LoRA, Light, Configuration (press the open one again to close it); the last button, X, leaves VR. Side panels start
+   closed. Text fields have an edit toolbar with a Quest keyboard button.
 
 The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters,
-shift- or right-drag moves the 3D model.
+shift- or right-drag moves the 3D model. The X button does nothing there.
 
 ## Settings tabs
 
-Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the left panel.
+Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the Configuration panel.
 Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
-The selected tab is remembered per workflow. Prompts and seeds in the bottom panel only get the prefix stripped.
+The selected tab is remembered per workflow. Prompts and seeds on the prompt panel only get the prefix stripped.
 
 ## Several outputs and 3D models
 
-If App mode marks several output nodes, a row of buttons under the status bar picks which one the screen shows (remembered per workflow).
-A dot marks an output with new results; the view never switches on its own. History and Grid follow the selected output.
+If App mode marks several output nodes, a row of tiles above the prompt panel (image or cube icon and the node title) picks which one
+the screen shows (remembered per workflow). A dot marks an output with new results; the view never switches on its own. The Gallery
+follows the selected output. With a single output there are no tiles.
 Outputs that save or preview a 3D model (Save 3D Model, Preview 3D...) show the GLB in front of you at the screen's size, just behind it.
 Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms.
 Squeeze the grip while pointing at it to grab it: it follows the controller until you let go. Grab it with both grips to
 scale it (move the hands apart or together), turn it and move it. Recenter puts it back behind the screen at its first size.
 
-While a 3D output is shown, a Lighting button appears right of LoRAs. It opens a panel of lighting presets (Neutral studio,
-High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour) that change the model's lights, its
-reflections and the room around you. The choice is remembered. Panels and images are not affected; with an image output the
-room stays dark.
+The Light button opens lighting presets (Neutral studio, High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast,
+Golden hour) that change the 3D model's lights, its reflections and the room around you, also while an image is shown. The
+choice is remembered. Panels and images are not lit.
 
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.
 - Thumbstick up/down: scroll the list or panel under the ray.
 - Grip (squeeze) on the 3D model: grab it. Left grip elsewhere: recenter the panels in front of you.
-- Status bar under the history strip: Flat / 3D L/R / 3D R/L (side-by-side 3D images), Grid (batch view), HD (see below).
+- Gallery: the results of the selected output; tap one to show it.
+- Small panel above the prompt panel, right (image outputs only): Flat / 3D R/L / 3D L/R (side-by-side 3D images), HD (see below).
+- Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
 - Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, Del, arrows, Select all, Done). Tap to move

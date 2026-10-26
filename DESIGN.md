@@ -34,11 +34,11 @@ xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
-xr/js/panels/center.js   image display, batch grid, history strip, status bar
-xr/js/panels/bottom.js   prompt boxes, seeds, generate/cancel, run status
-xr/js/panels/left.js     settings controls
-xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
-xr/js/panels/lights.js   lighting presets panel: the model's lights, PMREM environments, the room (grid + gradient sphere)
+xr/js/panels/center.js   image / 3D model display, output tiles, output-type panel, gallery side panel
+xr/js/panels/bottom.js   prompt panel: workflow name, prompt boxes, seeds, progress bar (run status), generate/cancel
+xr/js/panels/left.js     Configuration side panel: settings controls
+xr/js/panels/right.js    LoRA side panel(s) + LoRA Manager API client
+xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere)
 ```
 
 ## Server (`__init__.py`)
@@ -87,7 +87,7 @@ Canonical widgetId = `${rootGraph.id}:${encodeURIComponent(nodeId)}:${encodeURIC
 Subgraphs: the API prompt is flattened (ids like `260:12`, nested `a:b:c`), so widgets on a subgraph node are resolved empirically: the
 builder sets a unique sentinel on each, calls `graphToPrompt()` once, scans the prompt for it (`targets`, one widget may feed several
 inner nodes), then restores every value. Plain node widgets map straight to their own prompt input. An input with no targets is type
-UNSUPPORTED and read-only (left panel shows "edit on desktop"), as is an entry whose widget is not found on its node; `buildPrompt` writes each value to all of its targets.
+UNSUPPORTED and read-only (the Configuration panel shows "edit on desktop"), as is an entry whose widget is not found on its node; `buildPrompt` writes each value to all of its targets.
 An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidden JSON-string input `SizesState`, injected by the node's
 own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
@@ -186,7 +186,7 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 `inputs.text` regenerated the way `web/comfyui/lora_syntax_utils.js` (`applyLoraValuesToText`) does in comfyui-lora-manager.
 
 `rules.js` — `classify(inputs, loraNodes)`, ordered rules, first match wins:
-1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by right panel via loraNodes)
+1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by the LoRA panel via loraNodes)
 2. STRING && multiline → prompts (bottom)
 3. INT && (widget or label contains "seed" or control != null) → seeds (bottom)
 4. everything else (and any input without targets, before rules 2-3) → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
@@ -196,21 +196,46 @@ Before the rules, each input is copied with its App-mode name parsed: a leading 
 labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
-- everything on the plane z = -0.5 (eye at the origin). Screen: 32" diagonal at the aspect of what it shows (image; half width per eye in
-  stereo; grid aspect; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js -> `screen.onResize`).
-- under it, top to bottom: history strip, status bar, prompt panel (same width); "Settings" / "LoRAs" toggle buttons on its left / right edge,
-  a "Lighting" toggle right of the LoRAs one, shown only while a 3D output is on show (center's `is3d()`).
-- left / right panels beside the screen with a gap, yawed at the eye, top aligned with the screen (centered at eye level if taller); the
-  lighting panel the same, right of the LoRA panel (in its place when the LoRA panel is hidden). Open states in localStorage
-  `appmode-xr.sides` = {left, right, lights} (lights closed by default).
-- all panels use scale 0.35; main.js `layout()` is the single place that positions them and sets their visibility (center calls
-  `screen.onResize()` when the stage or the status bar changes size, or when `is3d()` flips); it also calls the lighting panel's
-  `setActive(is3d)`.
-Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center and
-bottom; main.js also reads `panel`, and center's `status` / `strip` panels, `model` and `is3d()`; the lighting panel is
-`createLightsPanel(ctx, center.model) -> { group, panel, room, setActive(on) }`, main.js adds `room` to the scene) where
+- Screen: on the vertical plane z = -0.5 (`SCREEN_DISTANCE`, eye at the origin), 32" diagonal at the aspect of what it shows (image;
+  half width per eye in stereo; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js ->
+  `screen.onResize`). A 3D output keeps the last size.
+- Lectern (a group in main.js): its top edge centered under the screen, `GAP_SCREEN` 0.012 below the screen's bottom edge on the screen
+  plane, tilted `LECTERN_TILT` 45° back about that edge (rotation.x = -45°: the surface faces up and toward the eyes, the near edge comes
+  down toward the viewer). Laid out in its own plane, from its top edge down the slope:
+  - a band (`BAND_H` 0.1 panel units + `GAP` 0.006 m), only when the output tiles or the output-type panel is shown: the tiles panel
+    (1.2 wide, no background) at the left, the output-type panel (0.56 wide) at the right, both flush with the prompt panel's edges;
+  - the prompt panel (1.8 x 0.6), centered;
+  - the toggle column (0.14 x 0.6, no background) right of the prompt panel with `GAP`, top aligned with it.
+- Side slot: one side panel at a time, all 0.85 x 1.15 at `SIDE_SCALE` = 1.5 x 0.35 (same canvas px, 1.5x larger in the world, so the
+  controls are 1.5x larger to hit). Upright, its bottom edge level with the prompt panel's back (top) edge, its inner edge at
+  `max(prompt right edge + GAP + toggle column width, screen half width) + GAP_SIDE` (0.02) and that edge's depth, turned `SIDE_YAW` 28°
+  toward the viewer about its inner edge.
+- every other panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the side
+  panels' visibility (center calls `screen.onResize()` when the stage changes size or when the band appears / disappears: center sets
+  `tiles.mesh.visible` and `kind.mesh.visible`, layout reads them).
+Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
+main.js also reads `panel`, and center's `tiles` / `kind` / `gallery` panels and `model`; the lighting panel is
+`createLightsPanel(ctx, center.model) -> { group, panel, room }`, main.js adds `room` to the scene) where
 `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
+
+### Toggle column and icons
+Round icon `Button`s (main.js), top to bottom: Gallery, LoRA, Light, Configuration, Exit. The first four work like tabs: pressing one opens its
+side panel in the slot and closes the other, pressing the open one closes it; the open one is `toggled`. Nothing is open at page load or at the
+start of an XR session, and the open panel is not persisted. Exit ends the XR session (`session.end()`); on the desktop it is disabled (a
+no-op). Icons are Lucide (ISC), copied into `icons.js` from the Lucide SVGs in the frontend's `main-*.css` (`lucide--<name>`); to swap one,
+copy another Lucide icon's path data under its name and change the name where it is used:
+
+| Use | Lucide icon | Where |
+|---|---|---|
+| Gallery | `images` | main.js `SIDES` |
+| LoRA | `layers` | main.js `SIDES` |
+| Light | `sun` (no `lightbulb` in the frontend's set) | main.js `SIDES` |
+| Configuration | `settings` | main.js `SIDES` |
+| Exit | `x` | main.js |
+| Image output tile | `image` | center.js `loadOutputs` |
+| Mesh output tile | `box` | center.js `loadOutputs` |
+| Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | bottom.js `MODES` |
 
 ### main.js
 - On load: if `!window.isSecureContext || !navigator.xr` (and not desktop dev) → still render the desktop 3D view but show help.js overlay
@@ -244,33 +269,39 @@ main.js positions the returned group per the layout above (panel modules build t
 
 ### Panels (behavior)
 - center: shows the latest image (fit, keep aspect) — XR quad layer for crispness when `layers` granted (hole-punch so the
-  projection layer doesn't cover it; toggle "HD layer" in status bar to fall back to a mesh), mesh texture otherwise. Live
-  previews from "preview" events while running; progress bar (value/max) + queue remaining in the status bar; batch results
-  as a grid; history strip (session list, also persisted to localStorage, last 50) — tap thumbnail to show it.
-  Status bar: workflow name, progress, queue, Flat / 3D L/R / 3D R/L (side-by-side image, one half per eye on XR layers 1/2,
-  persisted; previews stay flat; HD is off in 3D), Grid, HD.
-  Outputs: with two outputs or more the status bar grows a second row (height 0.21 instead of 0.12) of `OutputButton`s, one per output
-  labelled with its title (ellipsized), the shown one `toggled`; selection is manual only and kept in localStorage
+  projection layer doesn't cover it; the HD button falls back to a mesh), mesh texture otherwise. Live previews from "preview" events
+  while running; a batch shows its last image (all of them are in the gallery).
+  Gallery side panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
+  output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
+  Output tiles (tiles panel): with two outputs or more, one `OutputTile` per output (an `image` / `box` icon and the title, ellipsized, at
+  most 380 px wide), the shown one `toggled`; none with a single output. Selection is manual only and kept in localStorage
   `appmode-xr.output.<workflowName>` (try/catch, falls back to the first output). With no outputs one catch-all output takes every node.
+  Output-type panel: the controls of the selected output's kind, `kindControls[kind]()`; an empty list hides the panel. Image: Flat /
+  3D R/L / 3D L/R (side-by-side image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD
+  (disabled in stereo, on the desktop and while a 3D result is on show). Mesh: none yet.
   Results come from `executed` events whose node is an output: images from `ui.images` (png/jpg/jpeg/webp) and 3D files (glb/gltf) from
   `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
   `ui.result[0]` = a path under output/ (deprecated Preview 3D); the same shapes the frontend's readModel3DOutput reads. Each output keeps
-  its own batch (per prompt), current entry and Grid state; a result for an output not on show only sets a dot on its button.
-  History entries carry `node` (output id) and `kind`; the strip and grid show the selected output's entries; entries whose node is not an
-  output (older entries, other workflows) go to the first output of their kind, else the first output. 3D tiles are a cube outline + file name.
+  its own current entry; a result for an output not on show only sets a dot on its tile.
+  History entries carry `node` (output id) and `kind`; the gallery shows the selected output's entries; entries whose node is not an
+  output (older entries, other workflows) go to the first output of their kind, else the first output. 3D gallery tiles are a cube outline
+  + file name.
   3D: when the shown entry is a model (or the selected output is 3D) the stage keeps its last size so no panel moves, the image mesh /
-  quad layer and the stereo and HD buttons are off, and live previews are ignored while a 3D output is selected. The stage panel shows
+  quad layer are off, and live previews are ignored while a 3D output is selected. The stage panel shows
   "Loading 3D model…" / the load error until the model is ready, then hides. model.js loads with GLTFLoader (materials as in the file),
   fits the scene's box into the stage width and height, centers it on the stage center (eye level) and pushes it back so the turned box's
   front stays 1 cm behind the screen plane (until grabbed); key / fill / rim directional lights and a hemisphere in its group, set by the
   lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
-- bottom: one row per prompt input: label + a plain multi-line TextField box (full prompt, word-wrapped, clipped with "…";
-  placeholder "Tap to edit prompt"); tap edits in place (multiline TextField, live onInput) and store.set the whole text.
-  Seed row per seed input: value field, −/+, mode radio Fix/Rand/Incr. Big Generate button,
-  Cancel (interrupt) button, queued/running indicator.
-- left: scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
+- bottom (prompt panel, 1800 x 600 px): the workflow name at the top left. Left: one row per prompt input, sharing the height: label + a
+  plain multi-line TextField box (full prompt, word-wrapped, clipped with "…"; placeholder "Tap to edit prompt"); tap edits in place
+  (multiline TextField, live onInput) and store.set the whole text. Right column (700 px; the whole width when there is no prompt input),
+  top to bottom: one row per seed input (label, −, value field, +, then the mode icons `lock` = fixed, `plus` = increment, `shuffle` =
+  randomize, the current one `toggled`; more than two rows scroll), the progress bar, the Generate button (fills the rest), Cancel
+  (interrupt, enabled while running or queued). Progress bar = run status: `value/max` fill and step, the running node's title, "Queued",
+  "Idle", "Interrupted" or the error (red, until the next run), plus "· N in queue" when more than one prompt is queued.
+- left (Configuration side panel): scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
   panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
   INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
   STRING single-line → TextField; UNSUPPORTED type with targets → TextField on the value as text (JSON for objects), converted back to the
@@ -279,19 +310,18 @@ main.js positions the returned group per the layout above (panel modules build t
   tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
   and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` (try/catch) and falls back to the first tab
   when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
-- right: one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05; clip
+- right (LoRA side panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05; clip
   strength follows while equal), remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
   `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from
   item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
-- lights: title + 7 preset `Button`s (the current one `toggled`), applied instantly, no sliders: Neutral studio (default), High-key studio,
+- lights: title + 7 preset `Button`s (the current one `toggled`), applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
   Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting` (try/catch).
   Each preset (table in lights.js) gives key / fill / rim `[color, intensity, x, y, z]` (x y z towards the light in the stage frame,
   +z towards the viewer), the hemisphere `[sky, ground, intensity]`, a 3-stop sky gradient (top, horizon, bottom) and `env`
-  `[panel side, radiance gain]`. While active (3D on show): the room's sphere is repainted with the preset gradient and
-  `scene.environment` is the preset's PMREM: `PMREMGenerator.fromScene` of a small scene (the same gradient on a sphere plus one
-  emissive square per light, in its direction and color), generated on first use and cached per preset (one generator kept). Inactive:
-  the room gradient is the original dark one and `scene.environment` is null, so image views render exactly as before.
+  `[panel side, radiance gain]`. The room's sphere is painted with the preset gradient and `scene.environment` is the preset's PMREM:
+  `PMREMGenerator.fromScene` of a small scene (the same gradient on a sphere plus one emissive square per light, in its direction and
+  color), generated on first use and cached per preset (one generator kept). Images stay unlit.
   `scene.environmentRotation.y` follows the ui yaw on recenter so reflections turn with the lights. Only the model's
   MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
   At most 3 directional lights, no shadows.

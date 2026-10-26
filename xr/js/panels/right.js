@@ -1,4 +1,4 @@
-// Right panel: LoRA stack of the selected LoRA Manager node (tabs when there are several) plus a
+// LoRA side panel: LoRA stack of the selected LoRA Manager node (tabs when there are several) plus a
 // library browser backed by LoRA Manager's HTTP API (/api/lm/loras/list).
 const NO_PREVIEW = "/loras_static/images/no-preview.png";
 const STEP = 0.05;

@@ -1,11 +1,10 @@
 // Lighting panel: preset buttons for the 3D model's look. A preset sets the model's key / fill / rim lights and hemisphere
 // (model.light), an environment map for its reflections (PMREM of a small scene: the preset's gradient sky plus one emissive
-// panel per light, built once per preset) and the room's gradient. The room only takes the preset while a 3D output is shown.
-// Panels and images use unlit, non tone mapped materials, so none of this changes them.
+// panel per light, built once per preset) and the room's gradient, whatever the output on show. Panels and images use unlit,
+// non tone mapped materials, so none of this changes them.
 import * as THREE from "three";
 
 const PRESET_KEY = "appmode-xr.lighting";
-const ROOM_SKY = ["#0f1626", "#06080c"]; // the room while images are shown, top to bottom
 const ENV_DIST = 5;
 
 // key / fill / rim: [color, intensity, x, y, z], x y z pointing at the light in the stage frame (+y up, +z towards the viewer);
@@ -87,20 +86,20 @@ function buildEnvironment(pmrem, { sky, env: [side, gain], key, fill, rim }) {
 }
 
 export function createLightsPanel({ ui, scene, renderer }, model) {
-	const panel = new ui.Panel({ name: "lights", widthM: 0.5, heightM: 0.8 });
+	const panel = new ui.Panel({ name: "lights", widthM: 0.85, heightM: 1.15 });
 	const group = new THREE.Group();
 	group.add(panel.mesh);
 	panel.add(new ui.Label({ text: "Lighting", size: 34, bold: true, x: 24, y: 14, w: panel.width - 48, h: 50 }));
-	const buttons = PRESETS.map((p, i) => panel.add(new ui.Button({ text: p.name, size: 28, x: 24, y: 84 + i * 100, w: panel.width - 48, h: 86, onClick: () => select(p) })));
+	const buttons = PRESETS.map((p, i) => panel.add(new ui.Button({ text: p.name, size: 32, x: 24, y: 84 + i * 124, w: panel.width - 48, h: 104, onClick: () => select(p) })));
 
-	// dim room around the panels: floor grid and a gradient sphere
+	// room around the panels: floor grid and a sphere with the preset's gradient
 	const room = new THREE.Group();
-	const sky = skyTexture(ROOM_SKY);
+	const sky = skyTexture(PRESETS[0].sky);
 	room.add(new THREE.GridHelper(12, 24, 0x2a3446, 0x1a2230));
 	room.add(new THREE.Mesh(new THREE.SphereGeometry(40, 24, 16), new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, depthWrite: false })));
 
 	const envs = new Map();
-	let pmrem = null, active = false, preset = PRESETS[0];
+	let pmrem = null, preset = PRESETS[0];
 	try {
 		preset = PRESETS.find((p) => p.name === localStorage.getItem(PRESET_KEY)) ?? preset;
 	} catch {}
@@ -109,13 +108,13 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 		buttons.forEach((b, i) => { b.toggled = PRESETS[i] === preset; });
 		panel.invalidate();
 		model.light(preset);
-		paintSky(sky.image, active ? preset.sky : ROOM_SKY);
+		paintSky(sky.image, preset.sky);
 		sky.needsUpdate = true;
-		if (active && !envs.has(preset)) {
+		if (!envs.has(preset)) {
 			pmrem ??= new THREE.PMREMGenerator(renderer);
 			envs.set(preset, buildEnvironment(pmrem, preset));
 		}
-		scene.environment = active ? envs.get(preset) : null;
+		scene.environment = envs.get(preset);
 	}
 
 	function select(p) {
@@ -127,13 +126,5 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 	}
 
 	apply();
-	return {
-		group, panel, room,
-		// on while a 3D output is shown: the room and the environment follow the preset
-		setActive(on) {
-			if (on === active) return;
-			active = on;
-			apply();
-		},
-	};
+	return { group, panel, room };
 }
