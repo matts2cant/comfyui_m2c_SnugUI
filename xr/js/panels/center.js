@@ -6,7 +6,8 @@ import { createModelView } from "../model.js";
 const TILES_W = 1.2, KIND_W = 0.56, BAND_H = 0.1; // the band over the prompt panel: TILES_W + gap + KIND_W = its width
 const TILE_W = 380;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
-const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50;
+const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
+const MISSING = "File no longer exists — removed from the gallery";
 const STEREO_KEY = "appmode-xr.stereo";
 const OUTPUT_KEY = "appmode-xr.output"; // + .<workflowName>
 const STEREO_MODES = [["flat", "Flat"], ["rl", "3D R/L"], ["lr", "3D L/R"]];
@@ -39,9 +40,10 @@ function drawFit(ctx, src, x, y, w, h) {
 	ctx.drawImage(src, x + (w - src.width * k) / 2, y + (h - src.height * k) / 2, src.width * k, src.height * k);
 }
 
+// temp previews (Preview Image, Preview 3D) do not survive a ComfyUI restart: never persisted
 function loadHistory() {
 	try {
-		return JSON.parse(localStorage.getItem(HISTORY_KEY)) ?? [];
+		return (JSON.parse(localStorage.getItem(HISTORY_KEY)) ?? []).filter((e) => e.type !== "temp");
 	} catch {
 		return [];
 	}
@@ -58,7 +60,7 @@ function loadStereo() {
 
 function saveHistory(history) {
 	try {
-		localStorage.setItem(HISTORY_KEY, JSON.stringify(history.map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
+		localStorage.setItem(HISTORY_KEY, JSON.stringify(history.filter((e) => e.type !== "temp").map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
 	} catch {}
 }
 
@@ -199,7 +201,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shown = null;          // HTMLImageElement on the mesh / layer
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
-	let modelOn = false, stage3d = false, modelError = "", modelToken = 0;
+	let modelOn = false, stage3d = false, notice = "", modelToken = 0;
 	let band = null;           // the tiles or the output-type panel is shown: main.js leaves room for them
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
@@ -254,6 +256,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		kindPanel.mesh.visible = kindPanel.widgets.length > 0;
 		const { current } = o;
 		if (current && current !== (current.kind === "3d" ? model.entry : shownEntry)) return showEntry(current);
+		notice = "";
 		// an image output without results shows nothing; a 3D one keeps the stage as it is
 		if (!current && o.kind === "image") shown = shownEntry = null;
 		refresh();
@@ -270,7 +273,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		gallery.items = history.filter((e) => ownerOf(e) === out);
 		galleryTitle.setText(tiles.length ? `Gallery · ${out.title}` : "Gallery");
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
-			: modelOn ? modelError || "Loading 3D model…" : out.kind === "3d" ? "No 3D models yet" : "No images yet");
+			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
 		for (const b of modeBtns) b.disabled = stage3d;
 		tiles.forEach((t, i) => {
 			t.toggled = outputs[i] === out;
@@ -353,8 +356,38 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		});
 	}
 
+	// only a 404 means the file is gone; the rest (network, parse) leave the history alone
+	const isMissing = (entry) => fetch(entry.url, { method: "HEAD" }).then((r) => r.status === 404, () => false);
+
+	// removes entries whose file is gone; an output that showed one falls back to its next entry
+	function dropEntries(gone) {
+		const { current } = out;
+		history.splice(0, history.length, ...history.filter((e) => !gone.includes(e)));
+		saveHistory(history);
+		for (const o of outputs) if (gone.includes(o.current)) o.current = history.find((e) => ownerOf(e) === o) ?? null;
+		if (gone.includes(shownEntry) || !out.current && out.kind === "image") shown = shownEntry = null;
+		if (!gone.includes(current)) return refresh();
+		if (out.current) showEntry(out.current);
+		else refresh();
+	}
+
+	// the message stays unless a fallback entry took the stage
+	function showMissing() {
+		notice = MISSING;
+		refresh();
+	}
+
+	async function pruneMissing(entries) {
+		const gone = [];
+		await Promise.all(Array.from({ length: CHECK_PARALLEL }, async () => {
+			for (let e; (e = entries.shift());) if (await isMissing(e)) gone.push(e);
+		}));
+		if (gone.length) dropEntries(gone);
+	}
+
 	async function showEntry(entry) {
 		out.current = entry;
+		notice = "";
 		const token = ++loadToken;
 		if (entry.kind === "3d") return showModel(entry);
 		refresh();
@@ -362,6 +395,11 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		try {
 			img = await loadImg(entry.url);
 		} catch (e) {
+			if (await isMissing(entry)) {
+				dropEntries([entry]);
+				if (token === loadToken) showMissing();
+				return;
+			}
 			return console.warn(e.message);
 		}
 		if (token !== loadToken) return;
@@ -373,15 +411,19 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	async function showModel(entry) {
 		const token = ++modelToken;
-		modelError = "";
 		refresh();
 		if (model.entry === entry) return;
 		let loaded;
 		try {
 			loaded = await model.load(entry.url);
 		} catch (e) {
+			if (await isMissing(entry)) {
+				dropEntries([entry]);
+				if (token === modelToken) showMissing();
+				return;
+			}
 			console.warn(e);
-			if (token === modelToken) modelError = "Could not load " + entry.filename;
+			if (token === modelToken) notice = "Could not load " + entry.filename;
 			return refresh();
 		}
 		if (token !== modelToken) return model.discard(loaded);
@@ -551,5 +593,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	syncModeBtns();
 	loadOutputs();
+	pruneMissing([...history]);
 	return { group, update, model, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel };
 }

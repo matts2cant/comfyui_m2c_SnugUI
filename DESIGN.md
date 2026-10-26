@@ -291,6 +291,12 @@ copy another Lucide icon's path data under its name and change the name where it
   `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
   `ui.result[0]` = a path under output/ (deprecated Preview 3D); the same shapes the frontend's readModel3DOutput reads. Each output keeps
   its own current entry; a result for an output not on show only sets a dot on its tile.
+  History persistence (localStorage `appmode-xr.history`, last 50 of `{filename, subfolder, type, kind, node}`): entries of `type` temp
+  (Preview Image, Preview 3D (Advanced); ComfyUI deletes its temp folder on every start and shutdown) are shown for the page session only,
+  never saved, and dropped if found in storage. At start every saved entry gets a `HEAD` request on its `/view` URL (4 in parallel, not
+  blocking); the 404s leave the history and the gallery and the history is saved. Showing an entry whose image or GLB fails to load does the
+  same `HEAD` check: a 404 removes the entry, saves, and the stage says "File no longer exists — removed from the gallery"; any other failure
+  (network, parse) keeps the entry. An output whose current entry was removed falls back to its next entry, else shows the empty screen.
   History entries carry `node` (output id) and `kind`; the gallery shows the selected output's entries; entries whose node is not an
   output (older entries, other workflows) go to the first output of their kind, else the first output. 3D gallery tiles are a cube outline
   + file name.
