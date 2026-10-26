@@ -11,6 +11,7 @@
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
 import { commit, editText, erase, showKeyboard } from "./keyboard.js";
+import { icons } from "./icons.js";
 
 let maxAnisotropy = 1;
 export function setRenderer(renderer) {
@@ -161,20 +162,39 @@ export class Label extends Widget {
 	}
 }
 
+// Lucide icon (icons.js) in the s x s box at x, y, stroked with the current strokeStyle
+function drawIcon(ctx, name, x, y, s) {
+	ctx.save();
+	ctx.translate(x, y);
+	ctx.scale(s / 24, s / 24);
+	ctx.lineWidth = 2;
+	ctx.lineCap = ctx.lineJoin = "round";
+	ctx.stroke(icons[name]);
+	ctx.restore();
+}
+
+// icon: an icons.js name, centered alone or left of the text; round: a circle (or pill)
 export class Button extends Widget {
-	constructor(o) { super({ text: "", variant: "default", toggled: false, size: 30, w: 200, h: 72, ...o }); }
+	constructor(o) { super({ text: "", icon: null, round: false, variant: "default", toggled: false, size: 30, w: 200, h: 72, ...o }); }
 	draw(ctx) {
-		const { w, h } = this, r = theme.radius * 0.7;
+		const { w, h } = this, r = this.round ? Math.min(w, h) / 2 : theme.radius * 0.7;
 		rrect(ctx, 0, 0, w, h, r);
 		ctx.fillStyle = this.toggled || this.variant === "accent" ? theme.accent : this.variant === "danger" ? theme.danger : theme.surface;
 		ctx.fill();
 		tint(ctx, this, 0, 0, w, h, r);
 		ctx.globalAlpha = this.disabled ? 0.4 : 1;
+		ctx.fillStyle = ctx.strokeStyle = theme.fg;
 		ctx.font = font(this.size, true);
-		ctx.fillStyle = theme.fg;
-		ctx.textAlign = "center";
 		ctx.textBaseline = "middle";
-		ctx.fillText(ellipsize(ctx, this.text, w - 24), w / 2, h / 2 + 1);
+		const s = Math.round(h * 0.55);
+		if (this.icon) drawIcon(ctx, this.icon, this.text ? 18 : (w - s) / 2, (h - s) / 2, s);
+		if (this.icon && this.text) {
+			ctx.textAlign = "left";
+			ctx.fillText(ellipsize(ctx, this.text, w - s - 50), s + 32, h / 2 + 1);
+		} else if (this.text) {
+			ctx.textAlign = "center";
+			ctx.fillText(ellipsize(ctx, this.text, w - 24), w / 2, h / 2 + 1);
+		}
 		ctx.globalAlpha = 1;
 	}
 }

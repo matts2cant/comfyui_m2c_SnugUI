@@ -27,6 +27,7 @@ xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
 xr/js/main.js            bootstrap, renderer, scene, VR session, desktop fallback, input, layout, recenter
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
+xr/js/icons.js           Lucide icons (ISC licence in its header) as Path2D, keyed by Lucide name
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
 xr/js/help.js            insecure-context help screen (DOM)
@@ -115,7 +116,8 @@ export class Panel {                // a canvas-textured plane
 export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; contains(x,y);
   onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false } ; invalidate() }
 // Built-ins (constructor takes one options object; all have x,y,w,h):
-Label{text, size, color, align, wrap}, Button{text, onClick, variant:"default"|"accent"|"danger", toggled},
+Label{text, size, color, align, wrap}, Button{text, icon, round, onClick, variant:"default"|"accent"|"danger", toggled} (icon: an icons.js
+  name, centered alone or left of the text, stroked in the text colour; round: circle / pill),
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
