@@ -1,7 +1,8 @@
-// Prompt panel, the lectern under the screen: workflow name at the top left, prompt boxes on the left; on the right, seed
-// rows, the progress bar (run status), Generate and Cancel. Without prompt inputs the right column takes the whole width.
+// Prompt panel, the lectern under the screen: workflow name at the top left, prompt boxes on the left (the positive one alone
+// takes the full height, with the negative one below it 2/3 and 1/3); on the right, the seed row, the progress bar (run status),
+// Generate and Cancel. Without prompt boxes the right column takes the whole width, without a seed it starts with the progress bar.
 const MODES = [["fixed", "lock"], ["increment", "plus"], ["randomize", "shuffle"]];
-const M = 20, TOP = 72, RW = 700, ROW_H = 60, SEED_ROW = 68, BTN_W = 56;
+const M = 20, TOP = 72, RW = 700, ROW_H = 60, GAP = 16, BTN_W = 56;
 
 export function createBottomPanel({ THREE, store, client, ui }) {
 	const { theme } = ui;
@@ -35,13 +36,12 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	}
 
 	const name = panel.add(new ui.Label({ text: "", size: 32, bold: true, x: 24, y: 14, w: W - 48, h: 48 }));
-	const view = panel.add(new ui.ScrollView({ x: M, y: TOP, h: H - TOP - M }));
-	const seedView = panel.add(new ui.ScrollView({ y: TOP }));
 	const progress = panel.add(new ProgressBar({ h: 56 }));
 	const generate = panel.add(new ui.Button({ text: "Generate", size: 52, variant: "accent", onClick: () => store.generate() }));
 	const cancel = panel.add(new ui.Button({ text: "Cancel", size: 28, variant: "danger", y: H - M - ROW_H, h: ROW_H, onClick: () => client.interrupt() }));
-	let rows = [];
-	let seedRows = [];
+	let boxes = [];
+	let seedRow = null;
+	let widgets = [];
 
 	// run status
 	let remaining = 0, running = false;
@@ -66,28 +66,16 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	});
 	store.addEventListener("error", (e) => showStatus({ error: true, max: 0, text: e.detail.message }));
 
-	// prompt / seed rows
-	function promptRow(input) {
+	// the empty box shows its name
+	function promptBox(input, placeholder) {
 		const set = (v) => store.set(input.key, v);
-		const label = new ui.Label({ text: input.nodeTitle || input.label, size: 28, color: theme.muted, h: 44 });
-		const box = new ui.TextField({
-			multiline: true, size: 28, placeholder: "Tap to edit prompt",
-			onInput: set, onDone: set,
-		});
-		return {
-			widgets: [label, box],
-			refresh: () => { box.value = String(store.get(input.key) ?? ""); },
-			place(y, h, w) {
-				label.x = box.x = 0; label.y = y; label.w = box.w = w; box.y = y + 52; box.h = h - 76;
-				return y + h;
-			},
-		};
+		return new ui.TextField({ multiline: true, size: 28, placeholder, onInput: set, onDone: set });
 	}
 
-	// label, −, value, +, then the mode icons
-	function seedRow(input) {
+	// "Seed", −, value, +, then the mode icons
+	function seedRowFor(input) {
 		const key = input.key;
-		const label = new ui.Label({ text: input.label, size: 26, color: theme.muted, w: 96, h: ROW_H });
+		const label = new ui.Label({ text: "Seed", size: 26, color: theme.muted, w: 96, h: ROW_H });
 		const value = new ui.TextField({
 			size: 24, h: ROW_H,
 			onDone: (v) => {
@@ -109,54 +97,47 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 				value.value = String(store.get(key));
 				MODES.forEach(([mode], i) => { modes[i].toggled = store.seedMode(key) === mode; });
 			},
-			place(y, w) {
-				const mx = w - MODES.length * (BTN_W + 6) + 6;
+			place(x, y, w) {
+				const mx = x + w - MODES.length * (BTN_W + 6) + 6;
 				for (const wd of [label, minus, value, plus, ...modes]) wd.y = y;
-				label.x = 0;
-				minus.x = 104;
+				label.x = x;
+				minus.x = x + 104;
 				plus.x = mx - 16 - plus.w;
 				value.x = minus.x + minus.w + 6;
 				value.w = plus.x - 6 - value.x;
 				modes.forEach((b, i) => { b.x = mx + i * (BTN_W + 6); });
-				return y + SEED_ROW;
 			},
 		};
 	}
 
 	function layout() {
-		const rx = rows.length ? W - M - RW : M, rw = W - M - rx;
-		view.visible = rows.length > 0;
-		view.w = rx - M - 24;
-		// prompt boxes share the full height; 12 is the scroll view's bottom pad, 24 the row gap
-		const fillH = Math.floor((view.h + 12) / Math.max(1, rows.length));
-		let y = 0;
-		for (const r of rows) y = r.place(y, fillH, view.w - 24);
-		view.invalidate();
-
-		// more than two seeds scroll: leave room for the scroll bar
-		y = 0;
-		for (const r of seedRows) y = r.place(y, seedRows.length > 2 ? rw - 16 : rw);
-		Object.assign(seedView, { x: rx, w: rw, h: Math.min(y, 2 * SEED_ROW) + 4 }); // + the scroll view's bottom pad, less the row gap
-		Object.assign(progress, { x: rx, w: rw, y: TOP + seedView.h + (seedRows.length ? 4 : 0) });
+		const rx = boxes.length ? W - M - RW : M, rw = W - M - rx;
+		const total = H - TOP - M, first = boxes.length > 1 ? Math.round((total - GAP) * 2 / 3) : total;
+		boxes.forEach(([, box], i) => {
+			Object.assign(box, { x: M, w: rx - M - 24, y: i ? TOP + first + GAP : TOP, h: i ? total - first - GAP : first });
+		});
+		seedRow?.place(rx, TOP, rw);
+		Object.assign(progress, { x: rx, w: rw, y: seedRow ? TOP + ROW_H + GAP : TOP });
 		Object.assign(generate, { x: rx, w: rw, y: progress.y + progress.h + 12 });
 		generate.h = cancel.y - 12 - generate.y;
 		Object.assign(cancel, { x: rx, w: rw });
-		seedView.invalidate();
+		panel.invalidate();
 	}
 
 	function refresh() {
-		for (const r of [...rows, ...seedRows]) r.refresh();
+		for (const [input, box] of boxes) box.value = String(store.get(input.key) ?? "");
+		seedRow?.refresh();
 		layout();
 	}
 
 	function build() {
 		name.setText(store.snapshot?.workflowName ?? "No workflow");
-		rows = store.groups.prompts.map(promptRow);
-		seedRows = store.groups.seeds.map(seedRow);
-		view.clear();
-		view.setChildren(rows.flatMap((r) => r.widgets));
-		seedView.clear();
-		seedView.setChildren(seedRows.flatMap((r) => r.widgets));
+		const { prompt, negative, seed } = store.groups;
+		boxes = [prompt && [prompt, promptBox(prompt, "Prompt…")], negative && [negative, promptBox(negative, "Negative prompt…")]].filter(Boolean);
+		seedRow = seed && seedRowFor(seed);
+		for (const w of widgets) panel.remove(w);
+		widgets = [...boxes.map(([, box]) => box), ...(seedRow?.widgets ?? [])];
+		for (const w of widgets) panel.add(w);
 		refresh();
 	}
 

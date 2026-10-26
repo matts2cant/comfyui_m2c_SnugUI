@@ -1,6 +1,8 @@
-// Placement rules: first match wins.
+// Placement rules.
 const isLoraManager = input => input.classType.includes("LoraManager");
-const isSeed = input => input.type === "INT" && (/seed/i.test(input.widget) || /seed/i.test(input.label) || input.control != null);
+// The prompt panel only takes inputs with these exact App-mode names (trimmed, no [Tab] prefix stripping) and types.
+// The first one of each in App-mode order wins; every other input goes to the Configuration panel.
+const SLOTS = new Map([["_prompt", ["prompt", "STRING"]], ["_negative_prompt", ["negative", "STRING"]], ["_seed", ["seed", "INT"]]]);
 
 // "[Tab] Label" puts the input in the left panel tab "Tab"; the group entries carry the stripped label and `tab`.
 const parseName = name => {
@@ -9,14 +11,12 @@ const parseName = name => {
 };
 
 export function classify(inputs, loraNodes) {
-    const groups = { prompts: [], seeds: [], left: [], lora: loraNodes };
+    const groups = { prompt: null, negative: null, seed: null, left: [], lora: loraNodes };
     for (const original of inputs) {
         const input = { ...original, ...parseName(original.label) };
         if (isLoraManager(input)) continue;
-        // nothing in the prompt to write to: shown read-only in the left panel
-        if (!input.targets.length) groups.left.push(input);
-        else if (input.type === "STRING" && input.multiline) groups.prompts.push(input);
-        else if (isSeed(input)) groups.seeds.push(input);
+        const [slot, type] = SLOTS.get(original.label.trim()) ?? [];
+        if (slot && input.type === type && !groups[slot]) groups[slot] = input;
         else groups.left.push(input);
     }
     return groups;

@@ -50,7 +50,7 @@ class Store extends EventTarget {
     client = null;
     inputs = [];
     outputs = [];
-    groups = { prompts: [], seeds: [], left: [], lora: [] };
+    groups = { prompt: null, negative: null, seed: null, left: [], lora: [] };
     #values = new Map();
     #seedModes = new Map();
     #loras = new Map();
@@ -130,13 +130,13 @@ class Store extends EventTarget {
     }
 
     applySeedModes() {
-        for (const input of this.groups.seeds) {
-            const mode = this.seedMode(input.key);
-            const value = this.get(input.key);
-            if (mode === "randomize") this.randomizeSeed(input.key);
-            else if (mode === "increment") this.set(input.key, input.max != null ? Math.min(value + 1, input.max) : value + 1);
-            else if (mode === "decrement") this.set(input.key, input.min != null ? Math.max(value - 1, input.min) : value - 1);
-        }
+        const input = this.groups.seed;
+        if (!input) return;
+        const mode = this.seedMode(input.key);
+        const value = this.get(input.key);
+        if (mode === "randomize") this.randomizeSeed(input.key);
+        else if (mode === "increment") this.set(input.key, input.max != null ? Math.min(value + 1, input.max) : value + 1);
+        else if (mode === "decrement") this.set(input.key, input.min != null ? Math.max(value - 1, input.min) : value - 1);
     }
 
     async generate() {

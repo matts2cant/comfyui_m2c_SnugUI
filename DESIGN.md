@@ -35,7 +35,7 @@ xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot f
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
 xr/js/panels/center.js   image / 3D model display, output tiles, output-type panel, gallery side panel
-xr/js/panels/bottom.js   prompt panel: workflow name, prompt boxes, seeds, progress bar (run status), generate/cancel
+xr/js/panels/bottom.js   prompt panel: workflow name, prompt / negative prompt boxes, seed row, progress bar (run status), generate/cancel
 xr/js/panels/left.js     Configuration side panel: settings controls
 xr/js/panels/right.js    LoRA side panel(s) + LoRA Manager API client
 xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere)
@@ -180,20 +180,28 @@ store.loras(nodeId) -> [{name,strength,clipStrength,active}] / setLoras(nodeId, 
 store.buildPrompt() -> deep-cloned API prompt with all values + lora text/loras applied
 store.generate()                     // dispatches "generate"; apply seed modes BEFORE queue (randomize: random int in [min, min(max, 2^53-1)];
                                      // increment: +1), dispatch "change", queue(buildPrompt()); dispatches "queued" {prompt_id}; "error" {message}
-store.groups                         // from rules.js classify(): { prompts: [input], seeds: [input], left: [input], lora: [loraNode] }
+store.groups                         // from rules.js classify(): { prompt: input|null, negative: input|null, seed: input|null, left: [input], lora: [loraNode] }
 ```
 LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__value__: list}` if lorasWrapped) and
 `inputs.text` regenerated the way `web/comfyui/lora_syntax_utils.js` (`applyLoraValuesToText`) does in comfyui-lora-manager.
 
 `rules.js` — `classify(inputs, loraNodes)`, ordered rules, first match wins:
 1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by the LoRA panel via loraNodes)
-2. STRING && multiline → prompts (bottom)
-3. INT && (widget or label contains "seed" or control != null) → seeds (bottom)
-4. everything else (and any input without targets, before rules 2-3) → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given).
+2. the prompt panel takes only these exact App-mode names and types, one of each; if a name appears twice the first in App-mode order
+   wins and the others go to the left panel:
+   - `_prompt` with type STRING → `prompt`
+   - `_negative_prompt` with type STRING → `negative`
+   - `_seed` with type INT → `seed`
+3. everything else → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given). This includes multiline
+   STRINGs and seed-like INTs with other names, and a `_prompt` / `_negative_prompt` / `_seed` of the wrong type.
 
-Before the rules, each input is copied with its App-mode name parsed: a leading `[Tab] Label` (whitespace trimmed, both parts non-empty) gives
-`tab: "Tab"` and the bracket-free `label`; any other name gets `tab: "General"`. The groups hold these copies, so every panel shows stripped
-labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
+The name is the App-mode label compared after trimming, exactly (case-sensitive). A leading `[Tab]` prefix is NOT stripped for this
+match, so `[Tab] _prompt` is just an input called `_prompt` in the left panel's tab `Tab`. Nothing else decides the placement: not the
+widget name, the multiline flag, the node title or `control`. Existing workflows need these names set in App mode.
+
+Each input is also copied with its name parsed: a leading `[Tab] Label` (whitespace trimmed, both parts non-empty) gives
+`tab: "Tab"` and the bracket-free `label`; any other name gets `tab: "General"`. The groups hold these copies, so the left panel shows
+stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - Screen: on the vertical plane z = -0.5 (`SCREEN_DISTANCE`, eye at the origin), 32" diagonal at the aspect of what it shows (image;
@@ -294,11 +302,14 @@ copy another Lucide icon's path data under its name and change the name where it
   lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
-- bottom (prompt panel, 1800 x 600 px): the workflow name at the top left. Left: one row per prompt input, sharing the height: label + a
-  plain multi-line TextField box (full prompt, word-wrapped, clipped with "…"; placeholder "Tap to edit prompt"); tap edits in place
-  (multiline TextField, live onInput) and store.set the whole text. Right column (700 px; the whole width when there is no prompt input),
-  top to bottom: one row per seed input (label, −, value field, +, then the mode icons `lock` = fixed, `plus` = increment, `shuffle` =
-  randomize, the current one `toggled`; more than two rows scroll), the progress bar, the Generate button (fills the rest), Cancel
+- bottom (prompt panel, 1800 x 600 px): the workflow name at the top left. Left, under it, the prompt boxes of `store.groups.prompt` and
+  `.negative`, plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…"); an empty box shows its name as a muted
+  placeholder, "Prompt…" / "Negative prompt…" (gone as soon as there is text, back when it is emptied, also while editing); tap edits in place
+  (live onInput) and store.set the whole text. Only the positive one: full height. Both: positive 2/3, negative 1/3 (16 px gap). Only the
+  negative one (not in the owner's spec): alone, full height, same placeholder. No prompt boxes: the right column takes the whole width.
+  Right column (700 px), top to bottom: the seed row of `store.groups.seed` if any ("Seed", −, value field, +, then the mode icons `lock` =
+  fixed, `plus` = increment, `shuffle` = randomize, the current one `toggled`; it ends flush with the column edge, nothing clips it; without a
+  seed the column starts with the progress bar), the progress bar, the Generate button (fills the rest), Cancel
   (interrupt, enabled while running or queued). Progress bar = run status: `value/max` fill and step, the running node's title, "Queued",
   "Idle", "Interrupted" or the error (red, until the next run), plus "· N in queue" when more than one prompt is queued.
 - left (Configuration side panel): scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the

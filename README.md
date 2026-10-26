@@ -22,7 +22,7 @@ If the page opens without WebXR, it shows the same instructions with your addres
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter VR.
-4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompts, seeds, progress,
+4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompts, seed, progress,
    Generate, Cancel). A column of round buttons right of it opens one side panel at a time beside the screen: Gallery,
    LoRA, Light, Configuration (press the open one again to close it); the last button, X, leaves VR. Side panels start
    closed. Text fields have an edit toolbar with a Quest keyboard button.
@@ -34,7 +34,23 @@ shift- or right-drag moves the 3D model. The X button does nothing there.
 
 Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the Configuration panel.
 Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
-The selected tab is remembered per workflow. Prompts and seeds on the prompt panel only get the prefix stripped.
+The selected tab is remembered per workflow.
+
+## Prompt panel inputs
+
+The prompt panel only takes inputs with these exact App-mode names (trimmed, case-sensitive, and the type must match):
+
+| Name | Type | Shown as |
+| --- | --- | --- |
+| `_prompt` | text (STRING) | "Prompt" box |
+| `_negative_prompt` | text (STRING) | "Negative prompt" box |
+| `_seed` | integer (INT) | "Seed" row (fixed / increment / random) |
+
+Existing workflows need these names set on their inputs in App mode, or the inputs show up in Configuration instead (a prompt
+with another name, a seed called `seed`, a `_seed` of the wrong type). There is no `[Tab]` handling here: `[Tab] _prompt` is a
+Configuration input. Only one of each; if a name is used twice, the first in App-mode order wins. Both prompts: the positive box takes
+2/3 of the height and the negative one 1/3. Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there is
+no seed row. Empty boxes show "Prompt…" / "Negative prompt…" as a hint.
 
 ## Several outputs and 3D models
 
