@@ -57,7 +57,7 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	client.addEventListener("status", (e) => { remaining = e.detail.queueRemaining; showStatus(); });
 	client.addEventListener("executing", (e) => { running = true; showStatus({ error: false, value: 0, max: 0, text: nodeTitle(e.detail.node) }); });
 	client.addEventListener("progress", (e) => showStatus({ value: e.detail.value, max: e.detail.max }));
-	client.addEventListener("done", () => { running = false; showStatus({ max: 0, text: "Idle" }); });
+	client.addEventListener("done", () => { running = false; showStatus({ max: 0, text: noOutput ? "No active output" : "Idle" }); });
 	client.addEventListener("interrupted", () => { running = false; showStatus({ max: 0, text: "Interrupted" }); });
 	client.addEventListener("error", (e) => { running = false; showStatus({ error: true, max: 0, text: e.detail.message }); });
 	store.addEventListener("queued", () => {
@@ -65,6 +65,16 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		showStatus(running ? {} : { error: false, max: 0, text: "Queued" });
 	});
 	store.addEventListener("error", (e) => showStatus({ error: true, max: 0, text: e.detail.message }));
+
+	// every output muted or bypassed (desktop or Group Switch): nothing to run
+	let noOutput = false;
+	function checkOutputs() {
+		const none = !store.hasActiveOutput();
+		generate.disabled = none;
+		if (none === noOutput) return panel.invalidate();
+		noOutput = none;
+		showStatus(none ? { error: false, max: 0, text: "No active output" } : running || remaining ? {} : { error: false, max: 0, text: "Idle" });
+	}
 
 	// the empty box shows its name
 	function promptBox(input, placeholder) {
@@ -141,8 +151,11 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		refresh();
 	}
 
-	store.addEventListener("load", build);
-	store.addEventListener("change", refresh);
+	store.addEventListener("load", () => { build(); checkOutputs(); });
+	store.addEventListener("change", (e) => {
+		refresh();
+		if (e.detail.key === "switchGroups") checkOutputs();
+	});
 	build();
 	showStatus();
 

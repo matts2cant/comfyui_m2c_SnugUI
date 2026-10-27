@@ -55,6 +55,7 @@ class Store extends EventTarget {
     #seedModes = new Map();
     #loras = new Map();
     #loraTexts = new Map();
+    #groupStates = new Map();
 
     load(snapshot) {
         this.snapshot = snapshot;
@@ -66,6 +67,7 @@ class Store extends EventTarget {
         this.#seedModes.clear();
         this.#loras.clear();
         this.#loraTexts.clear();
+        this.#groupStates = new Map(Object.entries(snapshot.switchGroups ?? {}).map(([id, g]) => [id, g.state]));
         for (const input of this.inputs) {
             this.#values.set(input.key, input.value);
             if (input.control != null) this.#seedModes.set(input.key, input.control);
@@ -112,15 +114,72 @@ class Store extends EventTarget {
         emit(this, "change", { key: "lora:" + nodeId });
     }
 
+    // Pixaroma Group Switch groups: "on" | "mute" | "bypass", shared by every switch listing the group (as on the desktop)
+    groupState(id) {
+        return this.#groupStates.get(id);
+    }
+
+    setGroupStates(states) {
+        for (const [id, state] of Object.entries(states)) this.#groupStates.set(id, state);
+        emit(this, "change", { key: "switchGroups" });
+    }
+
+    // Switched-off groups: drop their nodes, then rewire every input that used one through the diffs' replacements,
+    // transitively (a chain of bypassed groups ends at the first surviving node); no replacement drops the input.
+    #offDiffs() {
+        return [...this.#groupStates].filter(([, state]) => state !== "on").map(([id, state]) => this.snapshot.switchGroups[id].off[state]);
+    }
+
+    // API node ids the switched-off groups drop from the prompt
+    removedNodes() {
+        return new Set(this.#offDiffs().flatMap(d => d.removed));
+    }
+
+    // an output node runs when it is in the snapshot prompt (not muted or bypassed on the desktop) and no switched-off
+    // group drops it; with no outputs listed, every node is an output
+    outputActive(nodeId) {
+        return nodeId in this.snapshot.prompt && !this.removedNodes().has(nodeId);
+    }
+
+    hasActiveOutput() {
+        return !this.outputs.length || this.outputs.some(o => this.outputActive(o.nodeId));
+    }
+
+    #applyGroupStates(prompt) {
+        const diffs = this.#offDiffs();
+        const removed = new Set(diffs.flatMap(d => d.removed));
+        const replace = Object.assign({}, ...diffs.map(d => d.replace));
+        for (const id of removed) delete prompt[id];
+        for (const node of Object.values(prompt)) {
+            for (const [name, link] of Object.entries(node.inputs)) {
+                let v = link;
+                while (Array.isArray(v) && removed.has(v[0])) v = replace[`${v[0]}:${v[1]}`];
+                if (v === undefined) delete node.inputs[name];
+                else if (v !== link) node.inputs[name] = v;
+            }
+        }
+        for (const d of diffs) {
+            for (const [id, inputs] of Object.entries(d.inputs)) {
+                if (!prompt[id]) continue;
+                for (const [name, v] of Object.entries(inputs)) {
+                    if (v === null) delete prompt[id].inputs[name];
+                    else prompt[id].inputs[name] = v;
+                }
+            }
+        }
+    }
+
     buildPrompt() {
         const prompt = JSON.parse(JSON.stringify(this.snapshot.prompt));
+        this.#applyGroupStates(prompt);
         for (const input of this.inputs) {
             const value = this.#values.get(input.key);
             // unsupported widget types are only written back once edited
             if (input.type === "UNSUPPORTED" && value === input.value) continue;
-            for (const target of input.targets) prompt[target.nodeId].inputs[target.input] = target.json ? JSON.stringify(value) : value;
+            for (const target of input.targets) if (prompt[target.nodeId]) prompt[target.nodeId].inputs[target.input] = target.json ? JSON.stringify(value) : value;
         }
         for (const node of this.snapshot.loraNodes) {
+            if (!prompt[node.nodeId]) continue;
             const list = this.#loras.get(node.nodeId).map(l => ({ ...l }));
             const inputs = prompt[node.nodeId].inputs;
             inputs.loras = node.lorasWrapped ? { __value__: list } : list;

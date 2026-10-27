@@ -52,6 +52,14 @@ Configuration input. Only one of each; if a name is used twice, the first in App
 2/3 of the height and the negative one 1/3. Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there is
 no seed row. Empty boxes show "Prompt…" / "Negative prompt…" as a hint.
 
+## Group switches
+
+A Pixaroma "Group Switch" added to App mode shows in Configuration as a list of switches, one per group (colour dot, name, Mute or
+Bypass tag), following the switch's rule (any number on, only one on, always keep one on). Switching a group off in VR mutes or
+bypasses its nodes in the prompts sent from VR only; the desktop graph is not changed. Settings whose nodes are all switched off (or
+already muted or bypassed on the desktop) are hidden, with their tab when it empties, and come back with their values when the group is
+turned back on. Output tiles do the same; if every output is off, Generate is disabled ("No active output").
+
 ## Several outputs and 3D models
 
 If App mode marks several output nodes, a row of tiles above the prompt panel (image or cube icon and the node title) picks which one

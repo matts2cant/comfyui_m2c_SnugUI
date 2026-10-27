@@ -55,14 +55,27 @@ xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM
 {
   version: 1, id, created,            // id/created set by server
   workflowName: "my_app",              // activeWorkflow filename without extension
-  prompt: { "<nodeId>": { class_type, inputs: {...}, _meta } },   // app.graphToPrompt().output
+  prompt: { "<nodeId>": { class_type, inputs: {...}, _meta } },   // app.graphToPrompt().output, with every switched-off Group Switch group back on
+  switchGroups: {                      // one per group listed by an App-mode Group Switch, keyed by bridge id ("pg_…" Pixaroma, "ng:<id>" native)
+    "<groupId>": {
+      state: "on"|"mute"|"bypass",     // as the bridge reads it now (every member muted / bypassed, else on)
+      off: { mute?, bypass?: {         // the prompt diff of turning only this group off, per action of its switches (+ its current one)
+        removed: ["<nodeId>"],         // API nodes it drops
+        replace: { "<nodeId>:<outIdx>": ["<nodeId>", outIdx] | value },  // what a remaining input using that output became (bypass rewiring);
+                                       // absent = the input is dropped (mute, or no matching bypass input)
+        inputs: { "<nodeId>": { "<input>": value | null } }  // any other changed input (null = deleted)
+      } }
+    }
+  },
   previewMethod: "default",            // setting "Comfy.Execution.PreviewMethod": default|none|auto|latent2rgb|taesd
   inputs: [ {                          // one per extra.linearData.inputs entry, in App-mode order
     key: "<nodeId>:<widgetName>",      // App-mode widget: nodeId = node id in the root graph (a subgraph node for promoted widgets)
     nodeId: "5", classType: "KSampler", nodeTitle: "KSampler",   // nodeId/classType/widget = FIRST target (the host node if none)
     widget: "seed", label: "seed",     // widget = prompt input name; label = App-mode widget label/name
     targets: [ {nodeId: "260:310", input: "seed", classType: "KSampler"} ],  // every prompt input the widget feeds
-    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"PIXAROMA_SIZES"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage); PIXAROMA_SIZES = Pixaroma Sizes state object
+    type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"PIXAROMA_SIZES"|"PIXAROMA_GROUP_SWITCH"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage); PIXAROMA_SIZES = Pixaroma Sizes state object
+    disabled: false,                   // no targets and the host node is muted (2) or bypassed (4) on the desktop: hidden in VR
+    action, restriction, groups,       // PIXAROMA_GROUP_SWITCH only: "mute"|"bypass", "any"|"one"|"always", [{id, label, color}] (see below)
     multiline: false,                  // STRING only
     options: [...],                    // COMBO/IMAGE values
     min, max, step, round,             // numbers (from /object_info input spec or widget.options)
@@ -92,6 +105,23 @@ An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidd
 own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
 gets a dedicated type (`PIXAROMA_SIZES`: left-panel size picker, in the size group); other JSON widgets are UNSUPPORTED text edits.
+
+Pixaroma Group Switch (`PixaromaGroupSwitch:group_switch_ui`, a DOM widget with `serialize: false`; the node is in the API prompt with no
+inputs but never runs) mutes or bypasses whole groups through `window.PixaromaPixGroup` (`listGroups`, `getGroupState`, `setGroupSwitch`).
+Muting drops nodes from the prompt and bypassing also rewires their consumers, and the VR page has no graph, so the switches become prompt
+edits. The builder (`switchPrompts`) records every node's mode (root and subgraphs), turns the switched-off groups of the App-mode switches
+back on, runs the sentinel pass and `graphToPrompt` on that base (so widgets in switched-off groups get targets), then for each group and
+action turns that group alone off, runs `graphToPrompt` and stores the diff against the base, restoring the base modes after each; a
+`finally` puts every mode back as it was. The input carries the switch's `action`, `restriction` and `groups` as the node lists them (its
+widget value: `scope` / `picked`, names numbered in canvas order when shared, `sort` by position / name / color); `label` = App-mode label or
+node title. A group's state is shared by every switch listing it, as on the desktop: a mute switch shows a group on unless it is muted, a
+bypass switch unless it is bypassed; two switches with different actions on one group therefore read it differently, and turning it off in
+one replaces the other's state. Only the bridge's groups of the graph shown on the canvas are listed (Pixaroma and native groups).
+`buildPrompt` starts from the base: the diffs of the groups not "on" give the removed nodes (union) and the replacements (merged; the last
+diff wins on a clash, possible only with overlapping groups); removed nodes are deleted; every remaining input that points at a removed node
+follows the replacements transitively (a chain of bypassed groups ends at the first surviving node, a mute or a missing replacement drops
+the input); then the diffs' other input changes; then values, skipping targets and LoRA nodes that were removed. Turning a group back on
+gives the base, where a group that was on keeps its members' own modes (the desktop's "on" sets them all to 0).
 
 ## Desktop extension (`../web/appmode_xr.js`)
 - `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
@@ -281,9 +311,13 @@ copy another Lucide icon's path data under its name and change the name where it
   while running; a batch shows its last image (all of them are in the gallery).
   Gallery side panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
   output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
-  Output tiles (tiles panel): with two outputs or more, one `OutputTile` per output (an `image` / `box` icon and the title, ellipsized, at
+  Output tiles (tiles panel): with two active outputs or more, one `OutputTile` per active output (an `image` / `box` icon and the title, ellipsized, at
   most 380 px wide), the shown one `toggled`; none with a single output. Selection is manual only and kept in localStorage
-  `appmode-xr.output.<workflowName>` (try/catch, falls back to the first output). With no outputs one catch-all output takes every node.
+  `appmode-xr.output.<workflowName>` (try/catch, falls back to the first active output). With no outputs one catch-all output takes every node.
+  Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
+  On a `"switchGroups"` change the tiles are re-placed; if the selected output went inactive the first active one is selected (screen,
+  gallery and output-type panel follow; no switching back when it returns). With none active the selection and the screen stay as they
+  are, Generate is disabled and the progress bar says "No active output". Inactive outputs keep their history, current entry and dot.
   Output-type panel: the controls of the selected output's kind, `kindControls[kind]()`; an empty list hides the panel. Image: Flat /
   3D R/L / 3D L/R (side-by-side image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD
   (disabled in stereo, on the desktop and while a 3D result is on show). Mesh: none yet.
@@ -318,7 +352,17 @@ copy another Lucide icon's path data under its name and change the name where it
   seed the column starts with the progress bar), the progress bar, the Generate button (fills the rest), Cancel
   (interrupt, enabled while running or queued). Progress bar = run status: `value/max` fill and step, the running node's title, "Queued",
   "Idle", "Interrupted" or the error (red, until the next run), plus "· N in queue" when more than one prompt is queued.
-- left (Configuration side panel): scrollable list of controls from store.groups.left: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
+- left (Configuration side panel): scrollable list of controls from store.groups.left: PIXAROMA_GROUP_SWITCH → the label and a
+  Mute / Bypass tag, then one row per group (colour dot, label, switch), switched like the node: any; one = turning a group on turns the
+  switch's other groups off; always = the same, and the last group on cannot be turned off; it updates on `"switchGroups"` changes (all
+  switches share the group states, `store.groupState(id)` / `setGroupStates({id: state})`). No sync back to the desktop.
+  Visibility: an input is hidden while every one of its targets is in `store.removedNodes()` (dropped by the switched-off groups; a widget
+  feeding several subgraph nodes stays until all are dropped) or when it is `disabled`; never a Group Switch. Hidden inputs keep their
+  values. Tabs with no visible input are hidden; the shown tab stays while it has visible inputs (with its scroll), else the saved tab,
+  else the first; one visible tab = no tab row. The re-layout runs after the press that flipped the switch (microtask), only when the
+  visible set changed. Prompt-panel inputs (`_prompt`, `_negative_prompt`, `_seed`) are never hidden; their value is just not written
+  when their node is dropped.
+  Other types: COMBO / IMAGE → Combo (in-place text edit with a filtered dropdown List over the
   panel; IMAGE rows carry thumbnails from `/view?filename=..&type=input&subfolder=..` – option strings may contain "subfolder/name");
   INT/FLOAT → Slider (respect min/max/step; when the range is huge use −/+ only with fine/coarse steps); BOOLEAN → Toggle;
   STRING single-line → TextField; UNSUPPORTED type with targets → TextField on the value as text (JSON for objects), converted back to the

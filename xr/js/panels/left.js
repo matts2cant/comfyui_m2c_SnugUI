@@ -65,6 +65,79 @@ class SizePicker extends Widget {
 	}
 }
 
+// Pixaroma Group Switch: the label and the Mute / Bypass tag, then one row per group (colour dot, name, switch)
+const SW_TOP = 56, SW_ROW = 72;
+class GroupSwitch extends Widget {
+	constructor(o) {
+		super({ label: "", action: "bypass", groups: [], isOn: () => true, ...o });
+		this.h = SW_TOP + Math.max(1, this.groups.length) * (SW_ROW + GAP) - GAP;
+	}
+	rowAt(p) {
+		const i = Math.floor((p.ly - SW_TOP) / (SW_ROW + GAP));
+		return p.ly - SW_TOP - i * (SW_ROW + GAP) < SW_ROW ? this.groups[i] ?? null : null;
+	}
+	onMove(p) {
+		const row = this.rowAt(p);
+		if (row !== this.hot) { this.hot = row; this.invalidate(); }
+	}
+	onClick(p) {
+		const row = this.rowAt(p);
+		if (row) this.onToggle(row.id);
+	}
+	draw(ctx) {
+		ctx.textBaseline = "middle";
+		ctx.font = `28px ${theme.font}`;
+		ctx.fillStyle = theme.muted;
+		ctx.textAlign = "left";
+		ctx.fillText(this.label, 4, 22);
+		const tag = this.action === "bypass" ? "Bypass" : "Mute";
+		ctx.font = `600 24px ${theme.font}`;
+		const tw = ctx.measureText(tag).width + 28;
+		ctx.beginPath();
+		ctx.roundRect(this.w - tw, 4, tw, 38, 10);
+		ctx.fillStyle = theme.surfaceHi;
+		ctx.fill();
+		ctx.fillStyle = theme.fg;
+		ctx.textAlign = "center";
+		ctx.fillText(tag, this.w - tw / 2, 24);
+		ctx.textAlign = "left";
+		if (!this.groups.length) {
+			ctx.font = `26px ${theme.font}`;
+			ctx.fillStyle = theme.muted;
+			ctx.fillText("No groups in this switch", 4, SW_TOP + SW_ROW / 2);
+		}
+		this.groups.forEach((g, i) => {
+			const y = SW_TOP + i * (SW_ROW + GAP), on = this.isOn(g.id), cy = y + SW_ROW / 2;
+			ctx.beginPath();
+			ctx.roundRect(0, y, this.w, SW_ROW, theme.radius * 0.7);
+			ctx.fillStyle = theme.surface;
+			ctx.fill();
+			if (this.hover && g === this.hot) {
+				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
+				ctx.fill();
+			}
+			ctx.beginPath();
+			ctx.arc(34, cy, 11, 0, Math.PI * 2);
+			ctx.fillStyle = g.color || "#888";
+			ctx.fill();
+			const sw = 92, sh = 44, sx = this.w - sw - 24;
+			ctx.font = `30px ${theme.font}`;
+			ctx.fillStyle = on ? theme.fg : theme.muted;
+			let text = g.label;
+			while (text.length > 1 && ctx.measureText(text).width > sx - 80) text = text.slice(0, -2) + "…";
+			ctx.fillText(text, 60, cy + 1);
+			ctx.beginPath();
+			ctx.roundRect(sx, cy - sh / 2, sw, sh, sh / 2);
+			ctx.fillStyle = on ? theme.accent : theme.surfaceHi;
+			ctx.fill();
+			ctx.beginPath();
+			ctx.arc(on ? sx + sw - sh / 2 : sx + sh / 2, cy, sh / 2 - 6, 0, Math.PI * 2);
+			ctx.fillStyle = "#fff";
+			ctx.fill();
+		});
+	}
+}
+
 export function createLeftPanel({ THREE, store, client, ui }) {
 	const { Panel, Label, Button, Toggle, Slider, Combo, TextField, ScrollView, stackY } = ui;
 	const group = new THREE.Group();
@@ -157,6 +230,19 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		return { widgets: [picker], update: () => { picker.value = store.get(input.key); picker.invalidate(); } };
 	}
 
+	// switched like the node: "one" and "always" turn the others off when a group goes on, "always" keeps the last one on.
+	// Group states are shared by all switches, so the entry follows "switchGroups" changes.
+	function groupSwitchFor(input, label) {
+		const isOn = (id) => store.groupState(id) !== input.action;
+		const onToggle = (id) => {
+			if (input.restriction === "any") store.setGroupStates({ [id]: isOn(id) ? input.action : "on" });
+			else if (!isOn(id)) store.setGroupStates(Object.fromEntries(input.groups.map((g) => [g.id, g.id === id ? "on" : input.action])));
+			else if (input.restriction === "one" || input.groups.filter((g) => isOn(g.id)).length > 1) store.setGroupStates({ [id]: input.action });
+		};
+		const widget = new GroupSwitch({ label, action: input.action, groups: input.groups, isOn, onToggle });
+		return { key: "switchGroups", widgets: [widget], update: () => widget.invalidate() };
+	}
+
 	function readOnlyFor(input, label) {
 		const value = show(input.value);
 		const text = `${value.length > 120 ? `${value.slice(0, 120)}…` : value}  (edit on desktop)`;
@@ -164,6 +250,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	}
 
 	function controlFor(input, label) {
+		if (input.type === "PIXAROMA_GROUP_SWITCH") return groupSwitchFor(input, label);
 		if (!input.targets.length) return readOnlyFor(input, label);
 		switch (input.type) {
 			case "INT":
@@ -179,9 +266,20 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 
 	const tabKey = () => `appmode-xr.tab.${store.snapshot?.workflowName}`;
 
+	// hidden: inputs whose every target node the switched-off groups drop, or that were disabled on the desktop; never a
+	// Group Switch, which turns them back on
+	const hidden = (input, removed) => input.type !== "PIXAROMA_GROUP_SWITCH"
+		&& (input.disabled || input.targets.length > 0 && input.targets.every((t) => removed.has(t.nodeId)));
+	const visibleEntries = () => {
+		const removed = store.removedNodes();
+		return entries.filter((en) => !hidden(en.input, removed));
+	};
+	let shown = [], current = null, view = null;
+
 	// the list of the active tab; clear() resets the scroll
-	function showTab(view, name) {
-		const list = entries.filter((en) => en.tab === name);
+	function showTab(name) {
+		current = name;
+		const list = shown.filter((en) => en.tab === name);
 		let y = 12;
 		for (const en of list) y = stackY(en.widgets, { x: 12, y, w: W - 60, gap: 8 }) + 14;
 		view.clear();
@@ -194,38 +292,53 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		for (const i of inputs) counts.set(i.tab + i.label, (counts.get(i.tab + i.label) ?? 0) + 1);
 		entries = inputs.map((input) => {
 			const label = counts.get(input.tab + input.label) > 1 ? `${input.nodeTitle} › ${input.label}` : input.label;
-			return { key: input.key, tab: input.tab, ...controlFor(input, label) };
+			return { key: input.key, tab: input.tab, input, ...controlFor(input, label) };
 		});
-		const tabs = [...new Set(entries.map((en) => en.tab))];
+		current = null;
+		layout();
+	}
+
+	// tab row and list of the visible entries; the shown tab stays (with its scroll) while it has visible inputs
+	function layout() {
+		shown = visibleEntries();
+		for (const en of entries) for (const w of en.widgets) w.hover = w.pressed = false;
+		const tabs = [...new Set(shown.map((en) => en.tab))];
+		const keep = tabs.includes(current) ? { tab: current, scroll: view.scroll } : null;
 		panel.clear();
 		panel.add(title);
 		if (tabs.length < 2) {
-			const view = panel.add(new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 }));
-			if (entries.length) showTab(view, tabs[0]);
+			view = panel.add(new ScrollView({ x: 12, y: 90, w: W - 24, h: H - 102 }));
+			if (shown.length) showTab(tabs[0]);
 			else view.setChildren([new Label({ text: "No settings in this workflow", size: 28, color: theme.muted, x: 12, y: 12, w: W - 60 })]);
-			return;
+		} else {
+			view = panel.add(new ScrollView({ x: 12, y: 156, w: W - 24, h: H - 168 }));
+			let saved = null;
+			try { saved = localStorage.getItem(tabKey()); } catch {}
+			const select = (name) => {
+				buttons.forEach((b, i) => { b.toggled = tabs[i] === name; });
+				showTab(name);
+			};
+			const bw = (W - 24 - GAP * (tabs.length - 1)) / tabs.length;
+			const buttons = tabs.map((name, i) => panel.add(new Button({
+				text: name, size: 28, x: 12 + i * (bw + GAP), y: 84, w: bw, h: 60,
+				onClick: () => {
+					try { localStorage.setItem(tabKey(), name); } catch {}
+					select(name);
+				},
+			})));
+			select(keep ? keep.tab : tabs.includes(saved) ? saved : tabs[0]);
 		}
-		const view = panel.add(new ScrollView({ x: 12, y: 156, w: W - 24, h: H - 168 }));
-		let saved = null;
-		try { saved = localStorage.getItem(tabKey()); } catch {}
-		const select = (name) => {
-			buttons.forEach((b, i) => { b.toggled = tabs[i] === name; });
-			showTab(view, name);
-		};
-		const bw = (W - 24 - GAP * (tabs.length - 1)) / tabs.length;
-		const buttons = tabs.map((name, i) => panel.add(new Button({
-			text: name, size: 28, x: 12 + i * (bw + GAP), y: 84, w: bw, h: 60,
-			onClick: () => {
-				try { localStorage.setItem(tabKey(), name); } catch {}
-				select(name);
-			},
-		})));
-		select(tabs.includes(saved) ? saved : tabs[0]);
+		if (keep?.tab === current) view.scroll = Math.min(keep.scroll, Math.max(0, view.contentH() - view.h));
 	}
 
 	store.addEventListener("load", rebuild);
 	store.addEventListener("change", (e) => {
 		for (const en of entries) if (en.key === e.detail.key) en.update();
+		// after the press that flipped a switch is handled: layout() replaces the panel's widgets
+		if (e.detail.key === "switchGroups") queueMicrotask(() => {
+			const next = visibleEntries();
+			if (next.length !== shown.length || next.some((en, i) => en !== shown[i])) layout();
+		});
 	});
 	rebuild();
 

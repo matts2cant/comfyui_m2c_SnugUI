@@ -226,23 +226,34 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const ownerOf = (e) => outputs.find((o) => o.nodeId === e.node) ?? outputs.find((o) => o.kind === (e.kind ?? "image")) ?? outputs[0];
 	const outputKey = () => `${OUTPUT_KEY}.${store.snapshot?.workflowName}`;
 
-	// output tiles, only with two outputs or more; per-output state survives a snapshot reload
+	// outputs muted or bypassed (on the desktop or by a Group Switch) lose their tile but keep their history and dot
+	const active = (o) => o.nodeId === null || store.outputActive(o.nodeId);
+
+	// one tile per output; per-output state survives a snapshot reload
 	function loadOutputs() {
 		const list = store.outputs.length ? store.outputs : [{ nodeId: null, title: "", kind: "image" }];
 		outputs = list.map((o) => ({ current: null, fresh: false, ...outputs.find((p) => p.nodeId === o.nodeId), ...o }));
 		tilesPanel.clear();
-		const tw = Math.min(TILE_W, (tilesPanel.width - 12 * (outputs.length - 1)) / outputs.length);
-		tiles = outputs.length < 2 ? [] : outputs.map((o, i) => tilesPanel.add(new OutputTile({
-			text: o.title, icon: o.kind === "3d" ? "box" : "image", size: 26, x: i * (tw + 12), y: 12, w: tw, h: 76,
+		tiles = outputs.length < 2 ? [] : outputs.map((o) => tilesPanel.add(new OutputTile({
+			text: o.title, icon: o.kind === "3d" ? "box" : "image", size: 26, y: 12, h: 76,
 			onClick: () => {
 				try { localStorage.setItem(outputKey(), o.nodeId); } catch {}
 				select(o);
 			},
 		})));
-		tilesPanel.mesh.visible = tiles.length > 0;
 		let saved = null;
 		try { saved = localStorage.getItem(outputKey()); } catch {}
-		select(outputs.find((o) => o.nodeId === saved) ?? outputs[0]);
+		const o = outputs.find((o) => o.nodeId === saved);
+		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
+	}
+
+	// the tiles of the active outputs, only when there are two or more
+	function placeTiles() {
+		const list = tiles.filter((t, i) => active(outputs[i]));
+		const tw = Math.min(TILE_W, (tilesPanel.width - 12 * (list.length - 1)) / list.length);
+		for (const t of tiles) t.visible = false;
+		list.forEach((t, i) => Object.assign(t, { visible: true, x: i * (tw + 12), w: tw }));
+		tilesPanel.mesh.visible = list.length > 1;
 	}
 
 	function select(o) {
@@ -264,6 +275,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	function refresh() {
 		const { current } = out;
+		placeTiles();
 		modelOn = !previewing && current?.kind === "3d";
 		stage3d = modelOn || out.kind === "3d";
 		singleOn = !modelOn && !!shown;
@@ -271,7 +283,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		stage.mesh.visible = !singleOn && !model.group.visible;
 		gallery.selected = current;
 		gallery.items = history.filter((e) => ownerOf(e) === out);
-		galleryTitle.setText(tiles.length ? `Gallery · ${out.title}` : "Gallery");
+		galleryTitle.setText(tilesPanel.mesh.visible ? `Gallery · ${out.title}` : "Gallery");
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
 		for (const b of modeBtns) b.disabled = stage3d;
@@ -445,6 +457,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// ---- events ----
 	store.addEventListener("load", loadOutputs);
+	// a switched-off group can drop the selected output: show the first active one (no switching back when it returns);
+	// with none active the screen keeps the last result
+	store.addEventListener("change", ({ detail }) => {
+		if (detail.key !== "switchGroups") return;
+		const next = active(out) ? null : outputs.find(active);
+		if (next) select(next);
+		else refresh();
+	});
 
 	for (const type of ["done", "interrupted", "error"]) client.addEventListener(type, endPreview);
 
