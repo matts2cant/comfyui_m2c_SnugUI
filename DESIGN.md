@@ -156,21 +156,24 @@ ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y,
 List/ImageGrid thumbnails (`url`) load through a module-level image cache.
 ```
 `keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
-plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()` and `erase(dir)`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
+plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()`, `erase(dir)` and `newline()`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
 selection are what the TextField draws and what taps move (selection APIs work on an unfocused textarea; never use `ta.select()`, it focuses).
 Desktop (`setXR(false)`): `ta` is focused at edit start and takes physical keys; blur, Enter in a single-line field and `commit()` commit
 (onDone), Escape reverts (onInput(initial), onCancel).
 XR (main.js calls `setXR` on session start/end): the Quest system keyboard can only insert (each open starts an empty session whose first
 key overwrites the focused element's value, existing text is not shown, backspace cannot delete existing text, and while it is up the
-session is `visible-blurred` with no controller input). So `ta` is never focused; a second always-empty hidden `<input>` `kb` is focused by
+session is `visible-blurred` with no controller input). So `ta` is never focused; a second always-empty hidden element `kb` (an `<input>` for single-line fields, a `<textarea>` for multiline ones) is focused by
 `showKeyboard()` (the toolbar's Keyboard button, from its select handler for user activation). On kb focus the model text around the caret
 or selection is captured (before/after); each kb `input` sets `ta.value = before + kb.value + after` with the caret after the typed text and
 fires onInput. A kb `beforeinput` delete with an empty kb is applied to the model by `erase` (selection, or one character) and cancelled.
-kb blur (keyboard dismissed) does not commit: the field stays in edit mode. Enter on kb commits single-line fields (a multiline field gets a
-newline); the Quest keyboard's confirm key is assumed to arrive as keydown Enter (unverified).
+kb blur (keyboard dismissed) does not commit: the field stays in edit mode. Enter on the single-line `<input>` commits; in the multiline
+`<textarea>` it types "\n", which the splice copies into the model like any other character (Ctrl+Enter commits, as on `ta`).
+EXPERIMENTAL and unverified on the headset: whether the Quest keyboard shows a return key for a textarea and types "\n". The toolbar's
+New line button (multiline fields only: `newline()` replaces the selection with "\n" in the model, same path as `erase`, in XR and on
+desktop) is the reliable way to break a line.
 TextField edit UX: the first tap enters edit mode with the caret at the tap (no keyboard yet); taps move the caret, dragging selects
 (down anchors, move extends), a second tap within 400 ms selects the word. While editing, an `EditBar` overlays the panel below the field
-(above when there is no room or `barAbove`): Keyboard, Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard,
+(above when there is no room or `barAbove`): Keyboard, New line (icon, multiline fields only), Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard,
 Del, Done. A Combo's dropdown goes below its bar (above the field when it does not fit). main.js commits when a press lands away from every
 TextField and EditBar (on release). Only one edit at a time.
 
@@ -274,6 +277,7 @@ copy another Lucide icon's path data under its name and change the name where it
 | Image output tile | `image` | center.js `loadOutputs` |
 | Mesh output tile | `box` | center.js `loadOutputs` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | bottom.js `MODES` |
+| New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
 - On load: if `!window.isSecureContext || !navigator.xr` (and not desktop dev) → still render the desktop 3D view but show help.js overlay

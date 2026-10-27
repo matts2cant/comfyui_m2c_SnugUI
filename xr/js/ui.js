@@ -10,7 +10,7 @@
 // Option callbacks (onClick, onChange, onSelect...) are plain properties, so `new Button({ onClick })`
 // simply replaces the default Widget.onClick(p) method.
 import * as THREE from "three";
-import { commit, editText, erase, showKeyboard } from "./keyboard.js";
+import { commit, editText, erase, newline, showKeyboard } from "./keyboard.js";
 import { icons } from "./icons.js";
 
 let maxAnisotropy = 1;
@@ -456,8 +456,8 @@ export class List extends Scrollable {
 }
 
 // The toolbar overlaying the panel next to the field being edited (below it, above when there is no room or the
-// field sets barAbove): Keyboard opens the system keyboard, Del / arrows / Select all edit the model, Done commits.
-// A compact bar only has Keyboard, Del and Done.
+// field sets barAbove): Keyboard opens the system keyboard, New line (multiline fields only) / Del / arrows / Select all
+// edit the model, Done commits. A compact bar only has Keyboard, Del and Done.
 export class EditBar extends Widget {
 	constructor({ field, compact }) {
 		super({ field, size: 26, h: 68 });
@@ -466,7 +466,8 @@ export class EditBar extends Widget {
 			field.setCaret(s !== e ? (d < 0 ? s : e) : Math.min(value.length, Math.max(0, s + d)));
 		};
 		const all = [["Keyboard", showKeyboard], ["Del", () => erase()], ["←", () => caret(-1)], ["→", () => caret(1)], ["Select all", () => field.selectAll()], ["Done", commit]];
-		this.btns = (compact ? [all[0], all[1], all[5]] : all).map(([text, run]) => ({ text, run, y: 8, h: this.h - 16 }));
+		if (field.multiline) all.splice(1, 0, ["", newline, "corner-down-left"]);
+		this.btns = (compact ? [all[0], all[1], all[all.length - 1]] : all).map(([text, run, icon]) => ({ text, run, icon, y: 8, h: this.h - 16 }));
 		measure.font = font(this.size, true);
 		let x = 8;
 		for (const b of this.btns) {
@@ -510,8 +511,9 @@ export class EditBar extends Widget {
 				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
 				ctx.fill();
 			}
-			ctx.fillStyle = theme.fg;
-			ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 1);
+			ctx.fillStyle = ctx.strokeStyle = theme.fg;
+			if (b.icon) drawIcon(ctx, b.icon, b.x + (b.w - 36) / 2, b.y + (b.h - 36) / 2, 36);
+			else ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 1);
 		}
 	}
 }

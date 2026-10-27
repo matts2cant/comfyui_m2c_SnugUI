@@ -25,5 +25,6 @@ export const icons = Object.fromEntries(Object.entries({
 	box: "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7l8.7 5l8.7-5M12 22V12",
 	lock: "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4",
 	plus: "M5 12h14m-7-7v14",
+	"corner-down-left": "M20 4v7a4 4 0 0 1-4 4H4m5-5l-5 5l5 5",
 	shuffle: "m18 14l4 4l-4 4m0-20l4 4l-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45",
 }).map(([name, d]) => [name, new Path2D(d)]));

@@ -1,11 +1,13 @@
 // Text entry for in-canvas editing. A hidden textarea `ta` is the edit model: its value and selection are what the
 // edited TextField draws and what clicks move. On desktop it is focused and receives physical keys.
 // In XR the Quest system keyboard can only insert (it starts empty on every open and cannot delete existing text),
-// so `ta` is never focused there: a second, always-empty hidden input `kb` is focused to open the keyboard and
-// whatever it holds is spliced into `ta` at the caret that was set when it opened.
+// so `ta` is never focused there: a second, always-empty hidden element `kb` is focused to open the keyboard and
+// whatever it holds is spliced into `ta` at the caret that was set when it opened. `kb` is an <input> for single-line
+// fields and a <textarea> (kbMulti) for multi-line ones, whose keyboard should offer a return key that types "\n".
 
 let ta = null;
-let kb = null;
+let kbLine = null, kbMulti = null;
+let kb = null; // the one of them in use by the active edit
 let active = null;
 let xr = false;
 let before = "", after = ""; // model text around the caret (or selection) when the keyboard opened
@@ -30,17 +32,20 @@ function hiddenInput(el) {
 function init() {
 	if (ta) return;
 	ta = hiddenInput(document.createElement("textarea"));
-	kb = hiddenInput(document.createElement("input"));
-	kb.type = "text";
-	kb.autocomplete = "off";
-	kb.addEventListener("focus", () => { kb.value = ""; rebase(); });
-	kb.addEventListener("input", () => { if (active) splice(); });
-	kb.addEventListener("beforeinput", (e) => {
-		if (active && !kb.value && (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward")) {
-			e.preventDefault();
-			erase(e.inputType === "deleteContentBackward" ? -1 : 1);
-		}
-	});
+	kbLine = hiddenInput(document.createElement("input"));
+	kbLine.type = "text";
+	kbMulti = hiddenInput(document.createElement("textarea"));
+	for (const el of [kbLine, kbMulti]) {
+		el.autocomplete = "off";
+		el.addEventListener("focus", () => { el.value = ""; rebase(); });
+		el.addEventListener("input", () => { if (active) splice(); });
+		el.addEventListener("beforeinput", (e) => {
+			if (active && !el.value && (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward")) {
+				e.preventDefault();
+				erase(e.inputType === "deleteContentBackward" ? -1 : 1);
+			}
+		});
+	}
 }
 
 function rebase() {
@@ -56,14 +61,23 @@ function splice() {
 	ta.dispatchEvent(new Event("input"));
 }
 
+function replace(s, e, text) {
+	ta.setRangeText(text, s, e, "end");
+	ta.dispatchEvent(new Event("input"));
+	rebase();
+}
+
 // Deletes the selection, or the character before (dir < 0) / after the caret, in the edit model.
 export function erase(dir = -1) {
 	if (!active) return;
 	let s = ta.selectionStart, e = ta.selectionEnd;
 	if (s === e) { if (dir < 0) s = Math.max(0, s - 1); else e = Math.min(ta.value.length, e + 1); }
-	ta.setRangeText("", s, e, "end");
-	ta.dispatchEvent(new Event("input"));
-	rebase();
+	replace(s, e, "");
+}
+
+// Replaces the selection with a line break in the edit model (the toolbar's New line button).
+export function newline() {
+	if (active) replace(ta.selectionStart, ta.selectionEnd, "\n");
 }
 
 // Opens the system keyboard in XR (call it from the select handler: it needs user activation), focuses the textarea on desktop.
@@ -96,6 +110,7 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 		}
 	};
 	active = { finish };
+	kb = multiline ? kbMulti : kbLine;
 
 	ta.value = initial;
 	ta.addEventListener("input", () => { onInput?.(ta.value); onSelection(); }, { signal });
@@ -108,15 +123,7 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 	};
 	ta.addEventListener("keydown", keydown, { signal });
 	// the keyboard's blur only means it was dismissed: the field stays in edit mode
-	kb.addEventListener("keydown", (e) => {
-		keydown(e);
-		if (e.key === "Enter" && multiline && !ended) {
-			e.preventDefault();
-			before += kb.value + "\n";
-			kb.value = "";
-			splice();
-		}
-	}, { signal });
+	kb.addEventListener("keydown", keydown, { signal });
 	ta.addEventListener("blur", () => finish(true), { signal });
 
 	if (!xr) ta.focus();
