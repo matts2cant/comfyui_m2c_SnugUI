@@ -64,7 +64,8 @@ turned back on. Output tiles do the same; if every output is off, Generate is di
 
 If App mode marks several output nodes, a row of tiles above the prompt panel (image or cube icon and the node title) picks which one
 the screen shows (remembered per workflow). A dot marks an output with new results; the view never switches on its own. The Gallery
-follows the selected output. With a single output there are no tiles.
+follows the selected output. A workflow with a single output in App mode has no tiles; with several, the tiles of the
+outputs still on stay visible even when only one is left.
 Outputs that save or preview a 3D model (Save 3D Model, Preview 3D...) show the GLB in front of you at the screen's size, just behind it.
 Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms.
 Squeeze the grip while pointing at it to grab it: it follows the controller until you let go. Grab it with both grips to

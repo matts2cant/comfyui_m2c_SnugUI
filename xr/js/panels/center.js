@@ -247,13 +247,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
 	}
 
-	// the tiles of the active outputs, only when there are two or more
+	// the tiles of the active outputs; there are tiles only when App mode configures two or more outputs, so a lone
+	// active output keeps its tile while the others are switched off
 	function placeTiles() {
 		const list = tiles.filter((t, i) => active(outputs[i]));
 		const tw = Math.min(TILE_W, (tilesPanel.width - 12 * (list.length - 1)) / list.length);
 		for (const t of tiles) t.visible = false;
 		list.forEach((t, i) => Object.assign(t, { visible: true, x: i * (tw + 12), w: tw }));
-		tilesPanel.mesh.visible = list.length > 1;
+		tilesPanel.mesh.visible = list.length > 0;
 	}
 
 	function select(o) {

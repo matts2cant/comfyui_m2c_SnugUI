@@ -315,8 +315,9 @@ copy another Lucide icon's path data under its name and change the name where it
   while running; a batch shows its last image (all of them are in the gallery).
   Gallery side panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
   output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
-  Output tiles (tiles panel): with two active outputs or more, one `OutputTile` per active output (an `image` / `box` icon and the title, ellipsized, at
-  most 380 px wide), the shown one `toggled`; none with a single output. Selection is manual only and kept in localStorage
+  Output tiles (tiles panel): when App mode configures two outputs or more, one `OutputTile` per active output (an `image` / `box` icon and the title, ellipsized, at
+  most 380 px wide), the shown one `toggled`, so a lone active output keeps its tile while the others are switched off;
+  no tiles when App mode configures a single output. Selection is manual only and kept in localStorage
   `appmode-xr.output.<workflowName>` (try/catch, falls back to the first active output). With no outputs one catch-all output takes every node.
   Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
   On a `"switchGroups"` change the tiles are re-placed; if the selected output went inactive the first active one is selected (screen,
