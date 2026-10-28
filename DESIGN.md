@@ -348,11 +348,12 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
   triggers) pinch-zoom the same way. Slides are keyed by the pointer object and grips by its id, so one controller can do both.
   A zoom during a grab rebases the grab. Desktop: drag on the image pans, wheel zooms about the cursor; drag off it still looks
   around in the VR-like view.
-  Reset (pan 0, zoom 1): on recenter(), on every image shown from an entry (new result, gallery pick, fallback), on the first live
-  preview of a run (later previews keep the view), on an output (tile) selection or snapshot reload, and on a Flat / 3D mode change
-  (the stage changes size). A hand still holding carries it on from the reset view. Both stereo eyes are in `view`, so they share
-  the transform. HD: the quad layer takes width / height / transform from holeMesh's world matrix each frame (`applyPose` when it
-  changed), so it follows the pan and zoom, and the hole mesh is in `view` with the image.
+  Reset (pan 0, zoom 1): on recenter() (also the R key), on a snapshot load, and on a Flat / 3D mode change (the stage changes
+  size). New images (live previews, results, gallery picks, fallbacks) and output tile switches keep the view; it is relative to
+  the stage fit, so an image of another aspect keeps the same relative zoom. A hand still holding carries it on from the reset
+  view. Both stereo eyes are in `view`, so they share the transform. HD: the quad layer takes width / height / transform from
+  holeMesh's world matrix each frame (`applyPose` when it changed), so it follows the pan and zoom, and the hole mesh is in
+  `view` with the image.
 - Each frame: `Panel.updateAll()`, panels' `update(dt)`; in the Desktop View `fitCamera()`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).

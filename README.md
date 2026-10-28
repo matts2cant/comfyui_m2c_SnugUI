@@ -101,8 +101,9 @@ scale it (move the hands apart or together), turn it and move it. Recenter puts 
 Images zoom and move the same way, but only within their own plane and without turning: trigger-drag (or mouse-drag) pans it
 (the point you grabbed stays under the ray), thumbstick up/down (or the wheel) zooms about the point you aim at, one grip drags
 it sideways / up / down with the controller, both grips (or both triggers) pinch-zoom and move it. It can grow past the screen
-and behind the panels (0.25x to 16x); panels in front of it still take your clicks. The view resets on every new image (result,
-gallery pick, output tile, Flat / 3D switch) and on recenter. In HD the sharp layer follows the zoom.
+and behind the panels (0.25x to 16x); panels in front of it still take your clicks. New images (previews, results, gallery picks,
+output tiles) keep the zoom; it resets on recenter, on a Flat / 3D switch and when another workflow is loaded. In HD the
+sharp layer follows the zoom.
 
 The Light button opens lighting presets, shown as tiles of their sky colours (Neutral studio, High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast,
 Golden hour) that change the 3D model's lights, its reflections and the room around you, also while an image is shown. The

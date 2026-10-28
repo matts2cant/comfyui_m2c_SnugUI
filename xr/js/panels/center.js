@@ -245,6 +245,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// one tile per output; per-output state survives a snapshot reload
 	function loadOutputs() {
+		image.reset();
 		const list = store.outputs.length ? store.outputs : [{ nodeId: null, title: "", kind: "image" }];
 		outputs = list.map((o) => ({ current: null, fresh: false, ...outputs.find((p) => p.nodeId === o.nodeId), ...o }));
 		tilesPanel.clear();
@@ -273,7 +274,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	function select(o) {
 		out = o;
-		image.reset();
 		o.fresh = false;
 		o.current ??= history.find((e) => ownerOf(e) === o) ?? null;
 		previewing = false;
@@ -441,7 +441,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		if (token !== loadToken) return;
 		if (!entry.thumb) entry.thumb = makeThumb(img);
 		previewing = false;
-		image.reset();
 		setShown(img, entry);
 		refresh();
 	}
@@ -504,7 +503,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			return;
 		}
 		if (token !== loadToken || epoch !== previewEpoch) return;
-		if (!previewing) image.reset(); // later previews of the run keep the zoom
 		previewing = true;
 		setShown(img, null);
 		refresh();
