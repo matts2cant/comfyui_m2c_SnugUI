@@ -2,7 +2,7 @@
 // library browser backed by LoRA Manager's HTTP API (/api/lm/loras/list).
 const NO_PREVIEW = "/loras_static/images/no-preview.png";
 const STEP = 0.05;
-const M = 24, W = 802;
+const M = 24;
 
 const previewUrl = (url) => !url || /\.(mp4|webm)$/i.test(url) ? NO_PREVIEW : url;
 const round2 = (v) => Number(v.toFixed(2));
@@ -41,22 +41,22 @@ export function createRightPanel({ THREE, store, ui }) {
 	let query = "", page = 1, pages = 1, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
 	let found = null; // matches of the current query, shared by the grid pages and the suggestions
 
-	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, w: W, h: 50 });
-	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90, w: W });
-	const stack = new ScrollView({ x: M, w: W });
+	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, h: 50 });
+	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90 });
+	const stack = new ScrollView({ x: M });
 	const field = new TextField({
-		x: M, w: W, placeholder: "search LoRAs", barAbove: true,
+		x: M, placeholder: "search LoRAs", barAbove: true,
 		onInput: (v) => setQuery(v),
 		onDone: (v) => { editing = false; syncVisible(); setQuery(v, true); },
 		onCancel: () => { editing = false; syncVisible(); },
 		// runs after the field commits a still-open previous edit, whose onDone clears the flag
 		onEdit: () => { editing = true; syncVisible(); loadSuggest(); },
 	});
-	const suggest = new List({ x: M, w: W, rowH: 60, size: 28, onSelect: (it) => { suggest.selected = undefined; add(it.value); } });
-	const grid = new ImageGrid({ x: M, w: W, cell: 180, onSelect: (it) => add(it.value) });
+	const suggest = new List({ x: M, rowH: 60, size: 28, onSelect: (it) => { suggest.selected = undefined; add(it.value); } });
+	const grid = new ImageGrid({ x: M, cell: 180, onSelect: (it) => add(it.value) });
 	const prev = new Button({ text: "‹ Prev", x: M, w: 180, h: 60, onClick: () => goto(page - 1) });
-	const next = new Button({ text: "Next ›", x: M + W - 180, w: 180, h: 60, onClick: () => goto(page + 1) });
-	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, w: W - 380, h: 60 });
+	const next = new Button({ text: "Next ›", w: 180, h: 60, onClick: () => goto(page + 1) });
+	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, h: 60 });
 
 	class Check extends ui.Widget {
 		draw(ctx) {
@@ -87,7 +87,7 @@ export function createRightPanel({ THREE, store, ui }) {
 		}
 	}
 
-	function buildRows(node) {
+	function buildRows(node, W) {
 		const list = store.loras(node.nodeId);
 		const rw = W - 16, h = 60, pitch = 68;
 		// against the current list: the weight field commits on a press elsewhere, after that press's own edit (× on another row)
@@ -121,7 +121,13 @@ export function createRightPanel({ THREE, store, ui }) {
 		return rows;
 	}
 
+	// from the panel's size: the Desktop View's window re-flows it
 	function render() {
+		const W = panel.width - 2 * M;
+		for (const w of [title, empty, stack, field, suggest, grid]) w.w = W;
+		empty.relayout();
+		next.x = M + W - 180;
+		pageLabel.w = W - 380;
 		panel.clear();
 		panel.add(title);
 		const nodes = store.groups.lora;
@@ -136,8 +142,7 @@ export function createRightPanel({ THREE, store, ui }) {
 			})));
 			y += 70;
 		}
-		stack.w = W;
-		stack.setChildren(buildRows(nodes[tab]));
+		stack.setChildren(buildRows(nodes[tab], W));
 		stack.y = y;
 		stack.h = Math.min(Math.max(stack.contentH(), 96), Math.round(panel.height * 0.5));
 		const top = y + stack.h + 16;
@@ -224,6 +229,7 @@ export function createRightPanel({ THREE, store, ui }) {
 		stack.scroll = stack.maxScroll();
 	}
 
+	panel.onResize = render;
 	store.addEventListener("load", () => {
 		tab = 0;
 		render();

@@ -1,7 +1,7 @@
-// Lighting panel: preset buttons for the 3D model's look. A preset sets the model's key / fill / rim lights and hemisphere
-// (model.light), an environment map for its reflections (PMREM of a small scene: the preset's gradient sky plus one emissive
-// panel per light, built once per preset), the room's gradient and the Desktop View's flat background (the gradient's
-// horizon), whatever the output on show. Panels and images use unlit, non tone mapped materials, so none of this changes them.
+// Lighting panel: preset tiles (the preset's sky gradient, named) for the 3D model's look. A preset sets the model's key / fill /
+// rim lights and hemisphere (model.light), an environment map for its reflections (PMREM of a small scene: the preset's
+// gradient sky plus one emissive panel per light, built once per preset), the room's gradient and the Desktop View's flat
+// background (the gradient's horizon), whatever the output on show. Panels and images use unlit, non tone mapped materials, so none of this changes them.
 import * as THREE from "three";
 
 const PRESET_KEY = "appmode-xr.lighting";
@@ -56,12 +56,16 @@ function paintSky(canvas, stops) {
 	g.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function skyTexture(stops) {
+function skyCanvas(stops, w, h) {
 	const c = document.createElement("canvas");
-	c.width = 2;
-	c.height = 256;
+	c.width = w;
+	c.height = h;
 	paintSky(c, stops);
-	const tex = new THREE.CanvasTexture(c);
+	return c;
+}
+
+function skyTexture(stops) {
+	const tex = new THREE.CanvasTexture(skyCanvas(stops, 2, 256));
 	tex.colorSpace = THREE.SRGBColorSpace;
 	return tex;
 }
@@ -89,8 +93,18 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 	const panel = new ui.Panel({ name: "lights", widthM: 0.85, heightM: 1.15 });
 	const group = new THREE.Group();
 	group.add(panel.mesh);
-	panel.add(new ui.Label({ text: "Lighting", size: 34, bold: true, x: 24, y: 14, w: panel.width - 48, h: 50 }));
-	const buttons = PRESETS.map((p, i) => panel.add(new ui.Button({ text: p.name, size: 32, x: 24, y: 84 + i * 124, w: panel.width - 48, h: 104, onClick: () => select(p) })));
+	const title = panel.add(new ui.Label({ text: "Lighting", size: 34, bold: true, x: 24, y: 14, h: 50 }));
+	// square tiles of the presets' sky gradients, named like the LoRA tiles, in a grid as wide as the panel
+	const tiles = panel.add(new ui.ImageGrid({
+		x: 24, y: 84, cell: 250, onSelect: (it) => select(it.value),
+		items: PRESETS.map((p) => ({ image: skyCanvas(p.sky, 64, 64), label: p.name, value: p })),
+	}));
+	// from the panel's size: the Desktop View's window re-flows the grid
+	panel.onResize = () => {
+		title.w = tiles.w = panel.width - 48;
+		tiles.h = panel.height - 108;
+	};
+	panel.onResize();
 
 	// room around the panels: floor grid and a sphere with the preset's gradient
 	const room = new THREE.Group();
@@ -106,8 +120,8 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 	} catch {}
 
 	function apply() {
-		buttons.forEach((b, i) => { b.toggled = PRESETS[i] === preset; });
-		panel.invalidate();
+		tiles.selected = preset;
+		tiles.invalidate();
 		model.light(preset);
 		paintSky(sky.image, preset.sky);
 		sky.needsUpdate = true;

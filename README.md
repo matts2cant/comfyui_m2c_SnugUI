@@ -31,9 +31,10 @@ If Quest Browser opens the page without WebXR, it shows the same instructions wi
 
 Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
 window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt (with
-the output tiles and Flat / 3D above it), Gallery, LoRA, Light, Configuration. The round buttons at the bottom right open and
-close them; several can be open at once. Drag a title bar to move a window, its corner to zoom it (the content scales, it stays
-sharp), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed back
+the output tiles and Flat / 3D above it), Gallery, LoRA, Light, Configuration. With no image or model yet, the message
+("No images yet"...) shows in a small box in the middle. The round buttons at the bottom right open and
+close them; several can be open at once. Drag a title bar to move a window, its corner to resize it freely (the text keeps its
+size, the content re-flows: bigger prompt boxes, more rows in the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed back
 inside a smaller window). The first time only Prompt is open.
 
 - Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
@@ -97,7 +98,7 @@ it sideways / up / down with the controller, both grips (or both triggers) pinch
 and behind the panels (0.25x to 16x); panels in front of it still take your clicks. The view resets on every new image (result,
 gallery pick, output tile, Flat / 3D switch) and on recenter. In HD the sharp layer follows the zoom.
 
-The Light button opens lighting presets (Neutral studio, High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast,
+The Light button opens lighting presets, shown as tiles of their sky colours (Neutral studio, High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast,
 Golden hour) that change the 3D model's lights, its reflections and the room around you, also while an image is shown. The
 choice is remembered. Panels and images are not lit.
 

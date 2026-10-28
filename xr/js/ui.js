@@ -73,10 +73,10 @@ function colAt(ctx, text, x) {
 	return lo;
 }
 
-// square-cropped image filling the s x s box at x, y
+// square-cropped image (or canvas) filling the s x s box at x, y
 function drawCover(ctx, img, x, y, s) {
-	const k = Math.min(img.naturalWidth, img.naturalHeight);
-	ctx.drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, x, y, s, s);
+	const w = img.naturalWidth ?? img.width, h = img.naturalHeight ?? img.height, k = Math.min(w, h);
+	ctx.drawImage(img, (w - k) / 2, (h - k) / 2, k, k, x, y, s, s);
 }
 
 function rrect(ctx, x, y, w, h, r) {
@@ -771,9 +771,10 @@ export class Combo extends TextField {
 	}
 }
 
+// items: [{ url or image (a canvas), label, value }]; the tile whose value is `selected` is outlined
 export class ImageGrid extends Scrollable {
 	constructor(o) {
-		super({ items: [], cell: 200, gap: 12, w: 600, h: 600, ...o });
+		super({ items: [], selected: undefined, cell: 200, gap: 12, w: 600, h: 600, ...o });
 	}
 	grid() {
 		const cols = Math.max(1, Math.floor((this.w + this.gap) / (this.cell + this.gap)));
@@ -815,7 +816,7 @@ export class ImageGrid extends Scrollable {
 			ctx.clip();
 			ctx.fillStyle = theme.surface;
 			ctx.fillRect(x, y, s, s);
-			const img = it.url ? this.image(it.url) : null;
+			const img = it.image ?? (it.url ? this.image(it.url) : null);
 			if (img) drawCover(ctx, img, x, y, s);
 			if (it.label) {
 				ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -831,6 +832,11 @@ export class ImageGrid extends Scrollable {
 				ctx.fillRect(x, y, s, s);
 			}
 			ctx.restore();
+			if (this.selected === undefined || it.value !== this.selected) continue;
+			rrect(ctx, x, y, s, s, r);
+			ctx.lineWidth = 7;
+			ctx.strokeStyle = theme.accent;
+			ctx.stroke();
 		}
 		this.drawBar(ctx);
 	}
@@ -937,14 +943,19 @@ export class Panel {
 		this.canvas.height = Math.round(this.height * this.scale);
 	}
 
-	// canvas px per panel px: a Desktop View window draws its panels at the displayed resolution, VR at 1
-	setScale(k) {
-		if (k === this.scale) return;
-		this.scale = k;
-		this.canvas.width = Math.round(this.width * k);
-		this.canvas.height = Math.round(this.height * k);
+	// A Desktop View window's panel: width x height px, any size (onResize() re-flows the widgets), drawn at scale canvas px
+	// per px (the displayed resolution). Without arguments: back to the world size at scale 1, as in VR.
+	setPx(width = Math.round(this.widthM * this.pxPerM), height = Math.round(this.heightM * this.pxPerM), scale = 1) {
+		const resized = width !== this.width || height !== this.height;
+		if (!resized && scale === this.scale) return;
+		this.width = width;
+		this.height = height;
+		this.scale = scale;
+		this.canvas.width = Math.round(width * scale);
+		this.canvas.height = Math.round(height * scale);
 		this.texture.dispose();
 		this.invalidate();
+		if (resized) this.onResize?.();
 	}
 
 	// new world size at the same canvas density; widgets keep their px positions, the caller relayouts them

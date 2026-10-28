@@ -5,6 +5,7 @@ import { createModelView } from "../model.js";
 
 const TILES_W = 1.2, KIND_W = 0.56, BAND_H = 0.1; // the band over the prompt panel: TILES_W + gap + KIND_W = its width
 const TILE_W = 380;
+const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
 const MISSING = "File no longer exists — removed from the gallery";
@@ -75,7 +76,7 @@ function resultFiles({ images = [], result, "3d": saved } = {}) {
 	return [...images.filter((f) => IMAGE_EXT.test(f.filename)).map(pick("image")), ...models.filter((f) => MODEL_EXT.test(f.filename)).map(pick("3d"))];
 }
 
-export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen }) {
+export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }) {
 	const { theme } = ui;
 	const group = new THREE.Group();
 
@@ -165,12 +166,22 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const tilesPanel = new ui.Panel({ name: "center-tiles", widthM: TILES_W, heightM: BAND_H, bg: null });
 	const kindPanel = new ui.Panel({ name: "center-kind", widthM: KIND_W, heightM: BAND_H });
 	const galleryPanel = new ui.Panel({ name: "gallery", widthM: 0.85, heightM: 1.15 });
+	// the stage's message in the Desktop View, which shows it centered in a panel just around its text (the stage is VR only);
+	// note.mesh.visible: a message is up
+	const note = new ui.Panel({ name: "center-note", widthM: 1, heightM: 0.1 });
 	group.add(stage.mesh);
 
 	const empty = stage.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", h: 72 }));
+	const noteText = note.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: NOTE_PAD_X, y: NOTE_PAD_Y, h: 72 }));
 
-	const galleryTitle = galleryPanel.add(new ui.Label({ text: "Gallery", size: 34, bold: true, x: 24, y: 14, w: galleryPanel.width - 48, h: 50 }));
-	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, w: galleryPanel.width - 48, h: galleryPanel.height - 108, cell: 250, onSelect: (e) => showEntry(e) }));
+	const galleryTitle = galleryPanel.add(new ui.Label({ text: "Gallery", size: 34, bold: true, x: 24, y: 14, h: 50 }));
+	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, cell: 250, onSelect: (e) => showEntry(e) }));
+	// from the panel's size: the Desktop View's window re-flows it
+	galleryPanel.onResize = () => {
+		galleryTitle.w = gallery.w = galleryPanel.width - 48;
+		gallery.h = galleryPanel.height - 108;
+	};
+	galleryPanel.onResize();
 
 	const modeBtns = STEREO_MODES.map(([m, text], i) => new ui.Button({ text, size: 26, x: [12, 136, 284][i], y: 12, w: [116, 140, 140][i], h: 76, onClick: () => setStereo(m) }));
 	const hdBtn = new ui.Button({ text: "HD", size: 30, x: 432, y: 12, w: 116, h: 76, onClick: () => { hd = !hd; } });
@@ -205,7 +216,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
 	let modelOn = false, stage3d = false, notice = "", modelToken = 0;
-	let band = null;           // which of the tiles and the output-type panel are shown: main.js leaves room for them
+	let band = null;           // the panels shown around the stage (tiles, output-type panel, note): main.js places them
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let singleOn = false;
@@ -285,12 +296,18 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		stage3d = modelOn || out.kind === "3d";
 		singleOn = !modelOn && !!shown;
 		model.group.visible = modelOn && model.entry === current;
-		stage.mesh.visible = !singleOn && !model.group.visible;
+		note.mesh.visible = !singleOn && !model.group.visible;
 		gallery.selected = current;
 		gallery.items = history.filter((e) => ownerOf(e) === out);
 		galleryTitle.setText(tilesPanel.mesh.visible ? `Gallery · ${out.title}` : "Gallery");
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
+		if (empty.text !== noteText.text) {
+			note.ctx.font = `${empty.size}px ${theme.font}`;
+			noteText.w = Math.ceil(note.ctx.measureText(empty.text).width) + 2;
+			noteText.setText(empty.text);
+			note.setPx(noteText.w + 2 * NOTE_PAD_X, noteText.h + 2 * NOTE_PAD_Y, note.scale);
+		}
 		for (const b of modeBtns) b.disabled = stage3d;
 		tiles.forEach((t, i) => {
 			t.toggled = outputs[i] === out;
@@ -298,8 +315,8 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		});
 		for (const p of [stage, galleryPanel, tilesPanel, kindPanel]) p.invalidate();
 		fitStage();
-		// the band's panels changed: the lectern and the Desktop View's prompt window re-place them
-		const b = [tilesPanel.mesh.visible, kindPanel.mesh.visible].join();
+		// the panels main.js places around the stage changed: the band (the lectern, the Desktop View's prompt window) or the note
+		const b = [tilesPanel.mesh.visible, kindPanel.mesh.visible, note.mesh.visible && noteText.text].join();
 		if (b !== band) {
 			band = b;
 			screen.onResize();
@@ -683,6 +700,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			imageMesh.visible = singleOn;
 		}
 		updateEyes();
+		stage.mesh.visible = note.mesh.visible && !desktopView();
 		const hdUsable = hdSupported && !isSplit() && !stage3d;
 		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;
@@ -694,5 +712,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	syncModeBtns();
 	loadOutputs();
 	pruneMissing([...history]);
-	return { group, update, model, image, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel };
+	tilesPanel.onResize = placeTiles; // the Desktop View's prompt window gives the band its width
+	return { group, update, model, image, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel, note };
 }

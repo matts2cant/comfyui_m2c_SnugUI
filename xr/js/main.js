@@ -105,6 +105,7 @@ const ctx = {
 	THREE, store, ui, scene, renderer, camera, screen,
 	client: new ComfyClient(),
 	xr: { isPresenting: () => renderer.xr.isPresenting },
+	desktopView: () => deskView,
 };
 window.__xr = ctx;
 
@@ -186,15 +187,28 @@ function layout() {
 	}
 }
 
-// Desktop View windows: the same panels; the prompt window has the band over the prompt panel as on the lectern
-const BAND_GAP = 16;
+// Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts
+// take). The prompt window has the band over the prompt panel as on the lectern: the tiles take the width the output-type
+// panel leaves.
+const BAND_GAP = 16, KIND_GAP = 40;
+const SIDE_MIN = { gallery: [500, 500], lora: [600, 700], light: [420, 500], config: [600, 500] };
 const windows = createDesktop([
-	{ name: "prompt", title: "Prompt", icon: "pencil", layout: () => {
-		const { tiles, kind } = center, band = tiles.mesh.visible || kind.mesh.visible ? tiles.height + BAND_GAP : 0;
-		return [[bottom.panel, 0, band], tiles.mesh.visible && [tiles, 0, 0], kind.mesh.visible && [kind, bottom.panel.width - kind.width, 0]].filter(Boolean);
-	} },
-	...SIDES.map(([name, icon, title, { panel }]) => ({ name, title, icon, layout: () => [[panel, 0, 0]] })),
-], enterVR);
+	{
+		name: "prompt", title: "Prompt", icon: "pencil",
+		size: [bottom.panel.width, center.tiles.height + BAND_GAP + bottom.panel.height], min: [1100, 540],
+		layout: (w, h) => {
+			const { tiles, kind } = center, band = tiles.mesh.visible || kind.mesh.visible ? tiles.height + BAND_GAP : 0;
+			return [
+				[bottom.panel, 0, band, w, h - band],
+				tiles.mesh.visible && [tiles, 0, 0, w - kind.width - KIND_GAP, tiles.height],
+				kind.mesh.visible && [kind, w - kind.width, 0, kind.width, kind.height],
+			].filter(Boolean);
+		},
+	},
+	...SIDES.map(([name, icon, title, { panel }]) => ({
+		name, title, icon, size: [panel.width, panel.height], min: SIDE_MIN[name], layout: (w, h) => [[panel, 0, 0, w, h]],
+	})),
+], center.note, enterVR);
 
 function relayout() {
 	layout();

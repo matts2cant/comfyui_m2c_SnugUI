@@ -1,14 +1,15 @@
 // Desktop View windows: the VR panels' own canvases in floating DOM windows over the 3D view. A title bar (icon, name, close)
-// moves a window, its corner grip zooms it (aspect locked, the panels scale without re-flow and are drawn at the displayed
-// resolution, Panel.setScale), a press raises it. Pointer events go to panel.pointer() in panel px, so the windows take every
+// moves a window, its corner grip resizes it (the panels re-flow to the new size at one fixed text size and are drawn at the
+// displayed resolution, Panel.setPx), a press raises it. Pointer events go to panel.pointer() in panel px, so the windows take every
 // press over them. The dock at the bottom right toggles the windows, then VR mode. Geometry and open state are kept in
 // localStorage and pushed back inside the browser window when it is smaller.
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
 
-const STORE_KEY = "appmode-xr.windows";
-const ZOOM = 0.45, MIN_W = 220, MARGIN = 12, CASCADE = 32, BAR_H = 40; // BAR_H: about the title bar, for first placements
+const STORE_KEY = "appmode-xr.desktop";
+const SCALE = 0.45; // CSS px per panel px, in every window
+const MARGIN = 12, CASCADE = 32;
 
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>`;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -82,11 +83,15 @@ function load() {
 	}
 }
 
-// specs: [{ name, title, icon, layout() -> [[panel, x, y]] }], x y the panel's top-left in the window's content px; only the
-// first one is open on the first visit. onVR: the dock's VR mode button.
-export function createDesktop(specs, onVR) {
+// specs: [{ name, title, icon, size: [w, h], min: [w, h], layout(w, h) -> [[panel, x, y, w, h]] }] in panel px: size is the
+// content on first opening, min the smallest the panels' layouts take, layout places them in a w x h content area. Only the
+// first one is open on the first visit. note: a panel shown alone at the center while note.mesh.visible (the stage's
+// message). onVR: the dock's VR mode button.
+export function createDesktop(specs, note, onVR) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
+	const noteBox = el("div", "note", root);
+	noteBox.append(note.canvas);
 	const dock = el("div", "dock", document.body);
 	// keep the edit's focused textarea (or the on-screen keyboard) while pressing the windows
 	root.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); });
@@ -121,10 +126,14 @@ export function createDesktop(specs, onVR) {
 			Object.assign(win.state, { x: from.x + dx, y: from.y + dy });
 			render(win);
 		}, end);
-		// the larger of the two relative changes, so the corner follows the pointer either way
-		drag(grip, () => { from = { ...win.rect, h: win.rect.h - bar.offsetHeight }; }, (dx, dy) => {
-			Object.assign(win.state, { x: from.x, y: from.y, w: Math.max(MIN_W, from.w * Math.max((from.w + dx) / from.w, (from.h + dy) / from.h)) });
+		// the panels re-flow under an open edit's toolbar: commit it first. The size stored is the one shown (minimum, browser window).
+		drag(grip, () => {
+			keyboard.commit();
+			from = { ...win.rect };
+		}, (dx, dy) => {
+			Object.assign(win.state, { x: from.x, y: from.y, w: from.w + dx, h: from.h + dy });
 			render(win);
+			Object.assign(win.state, { w: win.rect.w, h: win.rect.h });
 		}, end);
 		return win;
 	});
@@ -156,41 +165,36 @@ export function createDesktop(specs, onVR) {
 		save();
 	}
 
-	// the content size in panel px
-	function content(items) {
-		return { cw: Math.max(...items.map(([p, x]) => x + p.width)), ch: Math.max(...items.map(([p, , y]) => y + p.height)) };
-	}
-
 	// first opening: the first window centered just above the dock, the others right-aligned with the dock just above it,
 	// up and left of the previous new window while that one is still open
 	function place(win) {
-		const { cw, ch } = content(win.spec.layout()), d = dock.getBoundingClientRect();
-		const w = Math.min(cw * ZOOM, innerWidth - 2 * MARGIN), h = ch * w / cw + BAR_H;
-		if (win === wins[0]) return Object.assign(win.state, { x: (innerWidth - w) / 2, y: d.top - MARGIN - h, w });
+		const [cw, ch] = win.spec.size, d = dock.getBoundingClientRect();
+		const w = Math.min(cw * SCALE, innerWidth - 2 * MARGIN), h = ch * SCALE + win.bar.offsetHeight;
+		if (win === wins[0]) return Object.assign(win.state, { x: (innerWidth - w) / 2, y: d.top - MARGIN - h, w, h });
 		win.cascade = lastNew?.state.open ? lastNew.cascade + 1 : 0;
 		lastNew = win;
-		Object.assign(win.state, { x: d.right - w - win.cascade * CASCADE, y: d.top - MARGIN - h - win.cascade * CASCADE, w });
+		Object.assign(win.state, { x: d.right - w - win.cascade * CASCADE, y: d.top - MARGIN - h - win.cascade * CASCADE, w, h });
 	}
 
-	// the stored geometry as shown: zoomed down and moved to fit the browser window. A page loaded in a hidden tab has no
-	// size yet: its windows are placed on the first resize.
+	// The stored geometry as shown: at least the window's minimum, at most the browser window, moved inside it. The panels take
+	// the content area at SCALE, drawn at the displayed resolution; a hidden window's panels go back to their VR size. A page
+	// loaded in a hidden tab has no size yet: its windows are placed on the first resize.
 	function render(win) {
-		const { box, body, state } = win;
+		const { box, body, state, spec } = win;
 		box.hidden = !shown || !state.open || !innerWidth;
 		dock.children[wins.indexOf(win)].classList.toggle("on", !!state.open);
 		if (box.hidden) {
-			for (const p of win.panels) p.setScale(1);
+			for (const p of win.panels) p.setPx();
 			return;
 		}
 		if (state.x === undefined) place(win);
-		const items = win.spec.layout(), { cw, ch } = content(items), barH = win.bar.offsetHeight;
-		const zoom = Math.min(state.w / cw, innerWidth / cw, (innerHeight - barH) / ch);
-		const w = cw * zoom, h = ch * zoom + barH;
+		const barH = win.bar.offsetHeight, [minW, minH] = spec.min;
+		const w = Math.max(minW * SCALE, Math.min(state.w, innerWidth)), h = Math.max(minH * SCALE + barH, Math.min(state.h, innerHeight));
 		win.rect = { x: clamp(state.x, 0, innerWidth - w), y: clamp(state.y, 0, innerHeight - h), w, h };
 		Object.assign(box.style, { left: win.rect.x + "px", top: win.rect.y + "px", width: w + "px", zIndex: state.z ?? 0 });
-		body.style.height = ch * zoom + "px";
+		body.style.height = h - barH + "px";
 		for (const c of body.children) c.hidden = true;
-		for (const [panel, x, y] of items) {
+		for (const [panel, x, y, pw, ph] of spec.layout(Math.round(w / SCALE), Math.round((h - barH) / SCALE))) {
 			const c = panel.canvas;
 			if (!win.panels.has(panel)) {
 				win.panels.add(panel);
@@ -198,9 +202,16 @@ export function createDesktop(specs, onVR) {
 				bindPanel(panel);
 			}
 			c.hidden = false;
-			Object.assign(c.style, { left: x * zoom + "px", top: y * zoom + "px", width: panel.width * zoom + "px", height: panel.height * zoom + "px" });
-			panel.setScale(zoom * devicePixelRatio);
+			Object.assign(c.style, { left: x * SCALE + "px", top: y * SCALE + "px", width: pw * SCALE + "px", height: ph * SCALE + "px" });
+			panel.setPx(pw, ph, SCALE * devicePixelRatio);
 		}
+	}
+
+	function renderNote() {
+		noteBox.hidden = !shown || !note.mesh.visible;
+		if (noteBox.hidden) return;
+		note.setPx(note.width, note.height, SCALE * devicePixelRatio);
+		Object.assign(note.canvas.style, { width: note.width * SCALE + "px", height: note.height * SCALE + "px" });
 	}
 
 	// on: the Desktop View with its windows shown (not hidden by H); also re-places them when their content changed
@@ -208,8 +219,12 @@ export function createDesktop(specs, onVR) {
 		shown = on;
 		dock.hidden = !on;
 		for (const win of wins) render(win);
+		renderNote();
 	}
 
-	addEventListener("resize", () => { for (const win of wins) render(win); });
+	addEventListener("resize", () => {
+		for (const win of wins) render(win);
+		renderNote();
+	});
 	return { update };
 }

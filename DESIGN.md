@@ -144,7 +144,8 @@ export class Panel {                // a canvas-textured plane
   invalidate()                      // redraw before next frame (Panel.updateAll() called by main each frame)
   pointer(type, x, y, pointerId)    // type: "move"|"down"|"up"|"leave"; x,y canvas px; routed to widgets (capture on down)
   scroll(dy, x, y)                  // thumbstick/wheel; routed to the scrollable widget under (x,y)
-  setScale(k)                       // canvas backing px per panel px (default 1); widgets keep drawing and hit-testing in panel px
+  setPx(w, h, scale)                // Desktop View: w x h px (any size) drawn at scale canvas px per px; no arguments = the world
+                                    // size at scale 1 (VR). A size change calls panel.onResize(), the module's re-flow
 }
 export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; contains(x,y);
   onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false } ; invalidate() }
@@ -154,7 +155,8 @@ Label{text, size, color, align, wrap}, Button{text, icon, round, onClick, varian
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
-Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url, label, value}], onSelect, cell} (scrollable),
+Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell} (scrollable, the
+  `selected` value's tile outlined),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 List/ImageGrid thumbnails (`url`) load through a module-level image cache.
 ```
@@ -262,7 +264,7 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
 main.js also reads `panel`, and center's `tiles` / `kind` / `gallery` panels and `model`; the lighting panel is
 `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js adds `room` to the scene) where
-`ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() } }`.
+`ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`; center also returns `note`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toggle column and icons
@@ -356,19 +358,31 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
 ### Desktop View (desktop.js, main.js)
 - Viewport: the whole window, a fixed camera at the eye looking straight at the stage (no look around), its vertical fov fitted each
   frame so the stage fills the window (contain: `max(screen.h, screen.w / aspect)` at `SCREEN_DISTANCE`). The image or 3D model
-  is therefore fitted to the window; the stage panel's message shows when there is neither. `scene.background` is lights.js's
+  is therefore fitted to the window. When there is neither, the stage's message (no workflow, no images / 3D models yet,
+  loading, missing file, load error: every text of center's `empty` label) is not shown on the 16:9 stage frame, which center
+  hides in the Desktop View (`ctx.desktopView()`, each frame in `update()`), but in center's `note` panel: the same text, its
+  width measured, 40 / 20 px padding, shown by desktop.js alone at the window's center (no chrome, clicks pass through) while
+  `note.mesh.visible` (the message is up). A changed text re-places it through `screen.onResize`. `scene.background` is lights.js's
   `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
   hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
   about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
 - Windows: Prompt (the band, output tiles at the left and the output-type panel at the right, `BAND_GAP` 16 px over the prompt
   panel, as on the lectern; the band follows `tiles.mesh.visible` / `kind.mesh.visible`), Gallery, LoRA, Light, Configuration. They
   host the same Panel objects as VR: each panel's own canvas is placed in a DOM window (`main.js` passes `createDesktop` one spec per
-  window, `{ name, title, icon, layout() -> [[panel, x, y]] }` in panel px). `layout()` hides the lectern and the side slot in the
-  Desktop View; the meshes are not rendered. `screen.onResize` (stage size, band change) re-places the windows too.
+  window, `{ name, title, icon, size, min, layout(w, h) -> [[panel, x, y, w, h]] }` in panel px: `size` the content on first
+  opening (the VR size; Prompt: the prompt panel under the band), `min` the smallest its layout takes (Prompt 1100 x 540, Gallery
+  500 x 500, LoRA 600 x 700, Light 420 x 500, Configuration 600 x 500), `layout` places the panels in the content area). In the
+  Prompt window the prompt panel takes the area under the band, the tiles panel the band's width left of the output-type panel
+  (`KIND_GAP` 40 px, its VR size). `layout()` hides the lectern and the side slot in the Desktop View; the meshes are not rendered.
+  `screen.onResize` (stage size, band or note change) re-places the windows too.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
-  pointers, as is a 44 px bar). Resizing zooms: the aspect is locked, the panels keep their px layout and scale; the grip takes the
-  larger of the width / height change. The panels are drawn at the displayed resolution, `panel.setScale(zoom * devicePixelRatio)`;
-  a hidden window's panels and every panel outside the Desktop View go back to scale 1 (VR textures unchanged).
+  pointers, as is a 44 px bar). Width and height are free; every window draws its panels at one fixed `SCALE` (0.45 CSS px per
+  panel px, so the text has one size everywhere) and the panels RE-FLOW to the content area: `panel.setPx(w, h, SCALE *
+  devicePixelRatio)` (sharp at any DPI) calls the panel module's `onResize`, which re-runs its own layout from `panel.width` /
+  `height` (the same code VR runs at the world size): the prompt boxes and Generate grow, the Configuration / LoRA / Gallery lists
+  show more rows (their scrolling covers the rest), the Light grid takes more columns, the tiles share the band. A grip press
+  commits an open edit first (a re-flow rebuilds some panels' widgets). A hidden window's panels and every panel outside the
+  Desktop View go back to their world size at scale 1 (`setPx()`), so VR keeps its layout.
 - Several windows may be open; a press on one raises it (z-index, kept). Windows sit above the 3D view, so pointer input over a
   window always goes to it. Canvas pointer events map to `panel.pointer(type, x, y, pointerId)` in panel px (pointer capture on
   press, wheel = `panel.scroll`; a drag in a panel scrolls it as in VR). A press on a TextField or EditBar keeps an edit, any other
@@ -377,12 +391,13 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
   (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation).
 - Dock (bottom right, above the windows): one round toggle per window, lit (`on`) while it is open, then a separator and VR mode.
   Hidden in the VR view and by H.
-- Persistence: localStorage `appmode-xr.windows` = `{ <name>: { x, y, w, open, z } }` (CSS px, w = window width; try/catch, the
-  page works without it), saved after a move, resize, open, close or raise. Shown geometry is clamped: the zoom shrinks to fit the
-  browser window and the position is pushed inside it, without changing what is stored (rotating a tablet back restores it).
+- Persistence: localStorage `appmode-xr.desktop` = `{ <name>: { x, y, w, h, open, z } }` (CSS px, w / h = the window's size
+  with its title bar; try/catch, the page works without it; the zoom version's `appmode-xr.windows` is ignored), saved after a move,
+  resize, open, close or raise; a resize stores the size as shown. Shown geometry is clamped: at least the window's minimum, at
+  most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
 - Placement on first opening (no stored x): the first window (Prompt) centered just above the dock; the others right-aligned with
-  the dock just above it, `CASCADE` 32 px up and left of the previous new window while that one is still open. Default zoom 0.45
-  (at most the window width minus margins). First visit: only Prompt is open. A page loaded without a size (hidden tab) places its
+  the dock just above it, `CASCADE` 32 px up and left of the previous new window while that one is still open. First size: the
+  spec's `size` at `SCALE` (the width at most the browser window minus margins). First visit: only Prompt is open. A page loaded without a size (hidden tab) places its
   windows on the first resize.
 - Keys: H hides every window and the dock (and shows them again); the image / model keep their fit. R resets the image / model.
   Physical keys edit text through `ta` as before.
@@ -468,7 +483,9 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
   (`item.folder + "/" + item.file_name`, no extension) or model_name, keeping LoRA Manager's name order. The matches are kept for the
   current query (paging and suggestions reuse them, a changed query refetches) and paged locally. Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
-- lights: title + 7 preset `Button`s (the current one `toggled`), applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
+- lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 3 columns in VR; the Desktop View's
+  window re-flows it), each the preset's sky gradient (`skyCanvas`, the colours `paintSky` gives the room) with the preset name as
+  its label, drawn like the LoRA library tiles; the current one outlined (`selected`, as the gallery outlines the shown entry). Applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
   Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting` (try/catch).
   Each preset (table in lights.js) gives key / fill / rim `[color, intensity, x, y, z]` (x y z towards the light in the stage frame,
   +z towards the viewer), the hemisphere `[sky, ground, intensity]`, a 3-stop sky gradient (top, horizon, bottom) and `env`

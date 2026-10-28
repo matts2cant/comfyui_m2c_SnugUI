@@ -9,7 +9,6 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "prompt", widthM: 1.8, heightM: 0.6 });
 	group.add(panel.mesh);
-	const W = panel.width, H = panel.height;
 
 	class ProgressBar extends ui.Widget {
 		constructor(o) { super({ value: 0, max: 0, text: "Idle", queue: 0, error: false, ...o }); }
@@ -35,10 +34,10 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		}
 	}
 
-	const name = panel.add(new ui.Label({ text: "", size: 32, bold: true, x: 24, y: 14, w: W - 48, h: 48 }));
+	const name = panel.add(new ui.Label({ text: "", size: 32, bold: true, x: 24, y: 14, h: 48 }));
 	const progress = panel.add(new ProgressBar({ h: 56 }));
 	const generate = panel.add(new ui.Button({ text: "Generate", size: 52, variant: "accent", onClick: () => store.generate() }));
-	const cancel = panel.add(new ui.Button({ text: "Cancel", size: 28, variant: "danger", y: H - M - ROW_H, h: ROW_H, onClick: () => client.interrupt() }));
+	const cancel = panel.add(new ui.Button({ text: "Cancel", size: 28, variant: "danger", h: ROW_H, onClick: () => client.interrupt() }));
 	let boxes = [];
 	let seedRow = null;
 	let widgets = [];
@@ -120,8 +119,12 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		};
 	}
 
+	// from the panel's size: the Desktop View's window re-flows it
 	function layout() {
+		const W = panel.width, H = panel.height;
 		const rx = boxes.length ? W - M - RW : M, rw = W - M - rx;
+		name.w = W - 48;
+		cancel.y = H - M - ROW_H;
 		const total = H - TOP - M, first = boxes.length > 1 ? Math.round((total - GAP) * 2 / 3) : total;
 		boxes.forEach(([, box], i) => {
 			Object.assign(box, { x: M, w: rx - M - 24, y: i ? TOP + first + GAP : TOP, h: i ? total - first - GAP : first });
@@ -151,6 +154,7 @@ export function createBottomPanel({ THREE, store, client, ui }) {
 		refresh();
 	}
 
+	panel.onResize = layout;
 	store.addEventListener("load", () => { build(); checkOutputs(); });
 	store.addEventListener("change", (e) => {
 		refresh();

@@ -143,8 +143,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);
-	const W = panel.width, H = panel.height;
-	const title = new Label({ text: "Settings", size: 40, bold: true, x: 24, y: 24, w: W - 48 });
+	const title = new Label({ text: "Settings", size: 40, bold: true, x: 24, y: 24 });
 
 	const decimals = (n) => (String(n).split(".")[1] ?? "").length;
 	const caption = (text) => new Label({ text, size: 24, color: theme.muted });
@@ -281,7 +280,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		current = name;
 		const list = shown.filter((en) => en.tab === name);
 		let y = 12;
-		for (const en of list) y = stackY(en.widgets, { x: 12, y, w: W - 60, gap: 8 }) + 14;
+		for (const en of list) y = stackY(en.widgets, { x: 12, y, w: panel.width - 60, gap: 8 }) + 14;
 		view.clear();
 		view.setChildren(list.flatMap((en) => en.widgets));
 	}
@@ -298,8 +297,11 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		layout();
 	}
 
-	// tab row and list of the visible entries; the shown tab stays (with its scroll) while it has visible inputs
+	// tab row and list of the visible entries, from the panel's size (the Desktop View's window re-flows it); the shown tab
+	// stays (with its scroll) while it has visible inputs
 	function layout() {
+		const W = panel.width, H = panel.height;
+		title.w = W - 48;
 		shown = visibleEntries();
 		for (const en of entries) for (const w of en.widgets) w.hover = w.pressed = false;
 		const tabs = [...new Set(shown.map((en) => en.tab))];
@@ -331,6 +333,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 		if (keep?.tab === current) view.scroll = Math.min(keep.scroll, Math.max(0, view.contentH() - view.h));
 	}
 
+	panel.onResize = layout;
 	store.addEventListener("load", rebuild);
 	store.addEventListener("change", (e) => {
 		for (const en of entries) if (en.key === e.detail.key) en.update();
