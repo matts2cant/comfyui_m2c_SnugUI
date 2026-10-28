@@ -121,6 +121,7 @@ const SIDES = [
 	["config", "settings", settings],
 ];
 let open = null; // the side panel on show; every session starts with none
+let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
 
 // round icon buttons that work like tabs (pressing the open one closes it), then Exit
 const toggles = new ui.Panel({ name: "toggles", widthM: 0.14, heightM: 0.6, bg: null });
@@ -151,6 +152,7 @@ function layout() {
 
 	// lectern frame: origin at the middle of its top edge, x right, y up the slope; panels are placed by their top edge
 	lectern.position.set(0, -h / 2 - GAP_SCREEN, -SCREEN_DISTANCE);
+	lectern.visible = uiShown;
 	const at = (group, panel, x, top) => group.position.set(x, -top - size(panel)[1] / 2, 0);
 	const [promptW] = size(bottom.panel), [togglesW] = size(toggles);
 	const band = center.tiles.mesh.visible || center.kind.mesh.visible ? size(center.tiles)[1] + GAP : 0;
@@ -166,7 +168,7 @@ function layout() {
 	const innerX = Math.max(promptW / 2 + GAP + togglesW, w / 2) + GAP_SIDE;
 	for (const [name, , { group, panel }] of SIDES) {
 		const [sw, sh] = size(panel, SIDE_SCALE);
-		group.visible = name === open;
+		group.visible = uiShown && name === open;
 		group.rotation.y = -SIDE_YAW;
 		group.position.set(innerX + sw / 2 * Math.cos(SIDE_YAW), backY + sh / 2, backZ + sw / 2 * Math.sin(SIDE_YAW));
 	}
@@ -218,10 +220,24 @@ function project(panel, ray) {
 	return { panel, x: (pt.x / panel.widthM + 0.5) * panel.width, y: (0.5 - pt.y / panel.heightM) * panel.height, dist };
 }
 
-// distance to the 3D model when the ray reaches it before the panel it hits, else null
-function modelHit(ray, hit) {
-	const d = center.model.hit(ray);
-	return d !== null && !(hit && hit.dist < d) ? d : null;
+// the 3D model or the image (center's `model` / `image`, never both shown) when the ray reaches it before the panel it hits:
+// { view, dist }, else null. Panels in front of a zoomed image keep their rays.
+function viewHit(ray, hit) {
+	for (const view of [center.model, center.image]) {
+		const dist = view.hit(ray);
+		if (dist !== null) return hit && hit.dist < dist ? null : { view, dist };
+	}
+	return null;
+}
+
+// grabs the view with a translation pose that follows the ray's point on the plane through the hit point: the image pans in its
+// own plane, the desktop's shift- / right-drag slides the model in the plane facing the camera. Keyed by the pointer object,
+// apart from the grips (pointer ids), so a controller can do both.
+const slidePose = new THREE.Matrix4();
+function slide(ptr, view, normal, ray, dist) {
+	const at = ray.at(dist, new THREE.Vector3());
+	ptr.grab = { view, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, at) };
+	view.grab(ptr, slidePose.makeTranslation(at));
 }
 
 // a drag on the 3D model turns it by MODEL_TURN times the change of the ray's yaw / pitch in the ui frame
@@ -232,6 +248,10 @@ function aimAngles(ray) {
 }
 
 function updatePointer(ptr, ray) {
+	if (ptr.grab?.plane) {
+		if (ray.intersectPlane(ptr.grab.plane, tmp)) ptr.grab.view.drag(ptr, slidePose.makeTranslation(tmp));
+		return ptr.hit = null;
+	}
 	if (ptr.grab) {
 		const a = aimAngles(ray);
 		center.model.turn((a.yaw - ptr.grab.yaw) * MODEL_TURN, (ptr.grab.pitch - a.pitch) * MODEL_TURN);
@@ -255,10 +275,10 @@ function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
 	const target = hit?.panel.hitTest(hit.x, hit.y);
 	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
-	if (modelHit(ray, hit) !== null) {
-		ptr.grab = aimAngles(ray);
-		return true;
-	}
+	const v = viewHit(ray, hit);
+	if (v?.view === center.model) ptr.grab = aimAngles(ray);
+	else if (v) slide(ptr, v.view, center.group.getWorldDirection(new THREE.Vector3()), ray, v.dist);
+	if (v) return true;
 	if (!hit) return false;
 	ptr.cap = hit.panel;
 	hit.panel.pointer("down", hit.x, hit.y, ptr.id);
@@ -267,6 +287,7 @@ function pointerDown(ptr, ray) {
 
 // drop hover and any held press without clicking (controller lost, session ended)
 function releasePointer(ptr) {
+	if (ptr.grab?.plane) ptr.grab.view.release(ptr);
 	ptr.cap?.pointer("up", -1e6, -1e6, ptr.id);
 	ptr.panel?.pointer("leave", 0, 0, ptr.id);
 	ptr.panel = ptr.cap = ptr.grab = null;
@@ -274,14 +295,15 @@ function releasePointer(ptr) {
 
 function pointerUp(ptr, ray) {
 	const panel = ptr.cap, q = panel && project(panel, ray);
+	if (ptr.grab?.plane) ptr.grab.view.release(ptr);
 	ptr.cap = ptr.grab = null;
 	if (q) panel.pointer("up", q.x, q.y, ptr.id);
 	if (ptr.outside) keyboard.commit();
 	ptr.outside = false;
 }
 
-// ---- XR controllers / hands: ray + cursor dot, select = press, thumbstick = scroll (zoom on the 3D model),
-// squeeze on the 3D model = grab it, left squeeze elsewhere = recenter ----
+// ---- XR controllers / hands: ray + cursor dot, select = press (turns the 3D model, pans the image), thumbstick = scroll
+// (zoom on the 3D model or the image), squeeze on either = grab it, left squeeze elsewhere = recenter ----
 const controllers = [0, 1].map((i) => {
 	const ptr = newPointer(i + 1);
 	const target = renderer.xr.getController(i);
@@ -298,20 +320,20 @@ const controllers = [0, 1].map((i) => {
 		worldRay.direction.set(0, 0, -1).transformDirection(target.matrixWorld);
 		return worldRay;
 	};
-	const c = { ptr, target, ray, dot, aim, source: null, holding: false };
+	const c = { ptr, target, ray, dot, aim, source: null, holding: null, b: false }; // holding: the view the grip holds; b: B was down
 	const drop = () => {
-		if (c.holding) center.model.release(ptr.id);
-		c.holding = false;
+		c.holding?.release(ptr.id);
+		c.holding = null;
 	};
 	target.addEventListener("connected", (e) => { c.source = e.data; ray.visible = e.data.targetRayMode !== "gaze"; });
 	target.addEventListener("disconnected", () => { c.source = null; ray.visible = dot.visible = false; releasePointer(ptr); drop(); });
 	target.addEventListener("selectstart", () => pointerDown(ptr, aim()));
 	target.addEventListener("selectend", () => pointerUp(ptr, aim()));
 	target.addEventListener("squeezestart", () => {
-		const r = aim();
-		if (modelHit(r, pick(r)) !== null) {
-			c.holding = true;
-			center.model.grab(ptr.id, target.matrixWorld);
+		const r = aim(), v = viewHit(r, pick(r));
+		if (v) {
+			c.holding = v.view;
+			v.view.grab(ptr.id, target.matrixWorld);
 		} else if (c.source?.handedness === "left") recenter();
 	});
 	target.addEventListener("squeezeend", drop);
@@ -321,25 +343,38 @@ const controllers = [0, 1].map((i) => {
 function updateControllers(dt) {
 	for (const c of controllers) {
 		if (!c.source) continue;
+		// B: xr-standard button 5 of the right Quest Touch controller (WebXR input profile oculus-touch); hands have none
+		const b = c.source.handedness === "right" && !!c.source.gamepad?.buttons[5]?.pressed;
+		if (b && !c.b) toggleUI();
+		c.b = b;
 		if (!c.target.visible) {
 			c.dot.visible = false;
 			if (!c.ptr.cap) releasePointer(c.ptr);
 			continue;
 		}
 		const hit = updatePointer(c.ptr, c.aim());
-		if (c.holding) center.model.drag(c.ptr.id, c.target.matrixWorld);
-		const modelDist = modelHit(c.aim(), hit);
-		const d = modelDist ?? hit?.dist ?? 1.5;
+		c.holding?.drag(c.ptr.id, c.target.matrixWorld);
+		const v = viewHit(c.aim(), hit);
+		const d = v?.dist ?? hit?.dist ?? 1.5;
 		c.ray.scale.z = d;
-		c.dot.visible = !!hit || modelDist !== null;
+		c.dot.visible = !!hit || !!v;
 		if (c.dot.visible) c.dot.position.copy(worldPoint(c.aim(), d));
 		const stick = c.source.gamepad?.axes[3] ?? 0;
 		if (Math.abs(stick) <= 0.15) continue;
-		if (modelDist !== null) center.model.zoom(Math.exp(-stick * 1.5 * dt));
+		if (v) v.view.zoom(Math.exp(-stick * 1.5 * dt), c.aim()); // the image zooms about the ray's point
 		else if (hit && c.ptr.panel) c.ptr.panel.scroll(stick * 900 * dt, hit.x, hit.y);
 	}
 }
 const worldPoint = (ray, d) => ray.at(d, tmp.clone());
+
+// hides or shows every panel; an open edit is committed and pointers drop their presses, so hidden panels catch nothing.
+// Showing them again brings back the same side panel and state.
+function toggleUI() {
+	keyboard.commit();
+	uiShown = !uiShown;
+	for (const ptr of pointers) releasePointer(ptr);
+	layout();
+}
 
 function recenter() {
 	if (renderer.xr.isPresenting) {
@@ -357,16 +392,12 @@ function recenter() {
 	}
 	scene.environmentRotation.y = uiGroup.rotation.y; // the model's reflections turn with its lights
 	center.model.reset();
+	center.image.reset();
 }
 
-// ---- desktop fallback: drag to look (or turn the 3D model), click panels, wheel scrolls (or zooms the model),
-// shift- or right-drag slides the model in the plane facing the camera through the point it was grabbed at ----
-let yaw = 0, pitch = 0, look = null, slide = null;
-const slidePose = new THREE.Matrix4();
-function slideTo(ray) {
-	if (ray.intersectPlane(slide, tmp)) slidePose.makeTranslation(tmp);
-	return slidePose;
-}
+// ---- desktop fallback: drag to look (or turn the 3D model, pan the image), click panels, wheel scrolls (or zooms the model /
+// the image about the cursor), shift- or right-drag slides the model in the plane facing the camera ----
+let yaw = 0, pitch = 0, look = null;
 const mouse = newPointer(0);
 const el = renderer.domElement;
 const ndc = new THREE.Vector2();
@@ -379,11 +410,10 @@ function mouseRay(e) {
 el.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); }); // keep the textarea focused
 el.addEventListener("pointerdown", (e) => {
 	if (renderer.xr.isPresenting) return;
-	const ray = mouseRay(e), d = modelHit(ray, pick(ray));
-	if ((e.button === 2 || e.button === 0 && e.shiftKey) && d !== null) {
+	const ray = mouseRay(e), v = viewHit(ray, pick(ray));
+	if ((e.button === 2 || e.button === 0 && e.shiftKey) && v?.view === center.model) {
 		el.setPointerCapture(e.pointerId);
-		slide = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), ray.at(d, new THREE.Vector3()));
-		center.model.grab(mouse.id, slideTo(ray));
+		slide(mouse, v.view, camera.getWorldDirection(new THREE.Vector3()), ray, v.dist);
 		return;
 	}
 	if (e.button !== 0) return;
@@ -392,8 +422,7 @@ el.addEventListener("pointerdown", (e) => {
 });
 el.addEventListener("pointermove", (e) => {
 	if (renderer.xr.isPresenting) return;
-	if (slide) center.model.drag(mouse.id, slideTo(mouseRay(e)));
-	else if (look) {
+	if (look) {
 		yaw -= (e.clientX - look.x) * 0.004;
 		pitch = Math.max(-1.2, Math.min(1.2, pitch - (e.clientY - look.y) * 0.004));
 		look.x = e.clientX;
@@ -402,8 +431,6 @@ el.addEventListener("pointermove", (e) => {
 });
 el.addEventListener("pointerup", (e) => {
 	look = null;
-	if (slide) center.model.release(mouse.id);
-	slide = null;
 	pointerUp(mouse, mouseRay(e));
 });
 el.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -414,11 +441,14 @@ el.addEventListener("pointerleave", () => {
 });
 el.addEventListener("wheel", (e) => {
 	e.preventDefault();
-	const ray = mouseRay(e), hit = updatePointer(mouse, ray);
-	if (modelHit(ray, hit) !== null) center.model.zoom(Math.exp(-e.deltaY * 0.001));
+	const ray = mouseRay(e), hit = updatePointer(mouse, ray), v = viewHit(ray, hit);
+	if (v) v.view.zoom(Math.exp(-e.deltaY * 0.001), ray);
 	else if (hit) hit.panel.scroll(e.deltaY, hit.x, hit.y);
 }, { passive: false });
-addEventListener("keydown", (e) => { if (e.key === "r") recenter(); });
+addEventListener("keydown", (e) => {
+	if (e.key === "r") recenter();
+	else if (e.key === "h") toggleUI();
+});
 addEventListener("resize", () => {
 	camera.aspect = innerWidth / innerHeight;
 	camera.updateProjectionMatrix();

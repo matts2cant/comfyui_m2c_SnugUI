@@ -1,6 +1,6 @@
 // Center panel: image (mesh or XR quad layer) or 3D model on a stage centered on the group origin, plus the output tiles, the
 // output-type panel and the gallery side panel. The stage takes the aspect of what it shows at the screen diagonal; main.js
-// places everything. Results are kept per App-mode output.
+// places everything. Results are kept per App-mode output. The image pans and zooms in the stage plane (`image`).
 import { createModelView } from "../model.js";
 
 const TILES_W = 1.2, KIND_W = 0.56, BAND_H = 0.1; // the band over the prompt panel: TILES_W + gap + KIND_W = its width
@@ -12,6 +12,7 @@ const STEREO_KEY = "appmode-xr.stereo";
 const OUTPUT_KEY = "appmode-xr.output"; // + .<workflowName>
 const STEREO_MODES = [["flat", "Flat"], ["rl", "3D R/L"], ["lr", "3D L/R"]];
 const THUMB = 512, LAYER_MAX = 3072;
+const IMAGE_ZOOM_MIN = 0.25, IMAGE_ZOOM_MAX = 16;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 const MODEL_EXT = /\.(glb|gltf)$/i;
 const FLIP_Y = true; // layer textures follow GL row order, bottom row first
@@ -179,7 +180,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const model = createModelView();
 	group.add(model.group);
 
-	// ---- image mesh, its hole-punch twin and the right-eye mesh ----
+	// ---- image mesh, its hole-punch twin and the right-eye mesh, in `view` ----
 	const plane = new THREE.PlaneGeometry(1, 1);
 	const imageMat = new THREE.MeshBasicMaterial({ toneMapped: false });
 	const imageMesh = new THREE.Mesh(plane, imageMat);
@@ -192,7 +193,9 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const eyeMesh = new THREE.Mesh(plane, eyeMat);
 	eyeMesh.layers.set(2);
 	imageMesh.visible = holeMesh.visible = eyeMesh.visible = false;
-	group.add(imageMesh, holeMesh, eyeMesh);
+	const view = new THREE.Group(); // the image's pan (position, z = 0) and zoom (uniform scale) in the stage plane
+	view.add(imageMesh, holeMesh, eyeMesh);
+	group.add(view);
 
 	// ---- state ----
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
@@ -259,6 +262,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	function select(o) {
 		out = o;
+		image.reset();
 		o.fresh = false;
 		o.current ??= history.find((e) => ownerOf(e) === o) ?? null;
 		previewing = false;
@@ -354,6 +358,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	function setStereo(mode) {
 		stereo = mode;
+		image.reset();
 		try {
 			localStorage.setItem(STEREO_KEY, mode);
 		} catch {}
@@ -418,6 +423,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		if (token !== loadToken) return;
 		if (!entry.thumb) entry.thumb = makeThumb(img);
 		previewing = false;
+		image.reset();
 		setShown(img, entry);
 		refresh();
 	}
@@ -480,6 +486,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			return;
 		}
 		if (token !== loadToken || epoch !== previewEpoch) return;
+		if (!previewing) image.reset(); // later previews of the run keep the zoom
 		previewing = true;
 		setShown(img, null);
 		refresh();
@@ -502,6 +509,77 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		gallery.scroll = 0;
 		showEntry(o.current);
 	});
+
+	// ---- image pan and zoom ----
+	// The image moves and scales in the stage plane, never turns, and may cover the panels around the stage. Grab poses are
+	// reduced to their point in the stage frame: one moves the image by its in-plane motion, two scale it by their distance and
+	// move it with their midpoint (model.js's grab without the turn); `start` is the view when the hands last changed.
+	const hands = new Map(), inv = new THREE.Matrix4(), local = new THREE.Ray(), at = new THREE.Vector3(), mid = new THREE.Vector3();
+	const stagePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+	const clampZoom = (s) => Math.max(IMAGE_ZOOM_MIN, Math.min(IMAGE_ZOOM_MAX, s));
+	let start = null;
+
+	function toStage(world, out) {
+		group.updateWorldMatrix(true, false);
+		return out.setFromMatrixPosition(world).applyMatrix4(inv.copy(group.matrixWorld).invert());
+	}
+
+	// the ray's point on the stage plane (stage frame) in `at`, or null
+	function onStage(ray) {
+		group.updateWorldMatrix(true, false);
+		return local.copy(ray).applyMatrix4(inv.copy(group.matrixWorld).invert()).intersectPlane(stagePlane, at);
+	}
+
+	function begin() {
+		const [a, b] = hands.values();
+		start = { pos: view.position.clone(), scale: view.scale.x, mid: b ? a.clone().add(b).multiplyScalar(0.5) : a?.clone(), dist: b && a.distanceTo(b) };
+	}
+
+	const image = {
+		// distance along a world ray to the shown image, or null
+		hit(ray) {
+			if (!singleOn || !onStage(ray)) return null;
+			const k = view.scale.x / 2;
+			if (Math.abs(at.x - view.position.x) > imageMesh.scale.x * k || Math.abs(at.y - view.position.y) > imageMesh.scale.y * k) return null;
+			return at.applyMatrix4(group.matrixWorld).distanceTo(ray.origin);
+		},
+
+		// about the ray's point on the image, which stays under the ray
+		zoom(k, ray) {
+			const s = clampZoom(view.scale.x * k);
+			if (onStage(ray)) view.position.sub(at).multiplyScalar(s / view.scale.x).add(at).setZ(0);
+			view.scale.setScalar(s);
+			if (hands.size) begin();
+		},
+
+		// id: the hand; world: its pose (Matrix4), only its position is used
+		grab(id, world) {
+			hands.set(id, toStage(world, new THREE.Vector3()));
+			begin();
+		},
+
+		drag(id, world) {
+			toStage(world, hands.get(id));
+			const [a, b] = hands.values();
+			const s = b ? clampZoom(start.scale * a.distanceTo(b) / start.dist) : start.scale;
+			if (b) mid.copy(a).add(b).multiplyScalar(0.5);
+			else mid.copy(a);
+			view.position.copy(start.pos).sub(start.mid).multiplyScalar(s / start.scale).add(mid).setZ(0);
+			view.scale.setScalar(s);
+		},
+
+		release(id) {
+			hands.delete(id);
+			begin();
+		},
+
+		// fitted to the stage again; a hand still holding carries it on from there
+		reset() {
+			view.position.set(0, 0, 0);
+			view.scale.setScalar(1);
+			if (hands.size) begin();
+		},
+	};
 
 	// ---- XR quad layer (HD) ----
 	let hdSupported = false, layerFailed = false;
@@ -540,7 +618,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// Mirrors three's webxr_vr_layers example: [quad layer, projection layer] with a transparent hole
 	// punched where the image is. Sets imageMesh / holeMesh visibility. Quest Browser takes quad width/height
-	// as half extents (three halves them too).
+	// as half extents (three halves them too). Size and pose follow holeMesh's world matrix, so the image's pan and zoom.
 	function updateLayer() {
 		const session = xr.isPresenting() ? renderer.xr.getSession() : null;
 		if (session !== layerSession) {
@@ -615,5 +693,5 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	syncModeBtns();
 	loadOutputs();
 	pruneMissing([...history]);
-	return { group, update, model, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel };
+	return { group, update, model, image, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel };
 }

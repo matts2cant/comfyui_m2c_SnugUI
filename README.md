@@ -28,7 +28,7 @@ If the page opens without WebXR, it shows the same instructions with your addres
    closed. Text fields have an edit toolbar with a Quest keyboard button.
 
 The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters,
-shift- or right-drag moves the 3D model. The X button does nothing there.
+H hides the panels, drag / wheel on the image pans / zooms it, shift- or right-drag moves the 3D model. The X button does nothing there.
 
 ## Settings tabs
 
@@ -77,6 +77,12 @@ Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the w
 Squeeze the grip while pointing at it to grab it: it follows the controller until you let go. Grab it with both grips to
 scale it (move the hands apart or together), turn it and move it. Recenter puts it back behind the screen at its first size.
 
+Images zoom and move the same way, but only within their own plane and without turning: trigger-drag (or mouse-drag) pans it
+(the point you grabbed stays under the ray), thumbstick up/down (or the wheel) zooms about the point you aim at, one grip drags
+it sideways / up / down with the controller, both grips (or both triggers) pinch-zoom and move it. It can grow past the screen
+and behind the panels (0.25x to 16x); panels in front of it still take your clicks. The view resets on every new image (result,
+gallery pick, output tile, Flat / 3D switch) and on recenter. In HD the sharp layer follows the zoom.
+
 The Light button opens lighting presets (Neutral studio, High-key studio, Dramatic rim, Warm dark, Daylight outdoor, Overcast,
 Golden hour) that change the 3D model's lights, its reflections and the room around you, also while an image is shown. The
 choice is remembered. Panels and images are not lit.
@@ -84,8 +90,12 @@ choice is remembered. Panels and images are not lit.
 ## Controls
 
 - Trigger or hand pinch: click. Drag on sliders and lists.
-- Thumbstick up/down: scroll the list or panel under the ray.
-- Grip (squeeze) on the 3D model: grab it. Left grip elsewhere: recenter the panels in front of you.
+- Thumbstick up/down: scroll the list or panel under the ray; on the image or 3D model, zoom it.
+- Trigger-drag on the image: pan it. On the 3D model: turn it.
+- Grip (squeeze) on the image or 3D model: grab it. Left grip elsewhere (point away from the image): recenter the panels in front
+  of you and reset the image / model.
+- B (right controller): hide or show every panel, leaving the image or model; the same panels come back. Hands have no B button.
+  Desktop: H.
 - Gallery: the results of the selected output; tap one to show it.
 - Small panel above the prompt panel, right (image outputs only): Flat / 3D R/L / 3D L/R (side-by-side 3D images), HD (see below).
 - Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.
@@ -102,5 +112,5 @@ choice is remembered. Panels and images are not lit.
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
   from VR.
-- Quest-only paths (quad layer, system keyboard, hands, grabbing) are untested on hardware. Hands pinch to click and
+- Quest-only paths (quad layer, system keyboard, hands, grabbing, the B button) are untested on hardware. Hands pinch to click and
   turn; grabbing with a hand only works if Quest Browser reports a hand squeeze.

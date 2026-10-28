@@ -291,11 +291,19 @@ copy another Lucide icon's path data under its name and change the name where it
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
 - Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
   convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze (grip) on the
-  3D model grabs it (below); a left squeeze elsewhere → recenter(), a right one does nothing. Request 'hand-tracking' so hands
-  appear as input sources (pinch = select). three's hand input sources only give select for a pinch; a squeeze from a hand
-  (if Quest Browser sends one) grabs like a controller's, otherwise hands can turn and zoom the model but not grab it.
+  3D model or the image grabs it (below); a left squeeze elsewhere → recenter(), a right one does nothing. Request 'hand-tracking' so
+  hands appear as input sources (pinch = select). three's hand input sources only give select for a pinch; a squeeze from a hand
+  (if Quest Browser sends one) grabs like a controller's, otherwise hands can turn and zoom the model (pan and zoom the image) but
+  not grab it.
+- Hide UI: B on the right controller (polled each frame: `gamepad.buttons[5].pressed` of the right-handed source, toggled on the
+  press edge; index 5 is B in the WebXR input profile of the Quest Touch controllers, xr-standard itself only fixes 0–3) or H on
+  the desktop → `toggleUI()`: commits an open text edit, drops every pointer's hover / press / pan (`releasePointer`), flips
+  `uiShown` and re-runs `layout()`, which hides the lectern (prompt panel, toggle column, output tiles, output-type panel, any edit
+  toolbar on them) and the side slot. The stage (and its empty / loading message), the image or 3D model, the room and the rays
+  stay. Hidden panels are not raycast (main.js only collects visible panel meshes), so the image / model take every ray. Showing
+  again restores the same side panel; panels keep their own state (scroll, tab). Hands have no B button.
 - Desktop fallback (no XR session): same scene, mouse drag to look around (yaw/pitch), wheel = scroll on hovered panel,
-  mouse click = pointer events. This is the dev/test mode.
+  mouse click = pointer events, R = recenter, H = hide UI. This is the dev/test mode.
 - 3D model (center's `model`): the model is "hit" when the ray reaches its box (`model.hit(ray)` -> distance) before any panel
   (main.js `modelHit`). A press on it turns it: while held, the
   change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around the vertical, then pitch, clamped to ±90°). Thumbstick Y
@@ -306,12 +314,29 @@ copy another Lucide icon's path data under its name and change the name where it
   held rotation that later turns apply on top of, and frees the model from the behind-the-screen push: it may come closer.
   Desktop: shift- or right-drag on the model slides it in the plane facing the camera (a grab with a translation pose).
   recenter() resets position, turn and zoom; a hand still holding carries it on from the reset pose.
+- Image (center's `image`, same interface as `model`: `hit` / `zoom(k, ray)` / `grab` / `drag` / `release` / `reset`; `model.zoom`
+  ignores the ray): pans and zooms in the stage plane, never turns or changes depth. The image meshes (and the hole mesh) sit in a
+  `view` group whose position (z = 0) and uniform scale are the pan and zoom (0.25x..16x, no other clamping: it may grow past the
+  screen frame and behind the panels). main.js `viewHit` returns whichever of model / image the ray reaches before any panel (the
+  model's rule), so panels in front of a grown image keep their rays and clicks; the cursor dot lands on the image.
+  A press (trigger, pinch, mouse) on it pans: a grab whose pose is the ray's point on the image plane (`slide`, the same path as
+  the desktop model slide), so the grabbed point stays under the ray. Thumbstick Y (XR) / wheel (desktop) over it zooms about the
+  ray's point, which stays under the ray. Grip: grab poses are reduced to their point in the stage frame; one hand moves the image
+  by its in-plane motion only, two scale it by their distance ratio and move it with their midpoint (no turn). Two pans (both
+  triggers) pinch-zoom the same way. Slides are keyed by the pointer object and grips by its id, so one controller can do both.
+  A zoom during a grab rebases the grab. Desktop: drag on the image pans, wheel zooms about the cursor; drag off it still looks
+  around.
+  Reset (pan 0, zoom 1): on recenter(), on every image shown from an entry (new result, gallery pick, fallback), on the first live
+  preview of a run (later previews keep the view), on an output (tile) selection or snapshot reload, and on a Flat / 3D mode change
+  (the stage changes size). A hand still holding carries it on from the reset view. Both stereo eyes are in `view`, so they share
+  the transform. HD: the quad layer takes width / height / transform from holeMesh's world matrix each frame (`applyPose` when it
+  changed), so it follows the pan and zoom, and the hole mesh is in `view` with the image.
 - Each frame: `Panel.updateAll()`, panels' `update(dt)`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
 
 ### Panels (behavior)
-- center: shows the latest image (fit, keep aspect) — XR quad layer for crispness when `layers` granted (hole-punch so the
+- center: shows the latest image (fit, keep aspect, then the user's pan / zoom) — XR quad layer for crispness when `layers` granted (hole-punch so the
   projection layer doesn't cover it; the HD button falls back to a mesh), mesh texture otherwise. Live previews from "preview" events
   while running; a batch shows its last image (all of them are in the gallery).
   Gallery side panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
