@@ -166,7 +166,8 @@ session is `visible-blurred` with no controller input). So `ta` is never focused
 `showKeyboard()` (the toolbar's Keyboard button, from its select handler for user activation). On kb focus the model text around the caret
 or selection is captured (before/after); each kb `input` sets `ta.value = before + kb.value + after` with the caret after the typed text and
 fires onInput. A kb `beforeinput` delete with an empty kb is applied to the model by `erase` (selection, or one character) and cancelled.
-kb blur (keyboard dismissed) does not commit: the field stays in edit mode. Enter on the single-line `<input>` commits; in the multiline
+Dismissing the keyboard does not commit: the field stays in edit mode. It may leave kb focused (no blur), and focus() on the focused
+element does not reopen the keyboard, so `showKeyboard()` blurs kb before focusing it: every Keyboard press reopens it (and recaptures before/after). Enter on the single-line `<input>` commits; in the multiline
 `<textarea>` it types "\n", which the splice copies into the model like any other character (Ctrl+Enter commits, as on `ta`).
 EXPERIMENTAL and unverified on the headset: whether the Quest keyboard shows a return key for a textarea and types "\n". The toolbar's
 New line button (multiline fields only: `newline()` replaces the selection with "\n" in the model, same path as `erase`, in XR and on

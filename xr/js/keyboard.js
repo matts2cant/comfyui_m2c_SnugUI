@@ -81,8 +81,11 @@ export function newline() {
 }
 
 // Opens the system keyboard in XR (call it from the select handler: it needs user activation), focuses the textarea on desktop.
+// Dismissing the Quest keyboard leaves kb focused and focus() on the focused element does not reopen it, so kb is blurred first.
 export function showKeyboard() {
-	if (active) (xr ? kb : ta).focus();
+	if (!active) return;
+	if (xr) kb.blur();
+	(xr ? kb : ta).focus();
 }
 
 // Starts editing `initial` and returns the textarea (live value and selection). Call it from a user gesture.
@@ -122,7 +125,7 @@ export function editText({ initial = "", multiline = false, onInput, onSelection
 		else if (e.key === "Enter" && (!multiline || e.ctrlKey)) { e.preventDefault(); finish(true); }
 	};
 	ta.addEventListener("keydown", keydown, { signal });
-	// the keyboard's blur only means it was dismissed: the field stays in edit mode
+	// dismissing the keyboard does not end the edit: kb has no blur handler
 	kb.addEventListener("keydown", keydown, { signal });
 	ta.addEventListener("blur", () => finish(true), { signal });
 
