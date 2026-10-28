@@ -7,12 +7,20 @@ const M = 24, W = 802;
 const previewUrl = (url) => !url || /\.(mp4|webm)$/i.test(url) ? NO_PREVIEW : url;
 const round2 = (v) => Number(v.toFixed(2));
 
-async function listLoras(search, pageSize, page = 1) {
-	const q = new URLSearchParams({ page_size: pageSize, page, sort_by: "name" });
-	if (search) q.set("search", search);
-	const res = await fetch("/api/lm/loras/list?" + q);
+async function listLoras(params) {
+	const res = await fetch("/api/lm/loras/list?" + new URLSearchParams({ sort_by: "name", ...params }));
 	if (!res.ok) throw new Error("LoRA Manager: HTTP " + res.status);
 	return res.json();
+}
+
+// LoRA Manager's search only looks at file and model names, so fetch the whole library (page_size is capped at 100)
+// and match the path relative to the LoRA root as well, case-insensitively
+async function findLoras(search) {
+	const q = search.toLowerCase();
+	const first = await listLoras({ page_size: 100, page: 1 });
+	const rest = await Promise.all(Array.from({ length: Math.max(0, first.total_pages - 1) }, (_, i) => listLoras({ page_size: 100, page: i + 2 })));
+	return [first, ...rest].flatMap((r) => r.items)
+		.filter((it) => [(it.folder ? it.folder + "/" : "") + it.file_name, it.model_name].some((s) => s.toLowerCase().includes(q)));
 }
 
 // usage_tips is a JSON string; LoRA Manager stores the clip value as clipStrength
@@ -31,6 +39,7 @@ export function createRightPanel({ THREE, store, ui }) {
 
 	let tab = 0;
 	let query = "", page = 1, pages = 1, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
+	let found = null; // matches of the current query, shared by the grid pages and the suggestions
 
 	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, w: W, h: 50 });
 	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90, w: W });
@@ -81,21 +90,30 @@ export function createRightPanel({ THREE, store, ui }) {
 	function buildRows(node) {
 		const list = store.loras(node.nodeId);
 		const rw = W - 16, h = 60, pitch = 68;
-		const edit = (i, patch) => store.setLoras(node.nodeId, list.map((l, j) => j === i ? { ...l, ...patch } : l));
+		// against the current list: the weight field commits on a press elsewhere, after that press's own edit (× on another row)
+		const edit = (l, patch) => store.setLoras(node.nodeId, store.loras(node.nodeId).map((x) => x === l ? { ...x, ...patch } : x));
 		const rows = [];
 		list.forEach((l, i) => {
 			const y = i * pitch;
-			const step = (d) => {
-				const v = round2(Number(l.strength) + d);
-				edit(i, { strength: v, ...(Number(l.clipStrength) === Number(l.strength) && { clipStrength: v }) });
-			};
-			const rx = rw - 60 - 8 - 56 - 84 - 56; // left edge of the − button
+			const setStrength = (v) => edit(l, { strength: v, ...(Number(l.clipStrength) === Number(l.strength) && { clipStrength: v }) });
+			const shown = Number(l.strength).toFixed(2);
+			const rx = rw - 60 - 8 - 56 - 120 - 56; // left edge of the − button
+			// tap to type the weight (accepts "," as decimal separator); anything that isn't a number reverts
+			const value = new TextField({
+				value: shown, size: 28, compact: true, x: rx + 56, y, w: 120, h,
+				onEdit: () => value.selectAll(),
+				onDone: (v) => {
+					const n = Number(v.trim().replace(",", "."));
+					value.value = shown;
+					if (v.trim() && Number.isFinite(n)) setStrength(round2(n));
+				},
+			});
 			rows.push(
-				new Check({ checked: l.active, x: 0, y, w: 60, h, onClick: () => edit(i, { active: !l.active }) }),
+				new Check({ checked: l.active, x: 0, y, w: 60, h, onClick: () => edit(l, { active: !l.active }) }),
 				new Label({ text: l.name, size: 30, color: l.active ? ui.theme.fg : ui.theme.muted, x: 68, y, w: rx - 68 - 8, h }),
-				new Button({ text: "−", size: 38, x: rx, y, w: 56, h, onClick: () => step(-STEP) }),
-				new Label({ text: Number(l.strength).toFixed(2), size: 30, bold: true, color: l.active ? ui.theme.fg : ui.theme.muted, align: "center", x: rx + 56, y, w: 84, h }),
-				new Button({ text: "+", size: 38, x: rx + 140, y, w: 56, h, onClick: () => step(STEP) }),
+				new Button({ text: "−", size: 38, x: rx, y, w: 56, h, onClick: () => setStrength(round2(Number(l.strength) - STEP)) }),
+				value,
+				new Button({ text: "+", size: 38, x: rx + 176, y, w: 56, h, onClick: () => setStrength(round2(Number(l.strength) + STEP)) }),
 				new Button({ text: "×", size: 34, variant: "danger", x: rw - 60, y, w: 60, h, onClick: () => store.setLoras(node.nodeId, list.filter((_, j) => j !== i)) }),
 			);
 		});
@@ -151,12 +169,20 @@ export function createRightPanel({ THREE, store, ui }) {
 		pageLabel.setText(`${page} / ${pages}  (${total})`);
 	}
 
+	// one page of the library, or of the current query's matches
+	async function browse(pageSize, p = 1) {
+		if (!query) return listLoras({ page_size: pageSize, page: p });
+		found ??= findLoras(query);
+		const items = await found;
+		return { items: items.slice((p - 1) * pageSize, p * pageSize), total: items.length };
+	}
+
 	async function loadGrid() {
 		const id = ++gridSeq;
 		try {
-			const res = await listLoras(query, 12, page);
+			const res = await browse(12, page);
 			if (id !== gridSeq) return;
-			pages = Math.max(1, res.total_pages);
+			pages = Math.max(1, Math.ceil(res.total / 12));
 			total = res.total;
 			grid.setItems(res.items.map((it) => ({ url: previewUrl(it.preview_url), label: it.model_name || it.file_name, value: it })));
 			updatePager();
@@ -170,7 +196,7 @@ export function createRightPanel({ THREE, store, ui }) {
 	async function loadSuggest() {
 		const id = ++suggestSeq;
 		try {
-			const res = await listLoras(query, 8);
+			const res = await browse(8);
 			if (id === suggestSeq) suggest.setItems(res.items.map((it) => ({ label: it.model_name || it.file_name, sub: it.base_model, value: it })));
 		} catch {
 			if (id === suggestSeq) suggest.setItems([]);
@@ -183,6 +209,7 @@ export function createRightPanel({ THREE, store, ui }) {
 	}
 
 	function setQuery(v, now) {
+		if (v !== query) found = null;
 		query = v;
 		page = 1;
 		clearTimeout(timer);

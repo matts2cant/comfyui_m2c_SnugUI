@@ -36,6 +36,12 @@ Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in
 Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
 The selected tab is remembered per workflow.
 
+## LoRA panel
+
+Lists the LoRAs of the selected LoRA Manager node. Tap a weight to type it ("," works as decimal point); − / + step by 0.05.
+The clip strength follows while it equals the weight. The search matches the LoRA's path under its LoRA folder (so `character` finds
+everything inside a `Character` folder, at any depth) and its model name, ignoring case.
+
 ## Prompt panel inputs
 
 The prompt panel only takes inputs with these exact App-mode names (trimmed, case-sensitive, and the type must match):

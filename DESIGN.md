@@ -377,10 +377,17 @@ copy another Lucide icon's path data under its name and change the name where it
   tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
   and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` (try/catch) and falls back to the first tab
   when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
-- right (LoRA side panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/+ (step 0.05; clip
-  strength follows while equal), remove ×. Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions from
-  `GET /api/lm/loras/list?search=<q>&page_size=8&sort_by=name`) + ImageGrid of results (page_size 12, paging buttons, thumbnails from
-  item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). Selecting adds `{name: item.file_name,
+- right (LoRA side panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
+  the value is a compact TextField like the Slider's: tapping selects it to type a number, "," accepted as decimal separator, stored
+  rounded to 2 decimals, not clamped, anything else reverts; clip strength follows while equal), remove ×. Row edits apply to the store's
+  current list (matched by entry identity): the weight field commits only after a press elsewhere has run (× on another row).
+  Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (12 per page, paging
+  buttons, thumbnails from item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). No query:
+  `GET /api/lm/loras/list?sort_by=name&page_size=<n>&page=<p>`. With a query: LoRA Manager's `search` only matches file_name and
+  model_name (tags / creator are opt-in; `folder` / `folder_include` are prefix filters ANDed with it), so every page of the list is
+  fetched (page_size 100, its cap) and filtered here, case-insensitively, on the path relative to the LoRA root
+  (`item.folder + "/" + item.file_name`, no extension) or model_name, keeping LoRA Manager's name order. The matches are kept for the
+  current query (paging and suggestions reuse them, a changed query refetches) and paged locally. Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
 - lights: title + 7 preset `Button`s (the current one `toggled`), applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
   Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting` (try/catch).
