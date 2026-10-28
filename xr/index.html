@@ -7,19 +7,35 @@
 <style>
 	html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e13; font: 16px system-ui, sans-serif; color: #e8ecf2; }
 	canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-	#overlay { position: fixed; left: 0; right: 0; bottom: 24px; display: flex; gap: 12px; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
-	#overlay > * { pointer-events: auto; }
-	#overlay button { padding: 14px 28px; border: 0; border-radius: 12px; background: #4c8dff; color: #fff; font: 600 18px system-ui, sans-serif; cursor: pointer; }
 	#hint { position: fixed; left: 16px; top: 12px; color: #8c96a8; font-size: 14px; z-index: 10; }
 	[hidden] { display: none !important; }
+	/* Desktop View windows and dock (desktop.js) */
+	.desk { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+	.desk, .dock { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
+	.win { position: absolute; pointer-events: auto; background: #0b0e13; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px #323a49, 0 8px 28px rgba(0, 0, 0, 0.5); }
+	.bar { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 12px; font-weight: 600; font-size: 14px; cursor: move; }
+	.bar span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+	.bar svg { width: 18px; height: 18px; flex: none; }
+	.bar button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8c96a8; cursor: pointer; }
+	.bar button:hover { background: #303846; color: #e8ecf2; }
+	.body { position: relative; }
+	.body canvas { position: absolute; }
+	.grip { position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 55%, #8c96a8 55%, #8c96a8 62%, transparent 62%, transparent 72%, #8c96a8 72%, #8c96a8 79%, transparent 79%); }
+	.dock { position: fixed; right: 16px; bottom: 16px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 34px; background: rgba(22, 26, 34, 0.92); box-shadow: 0 0 0 1px #323a49, 0 8px 28px rgba(0, 0, 0, 0.5); }
+	.dock button { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 50%; background: #242a35; color: #e8ecf2; cursor: pointer; }
+	.dock button:hover { background: #303846; }
+	.dock button.on { background: #4c8dff; }
+	.dock svg { width: 24px; height: 24px; }
+	.dock .sep { width: 1px; align-self: stretch; margin: 6px 2px; background: #323a49; }
+	@media (pointer: coarse) {
+		.bar { height: 44px; }
+		.grip { width: 40px; height: 40px; background-size: 22px 22px; background-position: right bottom; background-repeat: no-repeat; }
+	}
 </style>
 <script type="importmap">{ "imports": { "three": "/appmode-xr/static/vendor/three.module.js" } }</script>
 </head>
 <body>
-<div id="hint">Desktop preview: drag to look, wheel to scroll, click to press; drag / wheel on the image pans / zooms it, shift- or right-drag moves the 3D model. R recenters, H hides the panels.</div>
-<div id="overlay">
-	<button id="enter-vr" hidden>Enter VR</button>
-</div>
+<div id="hint" hidden>VR view on the desktop: drag to look, wheel to scroll, click to press; drag / wheel on the image pans / zooms it, shift- or right-drag moves the 3D model. R recenters, H hides the panels, the last round button goes back to the Desktop View.</div>
 <script type="module" src="/appmode-xr/static/js/main.js"></script>
 </body>
 </html>

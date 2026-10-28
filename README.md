@@ -14,21 +14,35 @@ with the inputs on floating panels and the result image in the middle. No intern
    open `chrome://flags`, search "Insecure origins treated as secure", add `http://<pc-ip>:<port>`
    (for example `http://192.168.1.20:8000`), set it to Enabled, tap Relaunch.
 
-If the page opens without WebXR, it shows the same instructions with your address prefilled.
+If Quest Browser opens the page without WebXR, it shows the same instructions with your address prefilled.
 
 ## Usage
 
 1. On the desktop, configure App mode for your workflow (choose the inputs and outputs).
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
-3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press Enter VR.
+3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press the VR mode button (goggles icon, bottom right).
 4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompts, seed, progress,
    Generate, Cancel). A column of round buttons right of it opens one side panel at a time beside the screen: Gallery,
-   LoRA, Light, Configuration (press the open one again to close it); the last button, X, leaves VR. Side panels start
-   closed. Text fields have an edit toolbar with a Quest keyboard button.
+   LoRA, Light, Configuration (press the open one again to close it); the last button, Desktop mode (monitor icon), leaves VR.
+   Side panels start closed. Text fields have an edit toolbar with a Quest keyboard button.
 
-The same page works in a desktop browser (`/appmode-xr`): drag to look, wheel to scroll, click to press, R recenters,
-H hides the panels, drag / wheel on the image pans / zooms it, shift- or right-drag moves the 3D model. The X button does nothing there.
+## Desktop View
+
+Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
+window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt (with
+the output tiles and Flat / 3D above it), Gallery, LoRA, Light, Configuration. The round buttons at the bottom right open and
+close them; several can be open at once. Drag a title bar to move a window, its corner to zoom it (the content scales, it stays
+sharp), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed back
+inside a smaller window). The first time only Prompt is open.
+
+- Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
+- Touch: one finger pans the image (turns the model), two fingers pinch to zoom and move it. Tapping a text field opens the
+  on-screen keyboard; use the edit toolbar to delete and move the caret.
+- H hides the windows and the buttons (H again shows them), R resets the image / model.
+- The last button (goggles) enters VR on the Quest. In a desktop browser it shows the VR layout instead: drag to look, wheel to
+  scroll, click to press, R recenters, H hides the panels; Desktop mode (monitor icon, last button of the column) comes back.
+  `/appmode-xr?view=vr` opens it directly.
 
 ## Settings tabs
 
@@ -96,6 +110,7 @@ choice is remembered. Panels and images are not lit.
   of you and reset the image / model.
 - B (right controller): hide or show every panel, leaving the image or model; the same panels come back. Hands have no B button.
   Desktop: H.
+- Desktop mode (monitor icon, last button of the column): leave VR for the Desktop View.
 - Gallery: the results of the selected output; tap one to show it.
 - Small panel above the prompt panel, right (image outputs only): Flat / 3D R/L / 3D L/R (side-by-side 3D images), HD (see below).
 - Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.

@@ -1,8 +1,9 @@
-// Bootstrap: renderer, scene, VR session, desktop fallback, pointer input, panel layout.
+// Bootstrap: renderer, scene, views (Desktop View, VR session, VR-like desktop view), pointer input, panel layout.
 import * as THREE from "three";
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { showHelp } from "./help.js";
+import { createDesktop } from "./desktop.js";
 import { ComfyClient } from "./comfy.js";
 import { store } from "./state.js";
 import { createCenterPanel } from "./panels/center.js";
@@ -25,16 +26,21 @@ document.body.prepend(renderer.domElement);
 ui.setRenderer(renderer);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 100);
+const FOV = 70; // VR-like view; the Desktop View fits it to the stage (fitCamera)
+const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 0.05, 100);
 camera.rotation.order = "YXZ";
-const DESKTOP_EYE_HEIGHT = 1.6; // desktop fallback only; XR recenters on the head pose
+const DESKTOP_EYE_HEIGHT = 1.6; // no XR session; XR recenters on the head pose
 camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 const uiGroup = new THREE.Group(); // origin = eye, -z = viewing direction
 uiGroup.position.y = DESKTOP_EYE_HEIGHT;
 scene.add(uiGroup);
 
-// ---- XR session ----
-let needRecenter = false;
+// ---- views ----
+// Desktop View (the default without an XR session): fixed camera, flat background, the panels in DOM windows (desktop.js).
+// VR view: an XR session, or its VR-like look-around on the desktop (?view=vr, the dev / test entry). The dock's VR mode
+// button enters it, the toggle column's Desktop mode button leaves it.
+let deskView = params.get("view") !== "vr";
+let xrSupported = false, needRecenter = false;
 
 async function enter() {
 	const session = await navigator.xr.requestSession("immersive-vr", {
@@ -51,10 +57,8 @@ async function enter() {
 	keyboard.setXR(true);
 	keyboard.commit();
 	needRecenter = true;
-	exit.disabled = false;
 	open = null; // each session starts with the side panels hidden
-	layout();
-	$("enter-vr").hidden = $("hint").hidden = true;
+	setView(false);
 }
 
 function onSessionEnd() {
@@ -64,20 +68,24 @@ function onSessionEnd() {
 	// three overwrites the camera pose while presenting
 	camera.position.set(0, DESKTOP_EYE_HEIGHT, 0);
 	uiGroup.position.set(0, DESKTOP_EYE_HEIGHT, 0);
-	uiGroup.rotation.y = scene.environmentRotation.y = yaw = pitch = 0;
-	$("enter-vr").hidden = $("hint").hidden = false;
-	exit.disabled = true;
-	toggles.invalidate();
+	uiGroup.rotation.y = scene.environmentRotation.y = 0;
+	setView(true);
 }
 
-$("enter-vr").onclick = () => enter().catch((e) => {
-	$("hint").textContent = "Could not start VR session: " + e.message;
-	console.error(e);
-});
-navigator.xr?.isSessionSupported("immersive-vr").catch(() => false).then((ok) => { $("enter-vr").hidden = !ok; });
+// the dock's VR mode button: an XR session where immersive-vr is supported, else the VR-like view
+function enterVR() {
+	if (!xrSupported) return setView(false);
+	enter().catch((e) => {
+		$("hint").textContent = "Could not start VR session: " + e.message;
+		$("hint").hidden = false;
+		console.error(e);
+	});
+}
+navigator.xr?.isSessionSupported("immersive-vr").catch(() => false).then((ok) => { xrSupported = ok; });
 
+// the WebXR setup help only concerns Quest Browser (tablets and desktops reach the page over plain http too)
 const needHelp = !window.isSecureContext || !navigator.xr;
-if (params.has("help") || needHelp && !params.has("dev")) showHelp({ insecure: !window.isSecureContext });
+if (params.has("help") || needHelp && /OculusBrowser/.test(navigator.userAgent)) showHelp({ insecure: !window.isSecureContext });
 
 // ---- panels ----
 // The screen is SCREEN_DIAGONAL_IN inches at the aspect of what it shows, on the vertical plane z = -SCREEN_DISTANCE (eye at the
@@ -113,17 +121,17 @@ const loras = createRightPanel(ctx);
 const lights = createLightsPanel(ctx, center.model);
 scene.add(lights.room);
 
-// side panels, in toggle column order: [name, icon, { group, panel }]
+// side panels, in toggle column order: [name, icon, title (Desktop View window), { group, panel }]
 const SIDES = [
-	["gallery", "images", { group: panelGroup(center.gallery), panel: center.gallery }],
-	["lora", "layers", loras],
-	["light", "sun", lights],
-	["config", "settings", settings],
+	["gallery", "images", "Gallery", { group: panelGroup(center.gallery), panel: center.gallery }],
+	["lora", "layers", "LoRA", loras],
+	["light", "sun", "Light", lights],
+	["config", "settings", "Configuration", settings],
 ];
 let open = null; // the side panel on show; every session starts with none
 let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
 
-// round icon buttons that work like tabs (pressing the open one closes it), then Exit
+// round icon buttons that work like tabs (pressing the open one closes it), then Desktop mode
 const toggles = new ui.Panel({ name: "toggles", widthM: 0.14, heightM: 0.6, bg: null });
 const tabs = SIDES.map(([name, icon], i) => toggles.add(new ui.Button({
 	icon, round: true, x: 20, y: 14 + i * 118, w: 100, h: 100,
@@ -132,14 +140,18 @@ const tabs = SIDES.map(([name, icon], i) => toggles.add(new ui.Button({
 		layout();
 	},
 })));
-// ends the XR session; disabled (a no-op) on the desktop
-const exit = toggles.add(new ui.Button({ icon: "x", round: true, disabled: true, x: 20, y: 14 + SIDES.length * 118, w: 100, h: 100, onClick: () => renderer.xr.getSession()?.end() }));
+// back to the Desktop View: ends the XR session (onSessionEnd), or leaves the VR-like view
+toggles.add(new ui.Button({ icon: "monitor", round: true, x: 20, y: 14 + SIDES.length * 118, w: 100, h: 100, onClick: () => {
+	const session = renderer.xr.getSession();
+	if (session) session.end();
+	else setView(true);
+} }));
 
 const lectern = new THREE.Group();
 lectern.rotation.x = -LECTERN_TILT;
 const tilesGroup = panelGroup(center.tiles), kindGroup = panelGroup(center.kind), togglesGroup = panelGroup(toggles);
 const onLectern = [tilesGroup, kindGroup, bottom.group, togglesGroup];
-const sideGroups = SIDES.map(([, , side]) => side.group);
+const sideGroups = SIDES.map(([, , , side]) => side.group);
 lectern.add(...onLectern);
 uiGroup.add(center.group, lectern, ...sideGroups);
 for (const g of onLectern) g.scale.setScalar(PANEL_SCALE);
@@ -152,7 +164,7 @@ function layout() {
 
 	// lectern frame: origin at the middle of its top edge, x right, y up the slope; panels are placed by their top edge
 	lectern.position.set(0, -h / 2 - GAP_SCREEN, -SCREEN_DISTANCE);
-	lectern.visible = uiShown;
+	lectern.visible = uiShown && !deskView;
 	const at = (group, panel, x, top) => group.position.set(x, -top - size(panel)[1] / 2, 0);
 	const [promptW] = size(bottom.panel), [togglesW] = size(toggles);
 	const band = center.tiles.mesh.visible || center.kind.mesh.visible ? size(center.tiles)[1] + GAP : 0;
@@ -166,16 +178,48 @@ function layout() {
 	// side slot: the bottom edge of the panel sits on the prompt panel's back edge, its inner edge at innerX
 	const backY = lectern.position.y - band * Math.cos(LECTERN_TILT), backZ = -SCREEN_DISTANCE + band * Math.sin(LECTERN_TILT);
 	const innerX = Math.max(promptW / 2 + GAP + togglesW, w / 2) + GAP_SIDE;
-	for (const [name, , { group, panel }] of SIDES) {
+	for (const [name, , , { group, panel }] of SIDES) {
 		const [sw, sh] = size(panel, SIDE_SCALE);
-		group.visible = uiShown && name === open;
+		group.visible = uiShown && !deskView && name === open;
 		group.rotation.y = -SIDE_YAW;
 		group.position.set(innerX + sw / 2 * Math.cos(SIDE_YAW), backY + sh / 2, backZ + sw / 2 * Math.sin(SIDE_YAW));
 	}
 }
 
-screen.onResize = layout;
-layout();
+// Desktop View windows: the same panels; the prompt window has the band over the prompt panel as on the lectern
+const BAND_GAP = 16;
+const windows = createDesktop([
+	{ name: "prompt", title: "Prompt", icon: "pencil", layout: () => {
+		const { tiles, kind } = center, band = tiles.mesh.visible || kind.mesh.visible ? tiles.height + BAND_GAP : 0;
+		return [[bottom.panel, 0, band], tiles.mesh.visible && [tiles, 0, 0], kind.mesh.visible && [kind, bottom.panel.width - kind.width, 0]].filter(Boolean);
+	} },
+	...SIDES.map(([name, icon, title, { panel }]) => ({ name, title, icon, layout: () => [[panel, 0, 0]] })),
+], enterVR);
+
+function relayout() {
+	layout();
+	windows.update(deskView && uiShown);
+}
+
+function setView(desk) {
+	deskView = desk;
+	for (const ptr of pointers) releasePointer(ptr);
+	lights.room.visible = !desk;
+	scene.background = desk ? lights.background : null;
+	yaw = pitch = 0;
+	camera.fov = FOV;
+	camera.updateProjectionMatrix();
+	$("hint").hidden = desk || renderer.xr.isPresenting;
+	relayout();
+}
+
+// Desktop View: the eye looks straight at the stage, which fills the window (contain)
+function fitCamera() {
+	camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(screen.h, screen.w / camera.aspect) / 2 / SCREEN_DISTANCE));
+	camera.updateProjectionMatrix();
+}
+
+screen.onResize = relayout;
 
 // ---- snapshot ----
 async function loadSnapshot() {
@@ -246,6 +290,8 @@ function aimAngles(ray) {
 	const d = aimDir.copy(ray.direction).applyAxisAngle(UP, -uiGroup.rotation.y);
 	return { yaw: Math.atan2(d.x, -d.z), pitch: Math.asin(d.y) };
 }
+// dist: along the ray to the model, where a second finger's pinch holds it (see pinch)
+const turnGrab = (ray, dist) => ({ view: center.model, dist, ...aimAngles(ray) });
 
 function updatePointer(ptr, ray) {
 	if (ptr.grab?.plane) {
@@ -255,7 +301,7 @@ function updatePointer(ptr, ray) {
 	if (ptr.grab) {
 		const a = aimAngles(ray);
 		center.model.turn((a.yaw - ptr.grab.yaw) * MODEL_TURN, (ptr.grab.pitch - a.pitch) * MODEL_TURN);
-		ptr.grab = a;
+		Object.assign(ptr.grab, a);
 		return ptr.hit = null;
 	}
 	if (ptr.cap) {
@@ -276,7 +322,7 @@ function pointerDown(ptr, ray) {
 	const target = hit?.panel.hitTest(hit.x, hit.y);
 	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
 	const v = viewHit(ray, hit);
-	if (v?.view === center.model) ptr.grab = aimAngles(ray);
+	if (v?.view === center.model) ptr.grab = turnGrab(ray, v.dist);
 	else if (v) slide(ptr, v.view, center.group.getWorldDirection(new THREE.Vector3()), ray, v.dist);
 	if (v) return true;
 	if (!hit) return false;
@@ -373,7 +419,7 @@ function toggleUI() {
 	keyboard.commit();
 	uiShown = !uiShown;
 	for (const ptr of pointers) releasePointer(ptr);
-	layout();
+	relayout();
 }
 
 function recenter() {
@@ -395,44 +441,77 @@ function recenter() {
 	center.image.reset();
 }
 
-// ---- desktop fallback: drag to look (or turn the 3D model, pan the image), click panels, wheel scrolls (or zooms the model /
-// the image about the cursor), shift- or right-drag slides the model in the plane facing the camera ----
-let yaw = 0, pitch = 0, look = null;
-const mouse = newPointer(0);
+// ---- mouse and touch on the 3D view (no XR session): a press on the image pans it, on the 3D model turns it, on a panel
+// clicks it, elsewhere looks around (VR-like view only); the wheel scrolls the panel (or zooms the model / the image about
+// the cursor); shift- or right-drag slides the model in the plane facing the camera. Each finger is a pointer (pinch). ----
+let yaw = 0, pitch = 0, look = null; // look: { id, x, y } of the pointer turning the view
+const mouse = newPointer(0), fingers = new Map(); // pointerId -> pointer
 const el = renderer.domElement;
 const ndc = new THREE.Vector2();
+const camDir = () => camera.getWorldDirection(new THREE.Vector3());
+const ptrOf = (e) => e.pointerType === "touch" ? fingers.get(e.pointerId) : mouse;
 function mouseRay(e) {
 	ndc.set(e.offsetX / el.clientWidth * 2 - 1, -(e.offsetY / el.clientHeight) * 2 + 1);
 	camera.updateMatrixWorld();
 	raycaster.setFromCamera(ndc, camera);
 	return raycaster.ray.clone();
 }
+
+// a second finger while one holds the image or the model: both slide it in one plane (the view's two-hand grab), so a pinch
+// zooms it and moving them moves it; the model stops turning meanwhile. More fingers do nothing.
+function pinch(ptr, other) {
+	const { view } = other.grab;
+	if (!other.grab.plane) slide(other, view, camDir(), other.ray, other.grab.dist);
+	else if ([...fingers.values()].filter((p) => p.grab).length > 1) return;
+	const dist = ptr.ray.distanceToPlane(other.grab.plane);
+	if (dist !== null) slide(ptr, view, other.grab.plane.normal, ptr.ray, dist);
+}
+
 el.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); }); // keep the textarea focused
 el.addEventListener("pointerdown", (e) => {
 	if (renderer.xr.isPresenting) return;
-	const ray = mouseRay(e), v = viewHit(ray, pick(ray));
-	if ((e.button === 2 || e.button === 0 && e.shiftKey) && v?.view === center.model) {
-		el.setPointerCapture(e.pointerId);
-		slide(mouse, v.view, camera.getWorldDirection(new THREE.Vector3()), ray, v.dist);
-		return;
-	}
-	if (e.button !== 0) return;
+	const ray = mouseRay(e), touch = e.pointerType === "touch";
+	const other = touch && [...fingers.values()].find((p) => p.grab);
+	const ptr = touch ? newPointer("touch" + e.pointerId) : mouse;
+	if (touch) fingers.set(e.pointerId, ptr);
+	ptr.ray = ray;
+	keyboard.setXR(touch);
 	el.setPointerCapture(e.pointerId);
-	if (!pointerDown(mouse, ray)) look = { x: e.clientX, y: e.clientY };
+	if (other) return pinch(ptr, other);
+	const v = viewHit(ray, pick(ray));
+	if ((e.button === 2 || e.button === 0 && e.shiftKey) && v?.view === center.model) return slide(ptr, v.view, camDir(), ray, v.dist);
+	if (e.button === 0 && !pointerDown(ptr, ray) && !deskView) look = { id: e.pointerId, x: e.clientX, y: e.clientY };
 });
 el.addEventListener("pointermove", (e) => {
 	if (renderer.xr.isPresenting) return;
-	if (look) {
+	if (look?.id === e.pointerId) {
 		yaw -= (e.clientX - look.x) * 0.004;
 		pitch = Math.max(-1.2, Math.min(1.2, pitch - (e.clientY - look.y) * 0.004));
 		look.x = e.clientX;
 		look.y = e.clientY;
-	} else updatePointer(mouse, mouseRay(e));
+		return;
+	}
+	const ptr = ptrOf(e);
+	if (ptr) updatePointer(ptr, ptr.ray = mouseRay(e));
 });
-el.addEventListener("pointerup", (e) => {
-	look = null;
-	pointerUp(mouse, mouseRay(e));
-});
+function release(e) {
+	if (look?.id === e.pointerId) look = null;
+	const ptr = ptrOf(e);
+	if (!ptr) return;
+	pointerUp(ptr, mouseRay(e));
+	if (ptr === mouse) return;
+	fingers.delete(e.pointerId);
+	pointers.splice(pointers.indexOf(ptr), 1);
+	// the finger left of a pinch on the model turns it again
+	for (const p of fingers.values()) {
+		if (p.grab?.view !== center.model || !p.grab.plane) continue;
+		const dist = p.ray.distanceToPlane(p.grab.plane);
+		center.model.release(p);
+		p.grab = turnGrab(p.ray, dist);
+	}
+}
+el.addEventListener("pointerup", release);
+el.addEventListener("pointercancel", release);
 el.addEventListener("contextmenu", (e) => e.preventDefault());
 el.addEventListener("pointerleave", () => {
 	if (mouse.cap) return;
@@ -455,12 +534,17 @@ addEventListener("resize", () => {
 	renderer.setSize(innerWidth, innerHeight);
 });
 
+setView(deskView);
+
 // ---- frame loop ----
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
 	const dt = Math.min(clock.getDelta(), 0.1);
 	if (needRecenter && renderer.xr.isPresenting && renderer.xr.getFrame().getViewerPose(renderer.xr.getReferenceSpace())) { recenter(); needRecenter = false; }
-	if (!renderer.xr.isPresenting) camera.rotation.set(pitch, yaw, 0);
+	if (!renderer.xr.isPresenting) {
+		camera.rotation.set(pitch, yaw, 0);
+		if (deskView) fitCamera();
+	}
 	meshes = [];
 	uiGroup.traverseVisible((o) => { if (o.userData.panel) meshes.push(o); });
 	updateControllers(dt);

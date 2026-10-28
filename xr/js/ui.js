@@ -905,6 +905,7 @@ export class Panel {
 		this.name = name;
 		this.maxPxPerM = pxPerM;
 		this.bg = bg;
+		this.scale = 1;
 		this.canvas = document.createElement("canvas");
 		this.setSize(widthM, heightM);
 		this.ctx = this.canvas.getContext("2d");
@@ -930,8 +931,20 @@ export class Panel {
 		this.pxPerM = this.maxPxPerM * Math.min(1, 2048 / (Math.max(widthM, heightM) * this.maxPxPerM));
 		this.widthM = widthM;
 		this.heightM = heightM;
-		this.width = this.canvas.width = Math.round(widthM * this.pxPerM);
-		this.height = this.canvas.height = Math.round(heightM * this.pxPerM);
+		this.width = Math.round(widthM * this.pxPerM);
+		this.height = Math.round(heightM * this.pxPerM);
+		this.canvas.width = Math.round(this.width * this.scale);
+		this.canvas.height = Math.round(this.height * this.scale);
+	}
+
+	// canvas px per panel px: a Desktop View window draws its panels at the displayed resolution, VR at 1
+	setScale(k) {
+		if (k === this.scale) return;
+		this.scale = k;
+		this.canvas.width = Math.round(this.width * k);
+		this.canvas.height = Math.round(this.height * k);
+		this.texture.dispose();
+		this.invalidate();
 	}
 
 	// new world size at the same canvas density; widgets keep their px positions, the caller relayouts them
@@ -972,6 +985,7 @@ export class Panel {
 
 	draw() {
 		const { ctx } = this;
+		ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
 		ctx.clearRect(0, 0, this.width, this.height);
 		if (this.bg) {
 			rrect(ctx, 0, 0, this.width, this.height, theme.radius);

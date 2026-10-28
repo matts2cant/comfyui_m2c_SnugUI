@@ -1,5 +1,5 @@
 // Lucide icons (https://lucide.dev), copied from the Lucide SVGs embedded in ComfyUI's frontend CSS. 24 x 24 viewBox,
-// drawn as 2-wide round strokes (ui.js drawIcon); <circle> and <rect> elements are rewritten as path data.
+// drawn as 2-wide round strokes (ui.js drawIcon, desktop.js SVGs); <circle>, <rect> and <line> elements are rewritten as path data.
 //
 // ISC License
 //
@@ -15,7 +15,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 // THIS SOFTWARE.
 
-export const icons = Object.fromEntries(Object.entries({
+export const paths = {
 	images: "m22 11l-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2M12 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0M10 2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
 	layers: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83zM2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
 	sun: "M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41",
@@ -27,4 +27,9 @@ export const icons = Object.fromEntries(Object.entries({
 	plus: "M5 12h14m-7-7v14",
 	"corner-down-left": "M20 4v7a4 4 0 0 1-4 4H4m5-5l-5 5l5 5",
 	shuffle: "m18 14l4 4l-4 4m0-20l4 4l-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45",
-}).map(([name, d]) => [name, new Path2D(d)]));
+	pencil: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4",
+	monitor: "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4",
+	"rectangle-goggles": "M20 6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4a2 2 0 0 1-1.6-.8l-1.6-2.13a1 1 0 0 0-1.6 0L9.6 17.2A2 2 0 0 1 8 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z",
+};
+
+export const icons = Object.fromEntries(Object.entries(paths).map(([name, d]) => [name, new Path2D(d)]));

@@ -205,7 +205,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
 	let modelOn = false, stage3d = false, notice = "", modelToken = 0;
-	let band = null;           // the tiles or the output-type panel is shown: main.js leaves room for them
+	let band = null;           // which of the tiles and the output-type panel are shown: main.js leaves room for them
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let singleOn = false;
@@ -298,7 +298,8 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		});
 		for (const p of [stage, galleryPanel, tilesPanel, kindPanel]) p.invalidate();
 		fitStage();
-		const b = tilesPanel.mesh.visible || kindPanel.mesh.visible;
+		// the band's panels changed: the lectern and the Desktop View's prompt window re-place them
+		const b = [tilesPanel.mesh.visible, kindPanel.mesh.visible].join();
 		if (b !== band) {
 			band = b;
 			screen.onResize();

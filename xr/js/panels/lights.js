@@ -1,7 +1,7 @@
 // Lighting panel: preset buttons for the 3D model's look. A preset sets the model's key / fill / rim lights and hemisphere
 // (model.light), an environment map for its reflections (PMREM of a small scene: the preset's gradient sky plus one emissive
-// panel per light, built once per preset) and the room's gradient, whatever the output on show. Panels and images use unlit,
-// non tone mapped materials, so none of this changes them.
+// panel per light, built once per preset), the room's gradient and the Desktop View's flat background (the gradient's
+// horizon), whatever the output on show. Panels and images use unlit, non tone mapped materials, so none of this changes them.
 import * as THREE from "three";
 
 const PRESET_KEY = "appmode-xr.lighting";
@@ -97,6 +97,7 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 	const sky = skyTexture(PRESETS[0].sky);
 	room.add(new THREE.GridHelper(12, 24, 0x2a3446, 0x1a2230));
 	room.add(new THREE.Mesh(new THREE.SphereGeometry(40, 24, 16), new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, depthWrite: false })));
+	const background = new THREE.Color(); // main.js sets it as scene.background in the Desktop View
 
 	const envs = new Map();
 	let pmrem = null, preset = PRESETS[0];
@@ -110,6 +111,7 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 		model.light(preset);
 		paintSky(sky.image, preset.sky);
 		sky.needsUpdate = true;
+		background.set(preset.sky[1]);
 		if (!envs.has(preset)) {
 			pmrem ??= new THREE.PMREMGenerator(renderer);
 			envs.set(preset, buildEnvironment(pmrem, preset));
@@ -126,5 +128,5 @@ export function createLightsPanel({ ui, scene, renderer }, model) {
 	}
 
 	apply();
-	return { group, panel, room };
+	return { group, panel, room, background };
 }

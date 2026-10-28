@@ -24,7 +24,7 @@ export function showHelp({ insecure }) {
 	const box = el("div", { background: "#161a22", border: "1px solid #323a49", borderRadius: "16px", padding: "24px 28px", margin: "16px", width: "min(680px, 94vw)", font: "17px/1.5 system-ui, sans-serif", color: "#e8ecf2" }, backdrop);
 	el("h2", { margin: "0 0 6px", fontSize: "24px" }, box, insecure ? "One-time setup for VR" : "WebXR not available");
 	if (!insecure) {
-		el("p", { margin: "8px 0", color: "#8c96a8" }, box, "This browser does not expose WebXR. Open this page in Meta Quest Browser. You can still use the desktop preview below.");
+		el("p", { margin: "8px 0", color: "#8c96a8" }, box, "This browser does not expose WebXR. Open this page in Meta Quest Browser. You can still use the Desktop View.");
 	} else {
 		el("p", { margin: "8px 0", color: "#8c96a8" }, box, "WebXR only works on secure pages, and this ComfyUI address is plain http. Tell Quest Browser to trust it once:");
 		const steps = el("ol", { margin: "12px 0", paddingLeft: "24px" }, box);
@@ -46,6 +46,6 @@ export function showHelp({ insecure }) {
 		step("Tap Relaunch at the bottom of the flags page, then open this address again.");
 		el("p", { margin: "8px 0", color: "#8c96a8", fontSize: "15px" }, box, "If the page does not load at all: ComfyUI must listen on the network (--listen 0.0.0.0) and the Windows firewall must allow its port.");
 	}
-	const close = el("button", { marginTop: "10px", padding: "10px 22px", border: "0", borderRadius: "8px", background: "#303846", color: "#e8ecf2", font: "inherit", cursor: "pointer" }, box, "Continue to desktop preview");
+	const close = el("button", { marginTop: "10px", padding: "10px 22px", border: "0", borderRadius: "8px", background: "#303846", color: "#e8ecf2", font: "inherit", cursor: "pointer" }, box, "Continue to the Desktop View");
 	close.onclick = () => backdrop.remove();
 }

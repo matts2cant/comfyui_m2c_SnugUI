@@ -25,9 +25,10 @@ __init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}
 xr/index.html            VR page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
-xr/js/main.js            bootstrap, renderer, scene, VR session, desktop fallback, input, layout, recenter
+xr/js/main.js            bootstrap, renderer, scene, views (Desktop View, VR session, VR-like view), input, layout, recenter
+xr/js/desktop.js         Desktop View windows (the panels' canvases in DOM windows) and dock, their persistence
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
-xr/js/icons.js           Lucide icons (ISC licence in its header) as Path2D, keyed by Lucide name
+xr/js/icons.js           Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
 xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
 xr/js/help.js            insecure-context help screen (DOM)
@@ -38,7 +39,8 @@ xr/js/panels/center.js   image / 3D model display, output tiles, output-type pan
 xr/js/panels/bottom.js   prompt panel: workflow name, prompt / negative prompt boxes, seed row, progress bar (run status), generate/cancel
 xr/js/panels/left.js     Configuration side panel: settings controls
 xr/js/panels/right.js    LoRA side panel(s) + LoRA Manager API client
-xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere)
+xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
+                         the Desktop View background
 ```
 
 ## Server (`__init__.py`)
@@ -142,6 +144,7 @@ export class Panel {                // a canvas-textured plane
   invalidate()                      // redraw before next frame (Panel.updateAll() called by main each frame)
   pointer(type, x, y, pointerId)    // type: "move"|"down"|"up"|"leave"; x,y canvas px; routed to widgets (capture on down)
   scroll(dy, x, y)                  // thumbstick/wheel; routed to the scrollable widget under (x,y)
+  setScale(k)                       // canvas backing px per panel px (default 1); widgets keep drawing and hit-testing in panel px
 }
 export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; contains(x,y);
   onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false } ; invalidate() }
@@ -158,9 +161,10 @@ List/ImageGrid thumbnails (`url`) load through a module-level image cache.
 `keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
 plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()`, `erase(dir)` and `newline()`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
 selection are what the TextField draws and what taps move (selection APIs work on an unfocused textarea; never use `ta.select()`, it focuses).
-Desktop (`setXR(false)`): `ta` is focused at edit start and takes physical keys; blur, Enter in a single-line field and `commit()` commit
+Desktop (`setXR(false)`, a mouse press in the Desktop View or the VR-like view): `ta` is focused at edit start and takes physical keys; blur, Enter in a single-line field and `commit()` commit
 (onDone), Escape reverts (onInput(initial), onCancel).
-XR (main.js calls `setXR` on session start/end): the Quest system keyboard can only insert (each open starts an empty session whose first
+XR (main.js calls `setXR` on session start/end; a finger press in the Desktop View or on the 3D view sets it too, so tablets
+use the same path): the Quest system keyboard can only insert (each open starts an empty session whose first
 key overwrites the focused element's value, existing text is not shown, backspace cannot delete existing text, and while it is up the
 session is `visible-blurred` with no controller input). So `ta` is never focused; a second always-empty hidden element `kb` (an `<input>` for single-line fields, a `<textarea>` for multiline ones) is focused by
 `showKeyboard()` (the toolbar's Keyboard button, from its select handler for user activation). On kb focus the model text around the caret
@@ -253,20 +257,21 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   `max(prompt right edge + GAP + toggle column width, screen half width) + GAP_SIDE` (0.02) and that edge's depth, turned `SIDE_YAW` 28°
   toward the viewer about its inner edge.
 - every other panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the side
-  panels' visibility (center calls `screen.onResize()` when the stage changes size or when the band appears / disappears: center sets
-  `tiles.mesh.visible` and `kind.mesh.visible`, layout reads them).
+  panels' visibility (center calls `screen.onResize()` when the stage changes size or when the band's panels change: center sets
+  `tiles.mesh.visible` and `kind.mesh.visible`, layout and the Desktop View's prompt window read them).
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
 main.js also reads `panel`, and center's `tiles` / `kind` / `gallery` panels and `model`; the lighting panel is
-`createLightsPanel(ctx, center.model) -> { group, panel, room }`, main.js adds `room` to the scene) where
+`createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js adds `room` to the scene) where
 `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() } }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toggle column and icons
-Round icon `Button`s (main.js), top to bottom: Gallery, LoRA, Light, Configuration, Exit. The first four work like tabs: pressing one opens its
-side panel in the slot and closes the other, pressing the open one closes it; the open one is `toggled`. Nothing is open at page load or at the
-start of an XR session, and the open panel is not persisted. Exit ends the XR session (`session.end()`); on the desktop it is disabled (a
-no-op). Icons are Lucide (ISC), copied into `icons.js` from the Lucide SVGs in the frontend's `main-*.css` (`lucide--<name>`); to swap one,
-copy another Lucide icon's path data under its name and change the name where it is used:
+Round icon `Button`s (main.js), top to bottom: Gallery, LoRA, Light, Configuration, Desktop mode. The first four work like tabs: pressing one
+opens its side panel in the slot and closes the other, pressing the open one closes it; the open one is `toggled`. Nothing is open at page load
+or at the start of an XR session, and the open panel is not persisted. Desktop mode goes back to the Desktop View: in an XR session it ends the
+session (`session.end()`, the session end does the rest), in the VR-like view it switches directly. Icons are Lucide (ISC), copied into
+`icons.js` from the Lucide SVGs in the frontend's `main-*.css` (`lucide--<name>`); to swap one, copy another Lucide icon's path data under its
+name and change the name where it is used. `icons` (Path2D) is drawn on the panels, `paths` (the path data) in the Desktop View's DOM SVGs:
 
 | Use | Lucide icon | Where |
 |---|---|---|
@@ -274,20 +279,28 @@ copy another Lucide icon's path data under its name and change the name where it
 | LoRA | `layers` | main.js `SIDES` |
 | Light | `sun` (no `lightbulb` in the frontend's set) | main.js `SIDES` |
 | Configuration | `settings` | main.js `SIDES` |
-| Exit | `x` | main.js |
+| Desktop mode (toggle column) | `monitor` (not in the frontend's set; path data from Lucide) | main.js |
+| Prompt window (Desktop View) | `pencil` | main.js `createDesktop` specs |
+| VR mode (Desktop View dock) | `rectangle-goggles` (not in the frontend's set; path data from Lucide) | desktop.js |
+| Window close (Desktop View) | `x` | desktop.js |
 | Image output tile | `image` | center.js `loadOutputs` |
 | Mesh output tile | `box` | center.js `loadOutputs` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | bottom.js `MODES` |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
-- On load: if `!window.isSecureContext || !navigator.xr` (and not desktop dev) → still render the desktop 3D view but show help.js overlay
-  explaining how to enable WebXR on Quest Browser: `chrome://flags` → "Insecure origins treated as secure" → add
-  `http://<location.host>` (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN.
-  Only show the help on Quest/XR-capable UA or when navigator.xr is missing; dismissible.
-- VR only (`immersive-vr`, no AR / passthrough). DOM button "Enter VR", shown when `isSessionSupported('immersive-vr')`;
-  requestSession inside the click handler; optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a room
-  (floor grid + gradient sphere, from lights.js) in VR and on the desktop. No tone mapping (renderer default).
+- Views: the page opens in the Desktop View (below) when no XR session runs. The VR view is the XR session, or on a browser
+  without `immersive-vr` the VR-like view: the same scene and panels as in the headset, seen from a desktop camera with mouse
+  look. The dock's VR mode button enters it (requestSession inside its click handler where `isSessionSupported('immersive-vr')`,
+  else the VR-like view); the toggle column's Desktop mode button and the end of an XR session go back. `?view=vr` opens the
+  VR-like view directly (the dev / test entry). `setView(desk)` releases every pointer, shows the room (VR) or the flat background
+  (Desktop View), resets the look, the fov (70°) and the hint (VR-like view only), then `relayout()`: `layout()` and the windows.
+- On load: if `!window.isSecureContext || !navigator.xr` on Quest Browser (UA `OculusBrowser`), or with `?help`, show the help.js
+  overlay explaining how to enable WebXR: `chrome://flags` → "Insecure origins treated as secure" → add `http://<location.host>`
+  (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN. Dismissible. Tablets and desktops
+  reach the page over plain http too, so it is not shown there.
+- VR only (`immersive-vr`, no AR / passthrough). optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a room
+  (floor grid + gradient sphere, from lights.js) in VR and in the VR-like view. No tone mapping (renderer default).
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
 - Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
   convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze (grip) on the
@@ -298,12 +311,17 @@ copy another Lucide icon's path data under its name and change the name where it
 - Hide UI: B on the right controller (polled each frame: `gamepad.buttons[5].pressed` of the right-handed source, toggled on the
   press edge; index 5 is B in the WebXR input profile of the Quest Touch controllers, xr-standard itself only fixes 0–3) or H on
   the desktop → `toggleUI()`: commits an open text edit, drops every pointer's hover / press / pan (`releasePointer`), flips
-  `uiShown` and re-runs `layout()`, which hides the lectern (prompt panel, toggle column, output tiles, output-type panel, any edit
+  `uiShown` and re-runs `relayout()` (in the Desktop View it hides the windows and the dock), whose `layout()` hides the lectern (prompt panel, toggle column, output tiles, output-type panel, any edit
   toolbar on them) and the side slot. The stage (and its empty / loading message), the image or 3D model, the room and the rays
   stay. Hidden panels are not raycast (main.js only collects visible panel meshes), so the image / model take every ray. Showing
   again restores the same side panel; panels keep their own state (scroll, tab). Hands have no B button.
-- Desktop fallback (no XR session): same scene, mouse drag to look around (yaw/pitch), wheel = scroll on hovered panel,
-  mouse click = pointer events, R = recenter, H = hide UI. This is the dev/test mode.
+- Mouse and touch on the 3D view (no XR session, main.js): mouse click = pointer events, wheel = scroll on the hovered panel, R =
+  recenter (the Desktop View: resets the image / model view), H = hide UI. A drag off the image, the model and the panels looks
+  around (yaw / pitch) in the VR-like view only. Each finger is a pointer of its own (`fingers`, keyed by pointerId, dropped on
+  release). A second finger while another holds the image or the model pinches it: both slide it in one plane (`slide`, so the
+  image's or the model's two-hand grab: their distance zooms it, their midpoint moves it); a finger turning the model first
+  becomes a slide in the plane facing the camera at its press depth (the turn grab keeps `view` and `dist` for that), and the
+  finger left after a pinch on the model turns it again. A third finger does nothing.
 - 3D model (center's `model`): the model is "hit" when the ray reaches its box (`model.hit(ray)` -> distance) before any panel
   (main.js `modelHit`). A press on it turns it: while held, the
   change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around the vertical, then pitch, clamped to ±90°). Thumbstick Y
@@ -325,15 +343,51 @@ copy another Lucide icon's path data under its name and change the name where it
   by its in-plane motion only, two scale it by their distance ratio and move it with their midpoint (no turn). Two pans (both
   triggers) pinch-zoom the same way. Slides are keyed by the pointer object and grips by its id, so one controller can do both.
   A zoom during a grab rebases the grab. Desktop: drag on the image pans, wheel zooms about the cursor; drag off it still looks
-  around.
+  around in the VR-like view.
   Reset (pan 0, zoom 1): on recenter(), on every image shown from an entry (new result, gallery pick, fallback), on the first live
   preview of a run (later previews keep the view), on an output (tile) selection or snapshot reload, and on a Flat / 3D mode change
   (the stage changes size). A hand still holding carries it on from the reset view. Both stereo eyes are in `view`, so they share
   the transform. HD: the quad layer takes width / height / transform from holeMesh's world matrix each frame (`applyPose` when it
   changed), so it follows the pan and zoom, and the hole mesh is in `view` with the image.
-- Each frame: `Panel.updateAll()`, panels' `update(dt)`.
+- Each frame: `Panel.updateAll()`, panels' `update(dt)`; in the Desktop View `fitCamera()`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
+
+### Desktop View (desktop.js, main.js)
+- Viewport: the whole window, a fixed camera at the eye looking straight at the stage (no look around), its vertical fov fitted each
+  frame so the stage fills the window (contain: `max(screen.h, screen.w / aspect)` at `SCREEN_DISTANCE`). The image or 3D model
+  is therefore fitted to the window; the stage panel's message shows when there is neither. `scene.background` is lights.js's
+  `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
+  hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
+  about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
+- Windows: Prompt (the band, output tiles at the left and the output-type panel at the right, `BAND_GAP` 16 px over the prompt
+  panel, as on the lectern; the band follows `tiles.mesh.visible` / `kind.mesh.visible`), Gallery, LoRA, Light, Configuration. They
+  host the same Panel objects as VR: each panel's own canvas is placed in a DOM window (`main.js` passes `createDesktop` one spec per
+  window, `{ name, title, icon, layout() -> [[panel, x, y]] }` in panel px). `layout()` hides the lectern and the side slot in the
+  Desktop View; the meshes are not rendered. `screen.onResize` (stage size, band change) re-places the windows too.
+- A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
+  pointers, as is a 44 px bar). Resizing zooms: the aspect is locked, the panels keep their px layout and scale; the grip takes the
+  larger of the width / height change. The panels are drawn at the displayed resolution, `panel.setScale(zoom * devicePixelRatio)`;
+  a hidden window's panels and every panel outside the Desktop View go back to scale 1 (VR textures unchanged).
+- Several windows may be open; a press on one raises it (z-index, kept). Windows sit above the 3D view, so pointer input over a
+  window always goes to it. Canvas pointer events map to `panel.pointer(type, x, y, pointerId)` in panel px (pointer capture on
+  press, wheel = `panel.scroll`; a drag in a panel scrolls it as in VR). A press on a TextField or EditBar keeps an edit, any other
+  window press commits it on release; moving, resizing, closing, a dock button do too. The window layer keeps the focused textarea
+  (mousedown, and touch pointerdown, prevented while editing). A finger tap that starts an edit opens the on-screen keyboard
+  (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation).
+- Dock (bottom right, above the windows): one round toggle per window, lit (`on`) while it is open, then a separator and VR mode.
+  Hidden in the VR view and by H.
+- Persistence: localStorage `appmode-xr.windows` = `{ <name>: { x, y, w, open, z } }` (CSS px, w = window width; try/catch, the
+  page works without it), saved after a move, resize, open, close or raise. Shown geometry is clamped: the zoom shrinks to fit the
+  browser window and the position is pushed inside it, without changing what is stored (rotating a tablet back restores it).
+- Placement on first opening (no stored x): the first window (Prompt) centered just above the dock; the others right-aligned with
+  the dock just above it, `CASCADE` 32 px up and left of the previous new window while that one is still open. Default zoom 0.45
+  (at most the window width minus margins). First visit: only Prompt is open. A page loaded without a size (hidden tab) places its
+  windows on the first resize.
+- Keys: H hides every window and the dock (and shows them again); the image / model keep their fit. R resets the image / model.
+  Physical keys edit text through `ta` as before.
+- Tablets: the same layout in landscape and portrait (no phone support). Quest's 2D browser before entering VR: the controller
+  pointer acts as a mouse.
 
 ### Panels (behavior)
 - center: shows the latest image (fit, keep aspect, then the user's pan / zoom) — XR quad layer for crispness when `layers` granted (hole-punch so the
@@ -421,7 +475,8 @@ copy another Lucide icon's path data under its name and change the name where it
   `[panel side, radiance gain]`. The room's sphere is painted with the preset gradient and `scene.environment` is the preset's PMREM:
   `PMREMGenerator.fromScene` of a small scene (the same gradient on a sphere plus one emissive square per light, in its direction and
   color), generated on first use and cached per preset (one generator kept). Images stay unlit.
-  `scene.environmentRotation.y` follows the ui yaw on recenter so reflections turn with the lights. Only the model's
+  `scene.environmentRotation.y` follows the ui yaw on recenter so reflections turn with the lights. The panel also returns
+  `background` (the horizon colour), the Desktop View's `scene.background`. Only the model's
   MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
   At most 3 directional lights, no shadows.
 
