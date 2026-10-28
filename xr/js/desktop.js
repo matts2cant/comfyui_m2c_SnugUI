@@ -83,10 +83,10 @@ function load() {
 	}
 }
 
-// specs: [{ name, title, icon, size: [w, h], min: [w, h], layout(w, h) -> [[panel, x, y, w, h]] }] in panel px: size is the
-// content on first opening, min the smallest the panels' layouts take, layout places them in a w x h content area. Only the
-// first one is open on the first visit. note: a panel shown alone at the center while note.mesh.visible (the stage's
-// message). onVR: the dock's VR mode button.
+// specs: [{ name, title, icon, size: [w, h], minW, minH(w), layout(w, h) -> [[panel, x, y, w, h]] }] in panel px: size is the
+// content on first opening, minW / minH(w) the smallest the panels' layouts take (minH at the content width w), layout places
+// them in a w x h content area. Only the first one is open on the first visit. note: a panel shown alone at the center while
+// note.mesh.visible (the stage's message). onVR: the dock's VR mode button.
 export function createDesktop(specs, note, onVR) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
@@ -188,8 +188,8 @@ export function createDesktop(specs, note, onVR) {
 			return;
 		}
 		if (state.x === undefined) place(win);
-		const barH = win.bar.offsetHeight, [minW, minH] = spec.min;
-		const w = Math.max(minW * SCALE, Math.min(state.w, innerWidth)), h = Math.max(minH * SCALE + barH, Math.min(state.h, innerHeight));
+		const barH = win.bar.offsetHeight, w = Math.max(spec.minW * SCALE, Math.min(state.w, innerWidth));
+		const h = Math.max(spec.minH(Math.round(w / SCALE)) * SCALE + barH, Math.min(state.h, innerHeight));
 		win.rect = { x: clamp(state.x, 0, innerWidth - w), y: clamp(state.y, 0, innerHeight - h), w, h };
 		Object.assign(box.style, { left: win.rect.x + "px", top: win.rect.y + "px", width: w + "px", zIndex: state.z ?? 0 });
 		body.style.height = h - barH + "px";

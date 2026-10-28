@@ -59,6 +59,9 @@ export class ComfyClient extends EventTarget {
             case "status":
                 this.#emit("status", { queueRemaining: data.status.exec_info.queue_remaining });
                 break;
+            case "execution_cached":
+                this.#emit("cached", { nodes: data.nodes, prompt_id: data.prompt_id });
+                break;
             case "executing":
                 if (data.node === null) this.#done(data.prompt_id);
                 else this.#emit("executing", { node: data.node, prompt_id: data.prompt_id });

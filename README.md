@@ -22,8 +22,8 @@ If Quest Browser opens the page without WebXR, it shows the same instructions wi
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
    Sending again replaces the snapshot on every open VR page.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press the VR mode button (goggles icon, bottom right).
-4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompts, seed, progress,
-   Generate, Cancel). A column of round buttons right of it opens one side panel at a time beside the screen: Gallery,
+4. Layout: the image in the middle; under it a tilted prompt panel like a lectern (workflow name, prompt, the folding negative
+   prompt, a bar with the seed, the run status, Cancel and Generate, and two progress bars along its bottom edge). A column of round buttons right of it opens one side panel at a time beside the screen: Gallery,
    LoRA, Light, Configuration (press the open one again to close it); the last button, Desktop mode (monitor icon), leaves VR.
    Side panels start closed. Text fields have an edit toolbar with a Quest keyboard button.
 
@@ -34,7 +34,8 @@ window over a flat background in the colour of the lighting preset, and the pane
 the output tiles and Flat / 3D above it), Gallery, LoRA, Light, Configuration. With no image or model yet, the message
 ("No images yet"...) shows in a small box in the middle. The round buttons at the bottom right open and
 close them; several can be open at once. Drag a title bar to move a window, its corner to resize it freely (the text keeps its
-size, the content re-flows: bigger prompt boxes, more rows in the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed back
+size, the content re-flows: a bigger prompt box, more rows in the lists; a narrow Prompt window puts the seed on its own row
+and the output tiles above Flat / 3D), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed back
 inside a smaller window). The first time only Prompt is open.
 
 - Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
@@ -69,9 +70,14 @@ The prompt panel only takes inputs with these exact App-mode names (trimmed, cas
 
 Existing workflows need these names set on their inputs in App mode, or the inputs show up in Configuration instead (a prompt
 with another name, a seed called `seed`, a `_seed` of the wrong type). There is no `[Tab]` handling here: `[Tab] _prompt` is a
-Configuration input. Only one of each; if a name is used twice, the first in App-mode order wins. Both prompts: the positive box takes
-2/3 of the height and the negative one 1/3. Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there is
-no seed row. Empty boxes show "Prompt…" / "Negative prompt…" as a hint.
+Configuration input. Only one of each; if a name is used twice, the first in App-mode order wins. The prompt box takes all the
+height; the negative prompt is folded under a "▸ Negative" row showing the start of its text (tap it to open or fold it; remembered).
+Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there are no seed controls. Empty boxes show
+"Prompt…" / "Negative prompt…" as a hint.
+
+The bar under the prompts shows the run status: "Idle", "Queued", or the running node with its steps and the node count
+("KSampler · step 5 / 8 · node 4 of 9", shortened when the panel is narrow), then "Interrupted" or the error until the next run.
+The two bars along the bottom edge are the running node's steps (thin) and the whole run (nodes done, cached ones included).
 
 ## Group switches
 

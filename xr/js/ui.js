@@ -29,7 +29,7 @@ export const theme = {
 const font = (size, bold) => `${bold ? "600 " : ""}${size}px ${theme.font}`;
 const measure = document.createElement("canvas").getContext("2d");
 
-function ellipsize(ctx, text, maxW) {
+export function ellipsize(ctx, text, maxW) {
 	if (ctx.measureText(text).width <= maxW) return text;
 	let lo = 0, hi = text.length;
 	while (lo < hi) {

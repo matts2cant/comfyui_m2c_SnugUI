@@ -189,24 +189,30 @@ function layout() {
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts
 // take). The prompt window has the band over the prompt panel as on the lectern: the tiles take the width the output-type
-// panel leaves.
-const BAND_GAP = 16, KIND_GAP = 40;
+// panel leaves; narrower than BAND_STACK the output-type panel goes on a row of its own under the tiles.
+const BAND_GAP = 16, KIND_GAP = 40, BAND_STACK = 1100;
 const SIDE_MIN = { gallery: [500, 500], lora: [600, 700], light: [420, 500], config: [600, 500] };
+function band(w) {
+	const { tiles, kind } = center, row = tiles.height + BAND_GAP, stack = w < BAND_STACK && tiles.mesh.visible && kind.mesh.visible;
+	const panels = [
+		tiles.mesh.visible && [tiles, 0, 0, stack ? w : w - kind.width - KIND_GAP, tiles.height],
+		kind.mesh.visible && [kind, w - kind.width, stack ? row : 0, kind.width, kind.height],
+	].filter(Boolean);
+	return { panels, h: panels.length && (stack ? 2 : 1) * row };
+}
 const windows = createDesktop([
 	{
 		name: "prompt", title: "Prompt", icon: "pencil",
-		size: [bottom.panel.width, center.tiles.height + BAND_GAP + bottom.panel.height], min: [1100, 540],
+		size: [bottom.panel.width, center.tiles.height + BAND_GAP + bottom.panel.height],
+		minW: 720, minH: (w) => band(w).h + bottom.minHeight(w),
 		layout: (w, h) => {
-			const { tiles, kind } = center, band = tiles.mesh.visible || kind.mesh.visible ? tiles.height + BAND_GAP : 0;
-			return [
-				[bottom.panel, 0, band, w, h - band],
-				tiles.mesh.visible && [tiles, 0, 0, w - kind.width - KIND_GAP, tiles.height],
-				kind.mesh.visible && [kind, w - kind.width, 0, kind.width, kind.height],
-			].filter(Boolean);
+			const b = band(w);
+			return [[bottom.panel, 0, b.h, w, h - b.h], ...b.panels];
 		},
 	},
 	...SIDES.map(([name, icon, title, { panel }]) => ({
-		name, title, icon, size: [panel.width, panel.height], min: SIDE_MIN[name], layout: (w, h) => [[panel, 0, 0, w, h]],
+		name, title, icon, size: [panel.width, panel.height], minW: SIDE_MIN[name][0], minH: () => SIDE_MIN[name][1],
+		layout: (w, h) => [[panel, 0, 0, w, h]],
 	})),
 ], center.note, enterVR);
 
@@ -245,6 +251,7 @@ async function loadSnapshot() {
 	}
 }
 store.client = ctx.client;
+store.addEventListener("load", relayout); // the prompt window's minimum follows the prompt panel's entries
 ctx.client.addEventListener("snapshot", loadSnapshot);
 ctx.client.connect();
 loadSnapshot();

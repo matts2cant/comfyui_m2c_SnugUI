@@ -36,7 +36,8 @@ xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot f
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
 xr/js/panels/center.js   image / 3D model display, output tiles, output-type panel, gallery side panel
-xr/js/panels/bottom.js   prompt panel: workflow name, prompt / negative prompt boxes, seed row, progress bar (run status), generate/cancel
+xr/js/panels/bottom.js   prompt panel: workflow name, prompt box, folding negative prompt, action bar (seed, run status, cancel/generate),
+                         node / total progress bars
 xr/js/panels/left.js     Configuration side panel: settings controls
 xr/js/panels/right.js    LoRA side panel(s) + LoRA Manager API client
 xr/js/panels/lights.js   Light side panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
@@ -193,7 +194,7 @@ export class ComfyClient extends EventTarget {
   queue(prompt, previewMethod) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id, extra_data: {preview_method}}; throws Error(message) on 4xx with node_errors summary
   interrupt()                       // POST /interrupt
   viewUrl({filename, subfolder, type})
-  // events (CustomEvent detail): "snapshot" {id} | "status" {queueRemaining} | "executing" {node, prompt_id}
+  // events (CustomEvent detail): "snapshot" {id} | "status" {queueRemaining} | "cached" {nodes, prompt_id} | "executing" {node, prompt_id}
   // | "progress" {value, max, node, prompt_id} | "preview" {url (blob URL), prompt_id?} | "executed" {node, output, prompt_id}
   // | "done" {prompt_id} (executing with node null / execution_success) | "error" {prompt_id, message} | "interrupted" {prompt_id}
 }
@@ -219,7 +220,7 @@ store.randomizeSeed(key)
 store.loras(nodeId) -> [{name,strength,clipStrength,active}] / setLoras(nodeId, list)  // "change" {key:"lora:"+nodeId}
 store.buildPrompt() -> deep-cloned API prompt with all values + lora text/loras applied
 store.generate()                     // dispatches "generate"; apply seed modes BEFORE queue (randomize: random int in [min, min(max, 2^53-1)];
-                                     // increment: +1), dispatch "change", queue(buildPrompt()); dispatches "queued" {prompt_id}; "error" {message}
+                                     // increment: +1), dispatch "change", queue(buildPrompt()); dispatches "queued" {prompt_id, nodes (the prompt's node ids)}; "error" {message}
 store.groups                         // from rules.js classify(): { prompt: input|null, negative: input|null, seed: input|null, left: [input], lora: [loraNode] }
 ```
 LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__value__: list}` if lorasWrapped) and
@@ -262,7 +263,7 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   panels' visibility (center calls `screen.onResize()` when the stage changes size or when the band's panels change: center sets
   `tiles.mesh.visible` and `kind.mesh.visible`, layout and the Desktop View's prompt window read them).
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
-main.js also reads `panel`, and center's `tiles` / `kind` / `gallery` panels and `model`; the lighting panel is
+main.js also reads `panel`, bottom's `minHeight(w)` (its layout's smallest height at width w), and center's `tiles` / `kind` / `gallery` panels and `model`; the lighting panel is
 `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js adds `room` to the scene) where
 `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`; center also returns `note`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
@@ -288,6 +289,7 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
 | Image output tile | `image` | center.js `loadOutputs` |
 | Mesh output tile | `box` | center.js `loadOutputs` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | bottom.js `MODES` |
+| Cancel (narrow prompt panel) | `x` | bottom.js `layout` |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -369,18 +371,22 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
 - Windows: Prompt (the band, output tiles at the left and the output-type panel at the right, `BAND_GAP` 16 px over the prompt
   panel, as on the lectern; the band follows `tiles.mesh.visible` / `kind.mesh.visible`), Gallery, LoRA, Light, Configuration. They
   host the same Panel objects as VR: each panel's own canvas is placed in a DOM window (`main.js` passes `createDesktop` one spec per
-  window, `{ name, title, icon, size, min, layout(w, h) -> [[panel, x, y, w, h]] }` in panel px: `size` the content on first
-  opening (the VR size; Prompt: the prompt panel under the band), `min` the smallest its layout takes (Prompt 1100 x 540, Gallery
-  500 x 500, LoRA 600 x 700, Light 420 x 500, Configuration 600 x 500), `layout` places the panels in the content area). In the
-  Prompt window the prompt panel takes the area under the band, the tiles panel the band's width left of the output-type panel
-  (`KIND_GAP` 40 px, its VR size). `layout()` hides the lectern and the side slot in the Desktop View; the meshes are not rendered.
+  window, `{ name, title, icon, size, minW, minH(w), layout(w, h) -> [[panel, x, y, w, h]] }` in panel px: `size` the content on
+  first opening (the VR size; Prompt: the prompt panel under the band), `minW` / `minH(w)` the smallest its layout takes, the height
+  at content width w (Prompt 720 wide, its height from `band(w)` + bottom's `minHeight(w)`: taller when narrow; Gallery 500 x 500,
+  LoRA 600 x 700, Light 420 x 500, Configuration 600 x 500), `layout` places the panels in the content area). In the Prompt window
+  the prompt panel takes the area under the band, the tiles panel the band's width left of the output-type panel (`KIND_GAP` 40 px,
+  its VR size); narrower than `BAND_STACK` (1100 px) with both shown, the band stacks: the tiles across the full width, the
+  output-type panel on a row of its own under them (right-aligned). A snapshot load re-places the windows (the prompt panel's
+  entries change its minimum). `layout()` hides the lectern and the side slot in the Desktop View; the meshes are not rendered.
   `screen.onResize` (stage size, band or note change) re-places the windows too.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
   pointers, as is a 44 px bar). Width and height are free; every window draws its panels at one fixed `SCALE` (0.45 CSS px per
   panel px, so the text has one size everywhere) and the panels RE-FLOW to the content area: `panel.setPx(w, h, SCALE *
   devicePixelRatio)` (sharp at any DPI) calls the panel module's `onResize`, which re-runs its own layout from `panel.width` /
-  `height` (the same code VR runs at the world size): the prompt boxes and Generate grow, the Configuration / LoRA / Gallery lists
-  show more rows (their scrolling covers the rest), the Light grid takes more columns, the tiles share the band. A grip press
+  `height` (the same code VR runs at the world size): the prompt box grows, the Configuration / LoRA / Gallery lists
+  show more rows (their scrolling covers the rest), the Light grid takes more columns, the tiles share the band; the prompt panel
+  switches to its narrow layout (below). A grip press
   commits an open edit first (a re-flow rebuilds some panels' widgets). A hidden window's panels and every panel outside the
   Desktop View go back to their world size at scale 1 (`setPx()`), so VR keeps its layout.
 - Several windows may be open; a press on one raises it (z-index, kept). Windows sit above the 3D view, so pointer input over a
@@ -417,7 +423,7 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
   Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
   On a `"switchGroups"` change the tiles are re-placed; if the selected output went inactive the first active one is selected (screen,
   gallery and output-type panel follow; no switching back when it returns). With none active the selection and the screen stay as they
-  are, Generate is disabled and the progress bar says "No active output". Inactive outputs keep their history, current entry and dot.
+  are, Generate is disabled and the prompt panel's status says "No active output". Inactive outputs keep their history, current entry and dot.
   Output-type panel: the controls of the selected output's kind, `kindControls[kind]()`; an empty list hides the panel. Image: Flat /
   3D R/L / 3D L/R (side-by-side image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD
   (disabled in stereo, on the desktop and while a 3D result is on show). Mesh: none yet.
@@ -442,16 +448,34 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
   lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
-- bottom (prompt panel, 1800 x 600 px): the workflow name at the top left. Left, under it, the prompt boxes of `store.groups.prompt` and
-  `.negative`, plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…"); an empty box shows its name as a muted
-  placeholder, "Prompt…" / "Negative prompt…" (gone as soon as there is text, back when it is emptied, also while editing); tap edits in place
-  (live onInput) and store.set the whole text. Only the positive one: full height. Both: positive 2/3, negative 1/3 (16 px gap). Only the
-  negative one (not in the owner's spec): alone, full height, same placeholder. No prompt boxes: the right column takes the whole width.
-  Right column (700 px), top to bottom: the seed row of `store.groups.seed` if any ("Seed", −, value field, +, then the mode icons `lock` =
-  fixed, `plus` = increment, `shuffle` = randomize, the current one `toggled`; it ends flush with the column edge, nothing clips it; without a
-  seed the column starts with the progress bar), the progress bar, the Generate button (fills the rest), Cancel
-  (interrupt, enabled while running or queued). Progress bar = run status: `value/max` fill and step, the running node's title, "Queued",
-  "Idle", "Interrupted" or the error (red, until the next run), plus "· N in queue" when more than one prompt is queued.
+- bottom (prompt panel, 1800 x 600 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left);
+  the prompt box of `store.groups.prompt`, full width, taking all the extra height; the negative prompt of `.negative`; one action
+  bar; two progress bars. Prompt boxes are plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…");
+  an empty box shows its name as a muted placeholder, "Prompt…" / "Negative prompt…" (gone as soon as there is text, back when it is
+  emptied, also while editing); tap edits in place (live onInput) and store.set the whole text.
+  Negative prompt: a header row (`Fold`: a chevron, "Negative" and, folded, the start of its text in muted, ellipsized) that folds
+  and unfolds it on a tap; unfolded, its box (140 px, at most half the space the two boxes share) sits under the header and the
+  prompt box shrinks. Folded by default; the state is kept in localStorage `appmode-xr.negative` (`open` / `closed`, try/catch).
+  Missing entries leave no empty box: only the negative one (not in the owner's spec) is a plain box, alone, full height, with no
+  header; neither leaves the space empty.
+  Action bar (one 64 px row above the progress bars): the seed controls of `store.groups.seed` if any ("Seed", −, value field, +,
+  then the mode icons `lock` = fixed, `plus` = increment, `shuffle` = randomize, the current one `toggled`; 680 px), the status text
+  in the space left, Cancel (interrupt, `danger`, disabled = dimmed unless running or queued; 170 px) and Generate (`accent`, 300 x
+  64 px, never larger) at the right.
+  Status text (bold, one line): "Idle" (muted); "Queued" (+ "· N in queue" when more than one prompt is queued) until the first node
+  runs; running: the node's title (prompt `_meta.title`, else its class type) "· step v / max" (when it sends progress) "· node i of
+  n" (+ the queue), in fg; it falls back to "title v/max · node i/n", then "title v/max" when it does not fit. After a run:
+  "Interrupted", or the error (red), until the next run is queued; "No active output" while every output is switched off.
+  Progress bars: along the panel's bottom edge, full width, flush (clipped to the panel's rounded corners): node progress (8 px,
+  accent at 55 %: the running node's `progress` value / max, empty for nodes without progress events) over total progress (12 px,
+  accent: nodes done / the queued prompt's node count). A node is done when it is reported cached (`execution_cached`, as ComfyUI's
+  frontend counts them) or when the next node starts; "node i" = done + 1. Idle, both are empty tracks, so nothing moves when a run
+  starts. Runs are matched by prompt_id: the node ids come with the store's "queued" event, and a fully cached run that ends before
+  its "queued" arrives is not counted as queued again; the "done" that follows an error or an interruption keeps its note.
+  Narrow (`NARROW`: narrower than 1500 px, the Desktop View's window only; VR's 1800 is wide): the seed controls take a full-width
+  row above the action bar (the value field takes the extra width), the bar keeps the status (which then mostly uses its short
+  form), Cancel becomes an icon-only `x` button (64 px) and Generate. `minHeight(w)`: name + 3 prompt lines (with a box) + the negative header +
+  the seed row when narrow + the bar + the progress bars (unfolding the negative prompt at that height shares the space).
 - left (Configuration side panel): scrollable list of controls from store.groups.left: PIXAROMA_GROUP_SWITCH → the label and a
   Mute / Bypass tag, then one row per group (colour dot, label, switch), switched like the node: any; one = turning a group on turns the
   switch's other groups off; always = the same, and the last group on cannot be turned off; it updates on `"switchGroups"` changes (all
@@ -501,7 +525,7 @@ name and change the name where it is used. `icons` (Path2D) is drawn on the pane
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
-  `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`.
+  `drag:false`/`bigStep`, Panel `bg:null`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`, `ellipsize(ctx, text, maxW)`.
 - `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
