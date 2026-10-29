@@ -74,7 +74,7 @@ function colAt(ctx, text, x) {
 }
 
 // square-cropped image (or canvas) filling the s x s box at x, y
-function drawCover(ctx, img, x, y, s) {
+export function drawCover(ctx, img, x, y, s) {
 	const w = img.naturalWidth ?? img.width, h = img.naturalHeight ?? img.height, k = Math.min(w, h);
 	ctx.drawImage(img, (w - k) / 2, (h - k) / 2, k, k, x, y, s, s);
 }
@@ -163,7 +163,7 @@ export class Label extends Widget {
 }
 
 // Lucide icon (icons.js) in the s x s box at x, y, stroked with the current strokeStyle
-function drawIcon(ctx, name, x, y, s) {
+export function drawIcon(ctx, name, x, y, s) {
 	ctx.save();
 	ctx.translate(x, y);
 	ctx.scale(s / 24, s / 24);
@@ -907,10 +907,11 @@ export class Panel {
 	static all = new Set();
 	static updateAll() { for (const p of Panel.all) if (p.dirty) p.draw(); }
 
-	constructor({ name = "panel", widthM, heightM, pxPerM = 1000, bg = theme.panel }) {
+	constructor({ name = "panel", widthM, heightM, pxPerM = 1000, bg = theme.panel, radius = theme.radius }) {
 		this.name = name;
 		this.maxPxPerM = pxPerM;
 		this.bg = bg;
+		this.radius = radius;
 		this.scale = 1;
 		this.canvas = document.createElement("canvas");
 		this.setSize(widthM, heightM);
@@ -999,7 +1000,7 @@ export class Panel {
 		ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
 		ctx.clearRect(0, 0, this.width, this.height);
 		if (this.bg) {
-			rrect(ctx, 0, 0, this.width, this.height, theme.radius);
+			rrect(ctx, 0, 0, this.width, this.height, this.radius);
 			ctx.fillStyle = this.bg;
 			ctx.fill();
 			ctx.strokeStyle = theme.border;

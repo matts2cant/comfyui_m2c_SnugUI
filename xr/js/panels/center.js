@@ -1,10 +1,9 @@
-// Center panel: image (mesh or XR quad layer) or 3D model on a stage centered on the group origin, plus the output tiles, the
-// output-type panel and the gallery side panel. The stage takes the aspect of what it shows at the screen diagonal; main.js
-// places everything. Results are kept per App-mode output. The image pans and zooms in the stage plane (`image`).
+// Center panel: image (mesh or XR quad layer) or 3D model on a stage centered on the group origin, plus the output row (tiles
+// and the cog), its output pop-up and the gallery panel. The stage takes the aspect of what it shows at the screen diagonal;
+// main.js places everything. Results are kept per App-mode output. The image pans and zooms in the stage plane (`image`).
 import { createModelView } from "../model.js";
 
-const TILES_W = 1.2, KIND_W = 0.56, BAND_H = 0.1; // the band over the prompt panel: TILES_W + gap + KIND_W = its width
-const TILE_W = 380;
+const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
@@ -76,7 +75,8 @@ function resultFiles({ images = [], result, "3d": saved } = {}) {
 	return [...images.filter((f) => IMAGE_EXT.test(f.filename)).map(pick("image")), ...models.filter((f) => MODEL_EXT.test(f.filename)).map(pick("3d"))];
 }
 
-export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }) {
+// rowW: the output row's widest, the toolbar's width (panel px)
+export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }, rowW) {
 	const { theme } = ui;
 	const group = new THREE.Group();
 
@@ -123,15 +123,52 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		}
 	}
 
-	// output tile: image or cube icon and the node title; a dot marks results that came in since the output was last shown
-	class OutputTile extends ui.Button {
+	// square output tile: the output's latest result (its kind's icon before the first one, never a live preview), a kind badge
+	// and the title along the bottom; the shown output ringed, a switched-off one dimmed, a dot for results not shown yet
+	class OutputTile extends ui.Widget {
 		draw(ctx) {
-			super.draw(ctx);
-			if (!this.fresh) return;
+			const { w: s, output: o } = this, icon = o.kind === "3d" ? "box" : "image";
+			const latest = history.find((e) => ownerOf(e) === o), thumb = latest && thumbOf(latest);
+			ctx.globalAlpha = active(o) ? 1 : 0.4;
+			ctx.save();
 			ctx.beginPath();
-			ctx.arc(this.w - 16, 16, 9, 0, Math.PI * 2);
-			ctx.fillStyle = this.toggled ? theme.fg : theme.accent;
+			ctx.roundRect(0, 0, s, s, TILE_R);
+			ctx.clip();
+			ctx.fillStyle = theme.surface;
+			ctx.fillRect(0, 0, s, s);
+			ctx.strokeStyle = theme.muted;
+			if (thumb) ui.drawCover(ctx, thumb, 0, 0, s);
+			else ui.drawIcon(ctx, icon, s * 0.32, s * 0.26, s * 0.36);
+			if (this.hover || this.pressed) {
+				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
+				ctx.fillRect(0, 0, s, s);
+			}
+			ctx.fillStyle = "rgba(0,0,0,0.6)";
+			ctx.fillRect(0, s - 40, s, 40);
+			ctx.beginPath();
+			ctx.arc(30, 30, 22, 0, Math.PI * 2);
 			ctx.fill();
+			ctx.fillStyle = ctx.strokeStyle = theme.fg;
+			ui.drawIcon(ctx, icon, 17, 17, 26);
+			ctx.font = `22px ${theme.font}`;
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(ui.ellipsize(ctx, o.title, s - 20), s / 2, s - 19);
+			ctx.restore();
+			ctx.globalAlpha = 1;
+			if (this.toggled) {
+				ctx.beginPath();
+				ctx.roundRect(0, 0, s, s, TILE_R);
+				ctx.lineWidth = 7;
+				ctx.strokeStyle = theme.accent;
+				ctx.stroke();
+			}
+			if (this.fresh) {
+				ctx.beginPath();
+				ctx.arc(s - 22, 22, 10, 0, Math.PI * 2);
+				ctx.fillStyle = theme.accent;
+				ctx.fill();
+			}
 		}
 	}
 
@@ -163,8 +200,10 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// ---- panels ----
 	const stage = new ui.Panel({ name: "center-stage", widthM: 1, heightM: 1, pxPerM: screen.pxPerM }); // sized by fitStage
-	const tilesPanel = new ui.Panel({ name: "center-tiles", widthM: TILES_W, heightM: BAND_H, bg: null });
-	const kindPanel = new ui.Panel({ name: "center-kind", widthM: KIND_W, heightM: BAND_H });
+	const row = new ui.Panel({ name: "output-row", widthM: COG / 1000, heightM: COG / 1000, bg: null }); // sized by placeRow
+	// the output pop-up (cog): the selected output's name over its kind's controls; popup.mesh.visible = open
+	const popup = new ui.Panel({ name: "output-popup", widthM: 0.58, heightM: 0.164, radius: 32 });
+	popup.mesh.visible = false;
 	const galleryPanel = new ui.Panel({ name: "gallery", widthM: 0.85, heightM: 1.15 });
 	// the stage's message in the Desktop View, which shows it centered in a panel just around its text (the stage is VR only);
 	// note.mesh.visible: a message is up
@@ -183,10 +222,12 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	};
 	galleryPanel.onResize();
 
-	const modeBtns = STEREO_MODES.map(([m, text], i) => new ui.Button({ text, size: 26, x: [12, 136, 284][i], y: 12, w: [116, 140, 140][i], h: 76, onClick: () => setStereo(m) }));
-	const hdBtn = new ui.Button({ text: "HD", size: 30, x: 432, y: 12, w: 116, h: 76, onClick: () => { hd = !hd; } });
-	// controls of the output-type panel per output kind; none hides the panel
+	const popupTitle = new ui.Label({ text: "", size: 26, bold: true, x: 24, y: 14, w: 532, h: 44 });
+	const modeBtns = STEREO_MODES.map(([m, text], i) => new ui.Button({ text, size: 26, x: [20, 148, 300][i], y: 68, w: [116, 140, 140][i], h: 76, onClick: () => setStereo(m) }));
+	const hdBtn = new ui.Button({ text: "HD", size: 30, x: 464, y: 68, w: 96, h: 76, onClick: () => { hd = !hd; } });
+	// the pop-up's controls per output kind; none hides the cog
 	const kindControls = { image: () => [...modeBtns, hdBtn], "3d": () => [] };
+	const cog = new ui.Button({ icon: "settings", round: true, w: COG, h: COG, onClick: () => showPopup(!popup.mesh.visible) });
 
 	const model = createModelView();
 	group.add(model.group);
@@ -216,7 +257,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
 	let modelOn = false, stage3d = false, notice = "", modelToken = 0;
-	let band = null;           // the panels shown around the stage (tiles, output-type panel, note): main.js places them
+	let placed = null;         // the panels shown around the stage (output row, pop-up, note): main.js places them
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let singleOn = false;
@@ -231,7 +272,10 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		if (e.kind === "3d") return e.thumb ??= modelThumb(e.filename);
 		if (e.thumb === undefined) {
 			e.thumb = null;
-			loadImg(e.url).then((img) => { e.thumb = makeThumb(img); }, () => { e.thumb = false; }).then(() => galleryPanel.invalidate());
+			loadImg(e.url).then((img) => { e.thumb = makeThumb(img); }, () => { e.thumb = false; }).then(() => {
+				galleryPanel.invalidate();
+				row.invalidate();
+			});
 		}
 		return e.thumb;
 	};
@@ -240,7 +284,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const ownerOf = (e) => outputs.find((o) => o.nodeId === e.node) ?? outputs.find((o) => o.kind === (e.kind ?? "image")) ?? outputs[0];
 	const outputKey = () => `${OUTPUT_KEY}.${store.snapshot?.workflowName}`;
 
-	// outputs muted or bypassed (on the desktop or by a Group Switch) lose their tile but keep their history and dot
+	// outputs muted or bypassed (on the desktop or by a Group Switch) dim their tile and keep their history and dot
 	const active = (o) => o.nodeId === null || store.outputActive(o.nodeId);
 
 	// one tile per output; per-output state survives a snapshot reload
@@ -248,28 +292,37 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		image.reset();
 		const list = store.outputs.length ? store.outputs : [{ nodeId: null, title: "", kind: "image" }];
 		outputs = list.map((o) => ({ current: null, fresh: false, ...outputs.find((p) => p.nodeId === o.nodeId), ...o }));
-		tilesPanel.clear();
-		tiles = outputs.length < 2 ? [] : outputs.map((o) => tilesPanel.add(new OutputTile({
-			text: o.title, icon: o.kind === "3d" ? "box" : "image", size: 26, y: 12, h: 76,
+		row.clear();
+		tiles = outputs.length < 2 ? [] : outputs.map((o) => row.add(new OutputTile({
+			output: o,
 			onClick: () => {
 				try { localStorage.setItem(outputKey(), o.nodeId); } catch {}
 				select(o);
 			},
 		})));
+		row.add(cog);
 		let saved = null;
 		try { saved = localStorage.getItem(outputKey()); } catch {}
 		const o = outputs.find((o) => o.nodeId === saved);
 		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
 	}
 
-	// the tiles of the active outputs; there are tiles only when App mode configures two or more outputs, so a lone
-	// active output keeps its tile while the others are switched off
-	function placeTiles() {
-		const list = tiles.filter((t, i) => active(outputs[i]));
-		const tw = Math.min(TILE_W, (tilesPanel.width - 12 * (list.length - 1)) / list.length);
-		for (const t of tiles) t.visible = false;
-		list.forEach((t, i) => Object.assign(t, { visible: true, x: i * (tw + 12), w: tw }));
-		tilesPanel.mesh.visible = list.length > 0;
+	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within rowW, then the cog when the
+	// selected output's kind has settings; the row panel takes their size
+	function placeRow() {
+		const n = tiles.length, settings = kindControls[out.kind]().length > 0;
+		const s = n && Math.min(TILE, Math.floor((rowW - (settings ? COG : -TILE_GAP)) / n) - TILE_GAP);
+		const w = n * (s + TILE_GAP) + (settings ? COG : -TILE_GAP), h = Math.max(s, settings ? COG : 0);
+		tiles.forEach((t, i) => Object.assign(t, { x: i * (s + TILE_GAP), y: h - s, w: s, h: s }));
+		Object.assign(cog, { visible: settings, x: w - COG, y: h - COG });
+		row.mesh.visible = n > 0 || settings;
+		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / 1000, h / 1000);
+	}
+
+	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere
+	function showPopup(on) {
+		popup.mesh.visible = cog.toggled = on;
+		refresh();
 	}
 
 	function select(o) {
@@ -278,9 +331,11 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		o.current ??= history.find((e) => ownerOf(e) === o) ?? null;
 		previewing = false;
 		gallery.scroll = 0;
-		kindPanel.clear();
-		for (const c of kindControls[o.kind]()) kindPanel.add(c);
-		kindPanel.mesh.visible = kindPanel.widgets.length > 0;
+		const controls = kindControls[o.kind]();
+		popupTitle.setText(o.title || "Output");
+		popup.clear();
+		for (const c of [popupTitle, ...controls]) popup.add(c);
+		if (!controls.length) popup.mesh.visible = cog.toggled = false;
 		const { current } = o;
 		if (current && current !== (current.kind === "3d" ? model.entry : shownEntry)) return showEntry(current);
 		notice = "";
@@ -291,7 +346,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	function refresh() {
 		const { current } = out;
-		placeTiles();
+		placeRow();
 		modelOn = !previewing && current?.kind === "3d";
 		stage3d = modelOn || out.kind === "3d";
 		singleOn = !modelOn && !!shown;
@@ -299,7 +354,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		note.mesh.visible = !singleOn && !model.group.visible;
 		gallery.selected = current;
 		gallery.items = history.filter((e) => ownerOf(e) === out);
-		galleryTitle.setText(tilesPanel.mesh.visible ? `Gallery · ${out.title}` : "Gallery");
+		galleryTitle.setText(outputs.length > 1 ? `Gallery · ${out.title}` : "Gallery");
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
 		if (empty.text !== noteText.text) {
@@ -313,12 +368,12 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			t.toggled = outputs[i] === out;
 			t.fresh = outputs[i].fresh;
 		});
-		for (const p of [stage, galleryPanel, tilesPanel, kindPanel]) p.invalidate();
+		for (const p of [stage, galleryPanel, row, popup]) p.invalidate();
 		fitStage();
-		// the panels main.js places around the stage changed: the band (the lectern, the Desktop View's prompt window) or the note
-		const b = [tilesPanel.mesh.visible, kindPanel.mesh.visible, note.mesh.visible && noteText.text].join();
-		if (b !== band) {
-			band = b;
+		// the panels main.js places around the stage changed: the output row, the pop-up or the note
+		const p = [row.mesh.visible, row.width, row.height, popup.mesh.visible, note.mesh.visible && noteText.text].join();
+		if (p !== placed) {
+			placed = p;
 			screen.onResize();
 		}
 	}
@@ -710,6 +765,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	syncModeBtns();
 	loadOutputs();
 	pruneMissing([...history]);
-	tilesPanel.onResize = placeTiles; // the Desktop View's prompt window gives the band its width
-	return { group, update, model, image, tiles: tilesPanel, kind: kindPanel, gallery: galleryPanel, note };
+	const closePopup = () => { if (popup.mesh.visible) showPopup(false); };
+	return { group, update, model, image, row, cog, popup, closePopup, gallery: galleryPanel, note };
 }

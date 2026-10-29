@@ -11,6 +11,7 @@ import { createBottomPanel } from "./panels/bottom.js";
 import { createLeftPanel } from "./panels/left.js";
 import { createRightPanel } from "./panels/right.js";
 import { createLightsPanel } from "./panels/lights.js";
+import { createToolbar } from "./panels/toolbar.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -37,8 +38,8 @@ scene.add(uiGroup);
 
 // ---- views ----
 // Desktop View (the default without an XR session): fixed camera, flat background, the panels in DOM windows (desktop.js).
-// VR view: an XR session, or its VR-like look-around on the desktop (?view=vr, the dev / test entry). The dock's VR mode
-// button enters it, the toggle column's Desktop mode button leaves it.
+// VR view: an XR session, or its VR-like look-around on the desktop (?view=vr, the dev / test entry). The toolbar's view
+// button enters it (goggles) and leaves it (monitor).
 let deskView = params.get("view") !== "vr";
 let xrSupported = false, needRecenter = false;
 
@@ -57,7 +58,7 @@ async function enter() {
 	keyboard.setXR(true);
 	keyboard.commit();
 	needRecenter = true;
-	open = null; // each session starts with the side panels hidden
+	open = "prompt"; // each session starts with the prompt panel
 	setView(false);
 }
 
@@ -72,8 +73,14 @@ function onSessionEnd() {
 	setView(true);
 }
 
-// the dock's VR mode button: an XR session where immersive-vr is supported, else the VR-like view
-function enterVR() {
+// the toolbar's view button: in the Desktop View, an XR session where immersive-vr is supported, else the VR-like view; in the
+// VR view, back to the Desktop View (ending the XR session, onSessionEnd)
+function switchView() {
+	keyboard.commit();
+	if (!deskView) {
+		const session = renderer.xr.getSession();
+		return session ? session.end() : setView(true);
+	}
 	if (!xrSupported) return setView(false);
 	enter().catch((e) => {
 		$("hint").textContent = "Could not start VR session: " + e.message;
@@ -89,15 +96,13 @@ if (params.has("help") || needHelp && /OculusBrowser/.test(navigator.userAgent))
 
 // ---- panels ----
 // The screen is SCREEN_DIAGONAL_IN inches at the aspect of what it shows, on the vertical plane z = -SCREEN_DISTANCE (eye at the
-// origin). Under it the lectern, tilted LECTERN_TILT back about its top edge: the output tiles (left) and the output-type panel
-// (right) in a band at the top when shown, the prompt panel below them and the toggle column right of it. The side slot stands
-// upright right of the toggle column (and clear of the screen), its bottom edge level with the prompt panel's back edge, turned
-// SIDE_YAW toward the viewer; it shows one side panel at a time, at SIDE_SCALE. Every other panel group has PANEL_SCALE, so px
-// density and fonts match.
+// origin). Under it the lectern, tilted LECTERN_TILT back about its top edge, from the top down its slope: the output row when
+// shown, the toolbar, then the one open panel (Prompt, Gallery, LoRA, Light or Configuration), all centered. The output pop-up
+// stands upright in front of the screen's bottom edge, above the cog. Every panel group has PANEL_SCALE, so px density and
+// fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
-const PANEL_SCALE = 0.35, SIDE_SCALE = PANEL_SCALE * 1.5;
-const LECTERN_TILT = Math.PI / 4, SIDE_YAW = 28 * Math.PI / 180;
-const GAP_SCREEN = 0.012, GAP = 0.006, GAP_SIDE = 0.02;
+const PANEL_SCALE = 0.35, LECTERN_TILT = Math.PI / 4;
+const GAP_SCREEN = 0.012, GAP = 0.006, POPUP_Z = 0.02;
 
 // size of the screen, filled in by the center panel whenever the displayed aspect changes
 const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: 1000 / PANEL_SCALE, w: 0, h: 0, onResize() {} };
@@ -115,106 +120,68 @@ function panelGroup(panel) {
 	return group;
 }
 
-const center = createCenterPanel(ctx);
+// the toolbar's panel buttons, in order: [name, icon, title (Desktop View window)]; then the view button
+const PANELS = [["prompt", "pencil", "Prompt"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"], ["light", "sun", "Light"], ["config", "settings", "Configuration"]];
+let open = "prompt"; // the panel on the lectern (one at a time, pressing it again closes it); every session starts with Prompt
+let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
+const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onClick: () => {
+	if (deskView) return windows.toggle(name);
+	open = open === name ? null : name;
+	layout();
+} }));
+const viewBtn = new ui.Button({ round: true, onClick: switchView });
+const toolbar = createToolbar(ctx, [...tabs, null, viewBtn]);
+
+const center = createCenterPanel(ctx, toolbar.panel.width);
 const bottom = createBottomPanel(ctx);
 const settings = createLeftPanel(ctx);
 const loras = createRightPanel(ctx);
 const lights = createLightsPanel(ctx, center.model);
 scene.add(lights.room);
-
-// side panels, in toggle column order: [name, icon, title (Desktop View window), { group, panel }]
-const SIDES = [
-	["gallery", "images", "Gallery", { group: panelGroup(center.gallery), panel: center.gallery }],
-	["lora", "layers", "LoRA", loras],
-	["light", "sun", "Light", lights],
-	["config", "settings", "Configuration", settings],
-];
-let open = null; // the side panel on show; every session starts with none
-let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
-
-// round icon buttons that work like tabs (pressing the open one closes it), then Desktop mode
-const toggles = new ui.Panel({ name: "toggles", widthM: 0.14, heightM: 0.6, bg: null });
-const tabs = SIDES.map(([name, icon], i) => toggles.add(new ui.Button({
-	icon, round: true, x: 20, y: 14 + i * 118, w: 100, h: 100,
-	onClick: () => {
-		open = open === name ? null : name;
-		layout();
-	},
-})));
-// back to the Desktop View: ends the XR session (onSessionEnd), or leaves the VR-like view
-toggles.add(new ui.Button({ icon: "monitor", round: true, x: 20, y: 14 + SIDES.length * 118, w: 100, h: 100, onClick: () => {
-	const session = renderer.xr.getSession();
-	if (session) session.end();
-	else setView(true);
-} }));
+const hosts = { prompt: bottom, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, config: settings };
 
 const lectern = new THREE.Group();
 lectern.rotation.x = -LECTERN_TILT;
-const tilesGroup = panelGroup(center.tiles), kindGroup = panelGroup(center.kind), togglesGroup = panelGroup(toggles);
-const onLectern = [tilesGroup, kindGroup, bottom.group, togglesGroup];
-const sideGroups = SIDES.map(([, , , side]) => side.group);
+const rowGroup = panelGroup(center.row), popupGroup = panelGroup(center.popup);
+const onLectern = [rowGroup, toolbar.group, ...PANELS.map(([name]) => hosts[name].group)];
 lectern.add(...onLectern);
-uiGroup.add(center.group, lectern, ...sideGroups);
-for (const g of onLectern) g.scale.setScalar(PANEL_SCALE);
-for (const g of sideGroups) g.scale.setScalar(SIDE_SCALE);
+uiGroup.add(center.group, lectern, popupGroup);
+for (const g of [...onLectern, popupGroup]) g.scale.setScalar(PANEL_SCALE);
 
 function layout() {
-	const { w, h } = screen;
-	const size = (panel, k = PANEL_SCALE) => [panel.widthM * k, panel.heightM * k];
+	const { h } = screen;
+	const size = (panel) => [panel.widthM * PANEL_SCALE, panel.heightM * PANEL_SCALE];
 	center.group.position.set(0, 0, -SCREEN_DISTANCE);
 
-	// lectern frame: origin at the middle of its top edge, x right, y up the slope; panels are placed by their top edge
+	// lectern frame: origin at the middle of its top edge, x right, y up the slope; panels are placed by their top edge.
+	// The toolbar only moves when the output row comes or goes.
 	lectern.position.set(0, -h / 2 - GAP_SCREEN, -SCREEN_DISTANCE);
 	lectern.visible = uiShown && !deskView;
-	const at = (group, panel, x, top) => group.position.set(x, -top - size(panel)[1] / 2, 0);
-	const [promptW] = size(bottom.panel), [togglesW] = size(toggles);
-	const band = center.tiles.mesh.visible || center.kind.mesh.visible ? size(center.tiles)[1] + GAP : 0;
-	at(tilesGroup, center.tiles, (size(center.tiles)[0] - promptW) / 2, 0);
-	at(kindGroup, center.kind, (promptW - size(center.kind)[0]) / 2, 0);
-	at(bottom.group, bottom.panel, 0, band);
-	at(togglesGroup, toggles, promptW / 2 + GAP + togglesW / 2, band);
-	tabs.forEach((b, i) => { b.toggled = SIDES[i][0] === open; });
-	toggles.invalidate();
-
-	// side slot: the bottom edge of the panel sits on the prompt panel's back edge, its inner edge at innerX
-	const backY = lectern.position.y - band * Math.cos(LECTERN_TILT), backZ = -SCREEN_DISTANCE + band * Math.sin(LECTERN_TILT);
-	const innerX = Math.max(promptW / 2 + GAP + togglesW, w / 2) + GAP_SIDE;
-	for (const [name, , , { group, panel }] of SIDES) {
-		const [sw, sh] = size(panel, SIDE_SCALE);
-		group.visible = uiShown && !deskView && name === open;
-		group.rotation.y = -SIDE_YAW;
-		group.position.set(innerX + sw / 2 * Math.cos(SIDE_YAW), backY + sh / 2, backZ + sw / 2 * Math.sin(SIDE_YAW));
+	const at = (group, panel, top) => group.position.set(0, -top - size(panel)[1] / 2, 0);
+	const rowH = center.row.mesh.visible ? size(center.row)[1] + GAP : 0, panelTop = rowH + size(toolbar.panel)[1] + GAP;
+	at(rowGroup, center.row, 0);
+	at(toolbar.group, toolbar.panel, rowH);
+	for (const [name] of PANELS) {
+		const { group, panel } = hosts[name];
+		group.visible = name === open;
+		at(group, panel, panelTop);
 	}
+	// the Desktop View lights the buttons of its open windows (desktop.js)
+	if (!deskView) tabs.forEach((b, i) => { b.toggled = PANELS[i][0] === open; });
+	viewBtn.icon = deskView ? "rectangle-goggles" : "monitor";
+	toolbar.panel.invalidate();
+
+	// the pop-up's bottom edge on the screen's, its right edge over the cog's, a little toward the viewer
+	const { row, cog, popup } = center, [pw, ph] = size(popup);
+	popupGroup.visible = uiShown && !deskView;
+	popupGroup.position.set(((cog.x + cog.w) / row.width - 0.5) * size(row)[0] - pw / 2, -h / 2 + ph / 2, -SCREEN_DISTANCE + POPUP_Z);
 }
 
-// Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts
-// take). The prompt window has the band over the prompt panel as on the lectern: the tiles take the width the output-type
-// panel leaves; narrower than BAND_STACK the output-type panel goes on a row of its own under the tiles.
-const BAND_GAP = 16, KIND_GAP = 40, BAND_STACK = 1100;
-const SIDE_MIN = { gallery: [500, 500], lora: [600, 700], light: [420, 500], config: [600, 500] };
-function band(w) {
-	const { tiles, kind } = center, row = tiles.height + BAND_GAP, stack = w < BAND_STACK && tiles.mesh.visible && kind.mesh.visible;
-	const panels = [
-		tiles.mesh.visible && [tiles, 0, 0, stack ? w : w - kind.width - KIND_GAP, tiles.height],
-		kind.mesh.visible && [kind, w - kind.width, stack ? row : 0, kind.width, kind.height],
-	].filter(Boolean);
-	return { panels, h: panels.length && (stack ? 2 : 1) * row };
-}
-const windows = createDesktop([
-	{
-		name: "prompt", title: "Prompt", icon: "pencil",
-		size: [bottom.panel.width, center.tiles.height + BAND_GAP + bottom.panel.height],
-		minW: 720, minH: (w) => band(w).h + bottom.minHeight(w),
-		layout: (w, h) => {
-			const b = band(w);
-			return [[bottom.panel, 0, b.h, w, h - b.h], ...b.panels];
-		},
-	},
-	...SIDES.map(([name, icon, title, { panel }]) => ({
-		name, title, icon, size: [panel.width, panel.height], minW: SIDE_MIN[name][0], minH: () => SIDE_MIN[name][1],
-		layout: (w, h) => [[panel, 0, 0, w, h]],
-	})),
-], center.note, enterVR);
+// Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take)
+const MIN = { prompt: [720, bottom.minHeight], gallery: [500, () => 500], lora: [600, () => 700], light: [420, () => 500], config: [600, () => 500] };
+const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
+	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
+)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog });
 
 function relayout() {
 	layout();
@@ -227,6 +194,7 @@ function setView(desk) {
 	lights.room.visible = !desk;
 	scene.background = desk ? lights.background : null;
 	yaw = pitch = 0;
+	center.closePopup();
 	camera.fov = FOV;
 	camera.updateProjectionMatrix();
 	$("hint").hidden = desk || renderer.xr.isPresenting;
@@ -252,6 +220,9 @@ async function loadSnapshot() {
 }
 store.client = ctx.client;
 store.addEventListener("load", relayout); // the prompt window's minimum follows the prompt panel's entries
+// the output pop-up closes on a press anywhere but on it and on the output row (whose cog toggles it)
+const keepsPopup = (panel) => panel === center.popup || panel === center.row;
+addEventListener("pointerdown", (e) => { if (deskView && ![center.popup, center.row].some((p) => p.canvas === e.target)) center.closePopup(); }, true);
 ctx.client.addEventListener("snapshot", loadSnapshot);
 ctx.client.connect();
 loadSnapshot();
@@ -340,6 +311,7 @@ function updatePointer(ptr, ray) {
 // a press away from any text field and its toolbar commits the open edit once released, so a click on e.g. a suggestion still lands
 function pointerDown(ptr, ray) {
 	const hit = updatePointer(ptr, ray);
+	if (!keepsPopup(hit?.panel)) center.closePopup();
 	const target = hit?.panel.hitTest(hit.x, hit.y);
 	ptr.outside = keyboard.isEditing() && !(target instanceof ui.TextField || target instanceof ui.EditBar);
 	const v = viewHit(ray, hit);
@@ -365,6 +337,8 @@ function pointerUp(ptr, ray) {
 	if (ptr.grab?.plane) ptr.grab.view.release(ptr);
 	ptr.cap = ptr.grab = null;
 	if (q) panel.pointer("up", q.x, q.y, ptr.id);
+	// the click released the pointer (the toolbar's view button): no hover left behind on the shared toolbar
+	if (q && ptr.panel !== panel) panel.pointer("leave", 0, 0, ptr.id);
 	if (ptr.outside) keyboard.commit();
 	ptr.outside = false;
 }
@@ -435,9 +409,10 @@ function updateControllers(dt) {
 const worldPoint = (ray, d) => ray.at(d, tmp.clone());
 
 // hides or shows every panel; an open edit is committed and pointers drop their presses, so hidden panels catch nothing.
-// Showing them again brings back the same side panel and state.
+// Showing them again brings back the same open panel and state (not the pop-up).
 function toggleUI() {
 	keyboard.commit();
+	center.closePopup();
 	uiShown = !uiShown;
 	for (const ptr of pointers) releasePointer(ptr);
 	relayout();
@@ -548,6 +523,7 @@ el.addEventListener("wheel", (e) => {
 addEventListener("keydown", (e) => {
 	if (e.key === "r") recenter();
 	else if (e.key === "h") toggleUI();
+	else if (e.key === "Escape") center.closePopup();
 });
 addEventListener("resize", () => {
 	camera.aspect = innerWidth / innerHeight;
