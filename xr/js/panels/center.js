@@ -307,14 +307,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
 	}
 
-	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within rowW, then the cog when the
-	// selected output's kind has settings; the row panel takes their size
+	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within rowW, then the cog when any
+	// output's kind has settings (disabled while the selected one has none, so the row keeps its shape); the row panel takes their size
 	function placeRow() {
-		const n = tiles.length, settings = kindControls[out.kind]().length > 0;
+		const n = tiles.length, settings = outputs.some((o) => kindControls[o.kind]().length > 0);
 		const s = n && Math.min(TILE, Math.floor((rowW - (settings ? COG : -TILE_GAP)) / n) - TILE_GAP);
 		const w = n * (s + TILE_GAP) + (settings ? COG : -TILE_GAP), h = Math.max(s, settings ? COG : 0);
 		tiles.forEach((t, i) => Object.assign(t, { x: i * (s + TILE_GAP), y: h - s, w: s, h: s }));
-		Object.assign(cog, { visible: settings, x: w - COG, y: h - COG });
+		Object.assign(cog, { visible: settings, disabled: !kindControls[out.kind]().length, x: w - COG, y: h - COG });
 		row.mesh.visible = n > 0 || settings;
 		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / 1000, h / 1000);
 	}

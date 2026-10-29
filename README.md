@@ -97,7 +97,7 @@ If App mode marks several output nodes, a row of square tiles above the toolbar 
 picks which one the screen shows (remembered per workflow). A dot marks an output with new results; the view never switches on its
 own. The Gallery follows the selected output. A workflow with a single output in App mode has no tiles.
 The cog at the end of the row opens a small pop-up with the selected output's display settings (images: Flat / 3D R/L / 3D L/R and HD;
-3D outputs have none, so no cog). It stays open while you pick, follows the selected tile, and closes on a press anywhere else, on the
+3D outputs have none yet, so the cog is greyed out while one is selected). It stays open while you pick, follows the selected tile, and closes on a press anywhere else, on the
 cog or on Esc.
 Outputs that save or preview a 3D model (Save 3D Model, Preview 3D...) show the GLB in front of you at the screen's size, just behind it.
 Trigger-drag (or mouse-drag) on the model turns it, thumbstick up/down (or the wheel) while pointing at it zooms.

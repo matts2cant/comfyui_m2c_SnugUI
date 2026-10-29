@@ -449,8 +449,9 @@ another Lucide icon's path data under its name and change the name where it is u
   kind's `image` / `box` icon as a placeholder before the first result (never a live preview), a kind badge (top left), the title along
   the bottom (ellipsized), a dot (top right) for results that came in since the output was last shown; the selected one has an accent
   ring; an inactive output (switched off by App mode, Group Switch) is dimmed but still selectable. No tiles with a single output. Then
-  the cog (`settings`, round, 80 px, bottom-aligned) at the row's end, shown while `kindControls[kind]()` of the selected output is not
-  empty; a single output with settings shows the cog alone; with neither the row is hidden. The tiles shrink so the row stays within
+  the cog (`settings`, round, 80 px, bottom-aligned) at the row's end, shown when `kindControls[kind]()` of any output is not empty and
+  disabled while the selected output's is, so switching tiles never moves them; a single output with settings shows the cog alone;
+  with neither the row is hidden. The tiles shrink so the row stays within
   the toolbar's width (`rowW`); the row panel is resized to its content (`placeRow`), centered over the toolbar in VR and right-aligned
   with it in the Desktop View.
   Selection is manual only and kept in localStorage `appmode-xr.output.<workflowName>` (try/catch, falls back to the first active
@@ -462,7 +463,7 @@ another Lucide icon's path data under its name and change the name where it is u
   Output pop-up (center's `popup`, 580 x 164 px card, radius 32, no title bar; open = `popup.mesh.visible`, the cog `toggled` while
   open): the selected output's name, then the controls of its kind, `kindControls[kind]()`. Image: Flat / 3D R/L / 3D L/R (side-by-side
   image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD (disabled in stereo, on the
-  desktop and while a 3D result is on show). Mesh: none yet (no cog). Picking an option keeps it open; nothing about it is remembered
+  desktop and while a 3D result is on show). Mesh: none yet (the cog is disabled). Picking an option keeps it open; nothing about it is remembered
   (it always opens at the cog). When the selection changes it follows the new output, closing when that one has no controls.
   Results come from `executed` events whose node is an output: images from `ui.images` (png/jpg/jpeg/webp) and 3D files (glb/gltf) from
   `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
