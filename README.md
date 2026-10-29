@@ -24,19 +24,20 @@ If Quest Browser opens the page without WebXR, it shows the same instructions wi
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press the VR button (goggles icon) on the toolbar, bottom right.
 4. Layout: the image in the middle; under it a tilted lectern with, from the top: the output tiles (several outputs only), the
    toolbar, then one open panel. The toolbar shows the run status, a timer and two progress bars over round buttons: Prompt,
-   Gallery, LoRA, Light, Configuration (each opens its panel on the lectern and closes the other; press the open one again to close
-   it), Desktop View (monitor icon, leaves VR), then Cancel and Generate. Prompt is open when VR starts. Text fields have an edit
-   toolbar with a Quest keyboard button.
+   Gallery, LoRA, Light, Input (the workflow's inputs), Configuration (settings of this page) (each opens its panel on the lectern
+   and closes the other; press the open one again to close it), Desktop View (monitor icon, leaves VR), then Cancel and Generate.
+   Prompt is open when VR starts. Text fields have an edit toolbar with a Quest keyboard button.
 
 ## Desktop View
 
 Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
 window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt,
-Gallery, LoRA, Light, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in the
-middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
-down to fit a narrow window). Its round buttons open and close the windows; several can be open at once. Drag a title bar to
-move a window, its corner to resize it freely (the text keeps its size, the content re-flows: a bigger prompt box, more rows in
-the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed
+Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
+the middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
+down to fit a narrow window). Configuration > Toolbar position moves them to another corner or to the middle of the top or
+bottom edge (at the top the tiles go under the toolbar); it only applies to the Desktop View and is remembered. The toolbar's
+round buttons open and close the windows; several can be open at once. Drag a title bar to move a window, its corner to resize
+it freely (the text keeps its size, the content re-flows: a bigger prompt box, more rows in the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed
 back inside a smaller window). The first time only Prompt is open.
 
 - Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
@@ -47,9 +48,9 @@ back inside a smaller window). The first time only Prompt is open.
   scroll, click to press, R recenters, H hides the panels; the monitor button in the same place comes back.
   `/appmode-xr?view=vr` opens it directly.
 
-## Settings tabs
+## Input tabs
 
-Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the Configuration panel.
+Name an input in App mode as `[KSampler] Scheduler` to show it as `Scheduler` in a tab called `KSampler` on the Input panel.
 Inputs without a bracket prefix go in `General`. Tabs follow the order of their first input; with a single tab no tab row is shown.
 The selected tab is remembered per workflow.
 
@@ -69,9 +70,9 @@ The prompt panel only takes inputs with these exact App-mode names (trimmed, cas
 | `_negative_prompt` | text (STRING) | "Negative prompt" box |
 | `_seed` | integer (INT) | "Seed" row (fixed / increment / random) |
 
-Existing workflows need these names set on their inputs in App mode, or the inputs show up in Configuration instead (a prompt
-with another name, a seed called `seed`, a `_seed` of the wrong type). There is no `[Tab]` handling here: `[Tab] _prompt` is a
-Configuration input. Only one of each; if a name is used twice, the first in App-mode order wins. The prompt box takes all the
+Existing workflows need these names set on their inputs in App mode, or the inputs show up in the Input panel instead
+(a prompt with another name, a seed called `seed`, a `_seed` of the wrong type). There is no `[Tab]` handling here:
+`[Tab] _prompt` is an Input panel input. Only one of each; if a name is used twice, the first in App-mode order wins. The prompt box takes all the
 height; the negative prompt is folded under a "▸ Negative" row showing the start of its text (tap it to open or fold it; remembered).
 Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there are no seed controls (otherwise they sit
 on a row of their own at the bottom). Empty boxes show "Prompt…" / "Negative prompt…" as a hint.
@@ -85,7 +86,7 @@ bar is the running node's steps, the thick one the whole run (nodes done, cached
 
 ## Group switches
 
-A Pixaroma "Group Switch" added to App mode shows in Configuration as a list of switches, one per group (colour dot, name, Mute or
+A Pixaroma "Group Switch" added to App mode shows in the Input panel as a list of switches, one per group (colour dot, name, Mute or
 Bypass tag), following the switch's rule (any number on, only one on, always keep one on). Switching a group off in VR mutes or
 bypasses its nodes in the prompts sent from VR only; the desktop graph is not changed. Settings whose nodes are all switched off (or
 already muted or bypassed on the desktop) are hidden, with their tab when it empties, and come back with their values when the group is

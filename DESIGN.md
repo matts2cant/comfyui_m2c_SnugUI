@@ -38,7 +38,8 @@ xr/js/rules.js           placement rule table
 xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 xr/js/panels/center.js   image / 3D model display, output row (tiles + cog), output pop-up, gallery panel
 xr/js/panels/bottom.js   prompt panel: workflow name, prompt box, folding negative prompt, seed row
-xr/js/panels/left.js     Configuration panel: settings controls
+xr/js/panels/left.js     Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
+xr/js/panels/config.js   Configuration panel: settings of the page's own UI (toolbar position)
 xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
 xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
                          the Desktop View background
@@ -103,7 +104,7 @@ Canonical widgetId = `${rootGraph.id}:${encodeURIComponent(nodeId)}:${encodeURIC
 Subgraphs: the API prompt is flattened (ids like `260:12`, nested `a:b:c`), so widgets on a subgraph node are resolved empirically: the
 builder sets a unique sentinel on each, calls `graphToPrompt()` once, scans the prompt for it (`targets`, one widget may feed several
 inner nodes), then restores every value. Plain node widgets map straight to their own prompt input. An input with no targets is type
-UNSUPPORTED and read-only (the Configuration panel shows "edit on desktop"), as is an entry whose widget is not found on its node; `buildPrompt` writes each value to all of its targets.
+UNSUPPORTED and read-only (the Input panel shows "edit on desktop"), as is an entry whose widget is not found on its node; `buildPrompt` writes each value to all of its targets.
 An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidden JSON-string input `SizesState`, injected by the node's
 own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
@@ -254,7 +255,8 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   down toward the viewer). Laid out in its own plane, from its top edge down the slope, all centered, `GAP` 0.006 m apart:
   - the output row (center's `row`), only while `row.mesh.visible`;
   - the toolbar; it only moves when the output row comes or goes (up to the lectern's top edge without a row);
-  - the one open panel of Prompt (1.8 x 0.52), Gallery, LoRA, Light, Configuration (0.85 x 1.15 each), unfolding toward the viewer.
+  - the one open panel of Prompt (1.8 x 0.52), Gallery, LoRA, Light, Input (0.85 x 1.15 each), Configuration (0.85 wide, as tall as
+    its content), unfolding toward the viewer.
 - Output pop-up: upright (not tilted) in front of the screen's bottom edge, its bottom edge on it, its right edge over the cog's right
   edge, `POPUP_Z` 0.02 toward the viewer (no z-fighting with the screen).
 - Every panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the open
@@ -263,7 +265,9 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
 main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height), center's `row` / `cog` / `popup` / `closePopup()` /
 `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
-adds `room` to the scene; the toolbar is `createToolbar(ctx, buttons) -> { group, panel }`; center is `createCenterPanel(ctx, rowW)`, rowW
+adds `room` to the scene; the Configuration panel is `createConfigPanel(ctx, onChange) -> { group, panel, minHeight(), toolbarAt() }`
+(main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
+`createToolbar(ctx, buttons) -> { group, panel }`; center is `createCenterPanel(ctx, rowW)`, rowW
 the toolbar's width) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
@@ -271,7 +275,7 @@ main.js positions the returned group per the layout above (panel modules build t
 One canvas panel (`toolbar.js`, "toolbar"), the same object in both views: on the lectern in VR, in the Desktop View's deck. A rounded slab
 (`radius` 56 px) that never collapses. Top tier: the run status at the left and its timer at the right (monospace), then the node progress
 bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main.js's round icon buttons (100 px) Prompt, Gallery, LoRA,
-Light, Configuration (main.js `PANELS`), a separator (`null` in the list), the view button; then a flexible gap, Cancel (round, `x`,
+Light, Input, Configuration (main.js `PANELS`), a separator (`null` in the list), the view button; then a flexible gap, Cancel (round, `x`,
 `danger`; the plain grey `default` look and disabled when nothing runs or is queued) and Generate (pill, `accent`, 260 px; disabled
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
@@ -306,6 +310,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Gallery | `images` | main.js `PANELS` |
 | LoRA | `layers` | main.js `PANELS` |
 | Light | `sun` (no `lightbulb` in the frontend's set) | main.js `PANELS` |
+| Input | `sliders-horizontal` | main.js `PANELS` |
 | Configuration | `settings` | main.js `PANELS` |
 | View button: VR / Desktop View | `rectangle-goggles` / `monitor` (not in the frontend's set; path data from Lucide) | main.js `layout` |
 | Cancel | `x` | toolbar.js |
@@ -397,18 +402,19 @@ another Lucide icon's path data under its name and change the name where it is u
   `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
   hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
   about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
-- Windows: Prompt, Gallery, LoRA, Light, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
+- Windows: Prompt, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
   is placed in a DOM window (`main.js` passes `createDesktop` one spec per window, `{ name, title, icon, button, panel, minW, minH(w) }`
   in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size; `minW` / `minH(w)` the smallest
   its layout takes, the height at content width w (Prompt 720 wide, its height from bottom's `minHeight()`; Gallery 500 x 500, LoRA 600 x
-  700, Light 420 x 500, Configuration 600 x 500)). A snapshot load re-places the windows (the prompt panel's entries change its minimum).
+  700, Light 420 x 500, Input 600 x 500, Configuration 720 x its content's height, config's `minHeight()`)). A snapshot load
+  re-places the windows (the prompt panel's entries change its minimum).
   `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onResize` (stage size, output
   row, pop-up or note change) re-places the windows and the deck too. Stored window sizes (the Prompt window held the output band before) are not migrated.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
   pointers, as is a 44 px bar). Width and height are free; every window draws its panel at one fixed `SCALE` (0.45 CSS px per
   panel px, so the text has one size everywhere) and the panel RE-FLOWS to the content area: `panel.setPx(w, h, SCALE *
   devicePixelRatio)` (sharp at any DPI) calls the panel module's `onResize`, which re-runs its own layout from `panel.width` /
-  `height` (the same code VR runs at the world size): the prompt box grows, the Configuration / LoRA / Gallery lists
+  `height` (the same code VR runs at the world size): the prompt box grows, the Input / LoRA / Gallery lists
   show more rows (their scrolling covers the rest), the Light grid takes more columns. A grip press
   commits an open edit first (a re-flow rebuilds some panels' widgets). A hidden window's panel and every panel outside the
   Desktop View go back to their world size at scale 1 (`setPx()`), so VR keeps its layout.
@@ -418,20 +424,28 @@ another Lucide icon's path data under its name and change the name where it is u
   window press commits it on release; moving, resizing, closing, a toolbar button do too. The window layer keeps the focused textarea
   (mousedown, and touch pointerdown, prevented while editing). A finger tap that starts an edit opens the on-screen keyboard
   (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation).
-- Deck (`.deck`, fixed `EDGE` 16 px from the bottom-right corner, above every window): the output row (while `row.mesh.visible`)
-  right-aligned `DECK_GAP` 8 px over the toolbar, both chrome-less canvases at `SCALE`, and the output pop-up (while
-  `popup.mesh.visible`) absolutely placed `DECK_GAP` above the row, its right edge over the cog's. Narrower than the toolbar plus 16 px
-  margins, the whole deck is scaled down (`transform: scale(k)`, drawn at `SCALE * devicePixelRatio * k`; no re-flow). The same
-  pointer binding and edit-keeping as the windows. Hidden in the VR view and by H (its panels go back to their world size).
+- Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
+  `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
+  The output row (while `row.mesh.visible`) sits `DECK_GAP` 8 px over the toolbar at the bottom, under it at the top (the deck
+  mirrors vertically, flex `column-reverse`), aligned with the toolbar on the deck's side (left / center / right); both are
+  chrome-less canvases at `SCALE`. The output pop-up (while `popup.mesh.visible`) is absolutely placed `DECK_GAP` beyond the row
+  (above it at the bottom, under it at the top), its right edge over the cog's (its left edge on the cog's for left positions).
+  Narrower than the toolbar plus 16 px margins, the whole deck is scaled down about its pinned point (`transform: scale(k)`, with
+  `translateX(-50%)` when centered; `transform-origin` = the position; drawn at `SCALE * devicePixelRatio * k`; no re-flow). A change
+  of the setting re-renders it at once (main.js `relayout`); windows keep their geometry. The same pointer binding and edit-keeping
+  as the windows. Hidden in the VR view and by H (its panels go back to their world size). The VR lectern ignores the setting.
 - Persistence: localStorage `appmode-xr.desktop` = `{ <name>: { x, y, w, h, open, z } }` (CSS px, w / h = the window's size
-  with its title bar; try/catch, the page works without it; the zoom version's `appmode-xr.windows` is ignored), saved after a move,
+  with its title bar; try/catch, the page works without it; the zoom version's `appmode-xr.windows` is ignored; geometry stored
+  under `config` when that window held the workflow's inputs is not migrated: the Configuration window takes it), saved after a move,
   resize, open, close or raise; a resize stores the size as shown. Shown geometry is clamped: at least the window's minimum, at
   most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
-- Placement on first opening (no stored x): the first window (Prompt) centered just above the deck (the top of the output row, or of
-  the toolbar without a row; the deck is rendered before the windows); the others right-aligned with the deck just above it, `CASCADE`
-  32 px up and left of the previous new window while that one is still open. First size: the panel's VR size at `SCALE` (the width at
-  most the browser window minus margins). First visit: only Prompt is open. A page loaded without a size (hidden tab) places its
-  windows on the first resize.
+- Placement on first opening (no stored x), following the deck (rendered before the windows): the first window (Prompt) centered
+  horizontally just beyond the deck (`MARGIN` 12 px above it for bottom positions, below it for top ones; the deck's box is the
+  toolbar and the output row); the others aligned with the deck's side (right, left or centered on it) just beyond it, `CASCADE`
+  32 px further from the deck and from its side (only from the deck when centered) than the previous new window while that one is
+  still open. First size: the panel's VR size at `SCALE`, the width at most the browser window minus margins, the height at most the
+  space beyond the deck minus margins. Stored geometry is not moved when the setting changes. First visit: only Prompt is open.
+  A page loaded without a size (hidden tab) places its windows on the first resize.
 - Keys: H hides every window and the deck (and shows them again); the image / model keep their fit. R resets the image / model.
   Esc closes the output pop-up.
   Physical keys edit text through `ta` as before.
@@ -452,8 +466,8 @@ another Lucide icon's path data under its name and change the name where it is u
   the cog (`settings`, round, 80 px, bottom-aligned) at the row's end, shown when `kindControls[kind]()` of any output is not empty and
   disabled while the selected output's is, so switching tiles never moves them; a single output with settings shows the cog alone;
   with neither the row is hidden. The tiles shrink so the row stays within
-  the toolbar's width (`rowW`); the row panel is resized to its content (`placeRow`), centered over the toolbar in VR and right-aligned
-  with it in the Desktop View.
+  the toolbar's width (`rowW`); the row panel is resized to its content (`placeRow`), centered over the toolbar in VR and aligned
+  with it on the deck's side in the Desktop View.
   Selection is manual only and kept in localStorage `appmode-xr.output.<workflowName>` (try/catch, falls back to the first active
   output; an inactive saved one is not restored). With no outputs one catch-all output takes every node.
   Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
@@ -500,9 +514,9 @@ another Lucide icon's path data under its name and change the name where it is u
   +, then the mode icons `lock` = fixed, `plus` = increment, `shuffle` = randomize, the current one `toggled`. Without a seed the boxes
   take its place. Run status, progress, Cancel and Generate are on the toolbar. `minHeight()`: name + 3 prompt lines (with a box) + the
   negative header + the seed row (unfolding the negative prompt at that height shares the space).
-- left (Configuration panel): scrollable list of controls from store.groups.left: PIXAROMA_GROUP_SWITCH → the label and a
-  Mute / Bypass tag, then one row per group (colour dot, label, switch), switched like the node: any; one = turning a group on turns the
-  switch's other groups off; always = the same, and the last group on cannot be turned off; it updates on `"switchGroups"` changes (all
+- left (Input panel, titled "Input"; "No inputs in this workflow" when empty): scrollable list of controls from
+  store.groups.left: PIXAROMA_GROUP_SWITCH → the label and a Mute / Bypass tag, then one row per group (colour dot, label, switch),
+  switched like the node: any; one = turning a group on turns the switch's other groups off; always = the same, and the last group on cannot be turned off; it updates on `"switchGroups"` changes (all
   switches share the group states, `store.groupState(id)` / `setGroupStates({id: state})`). No sync back to the desktop.
   Visibility: an input is hidden while every one of its targets is in `store.removedNodes()` (dropped by the switched-off groups; a widget
   feeding several subgraph nodes stays until all are dropped) or when it is `disabled`; never a Group Switch. Hidden inputs keep their
@@ -544,6 +558,10 @@ another Lucide icon's path data under its name and change the name where it is u
   `background` (the horizon colour), the Desktop View's `scene.background`. Only the model's
   MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
   At most 3 directional lights, no shadows.
+- config (Configuration panel, 0.85 m wide, as tall as its content): settings of the page's own UI, not of the workflow. Title, then
+  "Toolbar position": a 3 x 2 grid of buttons laid out like the screen (top row Top left / Top center / Top right, bottom row Bottom
+  left / Bottom center / Bottom right), the current one `toggled`; the grid re-flows to the panel's width. Kept in localStorage
+  `appmode-xr.toolbar` (try/catch, default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
 
 ## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping

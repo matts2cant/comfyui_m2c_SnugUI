@@ -11,6 +11,7 @@ import { createBottomPanel } from "./panels/bottom.js";
 import { createLeftPanel } from "./panels/left.js";
 import { createRightPanel } from "./panels/right.js";
 import { createLightsPanel } from "./panels/lights.js";
+import { createConfigPanel } from "./panels/config.js";
 import { createToolbar } from "./panels/toolbar.js";
 
 const $ = (id) => document.getElementById(id);
@@ -97,7 +98,7 @@ if (params.has("help") || needHelp && /OculusBrowser/.test(navigator.userAgent))
 // ---- panels ----
 // The screen is SCREEN_DIAGONAL_IN inches at the aspect of what it shows, on the vertical plane z = -SCREEN_DISTANCE (eye at the
 // origin). Under it the lectern, tilted LECTERN_TILT back about its top edge, from the top down its slope: the output row when
-// shown, the toolbar, then the one open panel (Prompt, Gallery, LoRA, Light or Configuration), all centered. The output pop-up
+// shown, the toolbar, then the one open panel (Prompt, Gallery, LoRA, Light, Input or Configuration), all centered. The output pop-up
 // stands upright in front of the screen's bottom edge, above the cog. Every panel group has PANEL_SCALE, so px density and
 // fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
@@ -121,7 +122,8 @@ function panelGroup(panel) {
 }
 
 // the toolbar's panel buttons, in order: [name, icon, title (Desktop View window)]; then the view button
-const PANELS = [["prompt", "pencil", "Prompt"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"], ["light", "sun", "Light"], ["config", "settings", "Configuration"]];
+const PANELS = [["prompt", "pencil", "Prompt"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"], ["light", "sun", "Light"], ["input", "sliders-horizontal", "Input"],
+	["config", "settings", "Configuration"]];
 let open = "prompt"; // the panel on the lectern (one at a time, pressing it again closes it); every session starts with Prompt
 let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
 const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onClick: () => {
@@ -134,11 +136,12 @@ const toolbar = createToolbar(ctx, [...tabs, null, viewBtn]);
 
 const center = createCenterPanel(ctx, toolbar.panel.width);
 const bottom = createBottomPanel(ctx);
-const settings = createLeftPanel(ctx);
+const inputs = createLeftPanel(ctx);
 const loras = createRightPanel(ctx);
 const lights = createLightsPanel(ctx, center.model);
+const config = createConfigPanel(ctx, relayout); // the toolbar position moves the Desktop View's deck
 scene.add(lights.room);
-const hosts = { prompt: bottom, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, config: settings };
+const hosts = { prompt: bottom, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
 
 const lectern = new THREE.Group();
 lectern.rotation.x = -LECTERN_TILT;
@@ -178,10 +181,10 @@ function layout() {
 }
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take)
-const MIN = { prompt: [720, bottom.minHeight], gallery: [500, () => 500], lora: [600, () => 700], light: [420, () => 500], config: [600, () => 500] };
+const MIN = { prompt: [720, bottom.minHeight], gallery: [500, () => 500], lora: [600, () => 700], light: [420, () => 500], input: [600, () => 500], config: [720, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
-)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog });
+)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog, at: config.toolbarAt });
 
 function relayout() {
 	layout();

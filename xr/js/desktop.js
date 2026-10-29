@@ -1,9 +1,9 @@
 // Desktop View windows: the VR panels' own canvases in floating DOM windows over the 3D view. A title bar (icon, name, close)
 // moves a window, its corner grip resizes it (the panel re-flows to the new size at one fixed text size and is drawn at the
 // displayed resolution, Panel.setPx), a press raises it. Pointer events go to panel.pointer() in panel px, so the windows take every
-// press over them. The deck in the bottom-right corner, above every window, holds the toolbar (whose buttons toggle the
-// windows), the output row over it and the output pop-up over the cog, without chrome. Geometry and open state are kept in
-// localStorage and pushed back inside the browser window when it is smaller.
+// press over them. The deck, pinned to a corner or edge (the Configuration panel's toolbar position) above every window, holds
+// the toolbar (whose buttons toggle the windows), the output row beside it and the output pop-up by the cog, without chrome.
+// Geometry and open state are kept in localStorage and pushed back inside the browser window when it is smaller.
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
@@ -87,9 +87,9 @@ function load() {
 // specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel its
 // content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content width
 // w). Only the first one is open on the first visit. note: a panel shown alone at the center while note.mesh.visible (the
-// stage's message). deck: { toolbar, row, popup, cog } panels (and the row's cog widget); row.mesh.visible / popup.mesh.visible
-// say whether they are shown.
-export function createDesktop(specs, note, { toolbar, row, popup, cog }) {
+// stage's message). deck: { toolbar, row, popup, cog, at } panels (and the row's cog widget); row.mesh.visible / popup.mesh.visible
+// say whether they are shown; at() -> "<top|bottom>-<left|center|right>", where the deck is pinned.
+export function createDesktop(specs, note, { toolbar, row, popup, cog, at }) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -164,15 +164,19 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog }) {
 		save();
 	}
 
-	// first opening: the first window centered just above the deck (the output row, else the toolbar), the others right-aligned
-	// with the deck just above it, up and left of the previous new window while that one is still open
+	// first opening: the first window centered just beyond the deck (above it at the bottom, under it at the top), the others
+	// aligned with the deck's side just beyond it, CASCADE further from its side and from it than the previous new window while
+	// that one is still open (only further from it when centered). At most as tall as the space beyond the deck.
 	function place(win) {
-		const { panel } = win.spec, d = deck.getBoundingClientRect();
-		const w = Math.min(panel.width * SCALE, innerWidth - 2 * MARGIN), h = panel.height * SCALE + win.bar.offsetHeight;
-		if (win === wins[0]) return Object.assign(win.state, { x: (innerWidth - w) / 2, y: d.top - MARGIN - h, w, h });
+		const { panel } = win.spec, d = deck.getBoundingClientRect(), [edge, side] = at().split("-");
+		const w = Math.min(panel.width * SCALE, innerWidth - 2 * MARGIN);
+		const h = Math.min(panel.height * SCALE + win.bar.offsetHeight, (edge === "top" ? innerHeight - d.bottom : d.top) - 2 * MARGIN);
+		const y = (c) => edge === "top" ? d.bottom + MARGIN + c : d.top - MARGIN - h - c;
+		if (win === wins[0]) return Object.assign(win.state, { x: (innerWidth - w) / 2, y: y(0), w, h });
 		win.cascade = lastNew?.state.open ? lastNew.cascade + 1 : 0;
 		lastNew = win;
-		Object.assign(win.state, { x: d.right - w - win.cascade * CASCADE, y: d.top - MARGIN - h - win.cascade * CASCADE, w, h });
+		const c = win.cascade * CASCADE;
+		Object.assign(win.state, { x: side === "left" ? d.left + c : side === "right" ? d.right - w - c : (d.left + d.right - w) / 2, y: y(c), w, h });
 	}
 
 	// The stored geometry as shown: at least the window's minimum, at most the browser window, moved inside it. The panel takes
@@ -197,24 +201,31 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog }) {
 		spec.panel.setPx(pw, ph, SCALE * devicePixelRatio);
 	}
 
-	// pinned EDGE px from the bottom-right corner, scaled down as a whole to fit the browser window's width; the pop-up's right
-	// edge over the cog's, just above the row. Hidden, they go back to their VR size.
+	// pinned EDGE px from at()'s edges (centered: in the middle), scaled down about that point as a whole to fit the browser
+	// window's width. The output row is aligned with the toolbar on that side, the pop-up just beyond the row (mirrored at the
+	// top), its right edge over the cog's (its left edge on the left). Hidden, they go back to their VR size.
 	function renderDeck() {
 		deck.hidden = !shown;
 		row.canvas.hidden = !row.mesh.visible;
 		popup.canvas.hidden = !popup.mesh.visible;
 		for (const p of [toolbar, row, popup]) if (deck.hidden || p.canvas.hidden) p.setPx();
 		if (deck.hidden) return;
-		const k = Math.min(1, (innerWidth - 2 * EDGE) / (toolbar.width * SCALE));
-		deck.style.transform = `scale(${k})`;
+		const [edge, side] = at().split("-"), far = edge === "top" ? "bottom" : "top";
+		const align = { left: 0, center: 0.5, right: 1 }[side], k = Math.min(1, (innerWidth - 2 * EDGE) / (toolbar.width * SCALE));
+		Object.assign(deck.style, {
+			[edge]: EDGE + "px", [far]: "", left: [EDGE + "px", "50%", ""][align * 2], right: side === "right" ? EDGE + "px" : "",
+			flexDirection: edge === "top" ? "column-reverse" : "column", alignItems: ["flex-start", "center", "flex-end"][align * 2],
+			transformOrigin: `${side} ${edge}`, transform: `${side === "center" ? "translateX(-50%) " : ""}scale(${k})`,
+		});
 		for (const p of [toolbar, row, popup]) {
 			if (p.canvas.hidden) continue;
 			Object.assign(p.canvas.style, { width: p.width * SCALE + "px", height: p.height * SCALE + "px" });
 			p.setPx(p.width, p.height, SCALE * devicePixelRatio * k);
 		}
+		const cogX = (toolbar.width - row.width) * align + cog.x;
 		Object.assign(popup.canvas.style, {
-			right: (row.width - cog.x - cog.w) * SCALE + "px",
-			bottom: (toolbar.height + row.height) * SCALE + 2 * DECK_GAP + "px",
+			left: (side === "left" ? cogX : cogX + cog.w - popup.width) * SCALE + "px",
+			[edge]: (toolbar.height + row.height) * SCALE + 2 * DECK_GAP + "px", [far]: "",
 		});
 	}
 

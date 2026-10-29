@@ -1,7 +1,7 @@
 // Placement rules.
 const isLoraManager = input => input.classType.includes("LoraManager");
 // The prompt panel only takes inputs with these exact App-mode names (trimmed, no [Tab] prefix stripping) and types.
-// The first one of each in App-mode order wins; every other input goes to the Configuration panel.
+// The first one of each in App-mode order wins; every other input goes to the Input panel.
 const SLOTS = new Map([["_prompt", ["prompt", "STRING"]], ["_negative_prompt", ["negative", "STRING"]], ["_seed", ["seed", "INT"]]]);
 
 // "[Tab] Label" puts the input in the left panel tab "Tab"; the group entries carry the stripped label and `tab`.
