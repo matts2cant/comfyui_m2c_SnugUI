@@ -441,7 +441,8 @@ another Lucide icon's path data under its name and change the name where it is u
   most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
 - Placement on first opening (no stored x), following the deck (rendered before the windows): the first window (Prompt) centered
   horizontally just beyond the deck (`MARGIN` 12 px above it for bottom positions, below it for top ones; the deck's box is the
-  toolbar and the output row); the others aligned with the deck's side (right, left or centered on it) just beyond it, `CASCADE`
+  toolbar plus room for the output row at its tallest, center's `rowH`, since its tiles come with the snapshot after the first
+  placement); the others aligned with the deck's side (right, left or centered on it) just beyond it, `CASCADE`
   32 px further from the deck and from its side (only from the deck when centered) than the previous new window while that one is
   still open. First size: the panel's VR size at `SCALE`, the width at most the browser window minus margins, the height at most the
   space beyond the deck minus margins. Stored geometry is not moved when the setting changes. First visit: only Prompt is open.

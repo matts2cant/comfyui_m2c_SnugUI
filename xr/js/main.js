@@ -184,7 +184,7 @@ function layout() {
 const MIN = { prompt: [720, bottom.minHeight], gallery: [500, () => 500], lora: [600, () => 700], light: [420, () => 500], input: [600, () => 500], config: [720, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
-)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog, at: config.toolbarAt });
+)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog, rowH: center.rowH, at: config.toolbarAt });
 
 function relayout() {
 	layout();

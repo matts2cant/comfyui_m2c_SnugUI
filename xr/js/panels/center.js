@@ -766,5 +766,5 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	loadOutputs();
 	pruneMissing([...history]);
 	const closePopup = () => { if (popup.mesh.visible) showPopup(false); };
-	return { group, update, model, image, row, cog, popup, closePopup, gallery: galleryPanel, note };
+	return { group, update, model, image, row, rowH: TILE, cog, popup, closePopup, gallery: galleryPanel, note };
 }

@@ -87,9 +87,10 @@ function load() {
 // specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel its
 // content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content width
 // w). Only the first one is open on the first visit. note: a panel shown alone at the center while note.mesh.visible (the
-// stage's message). deck: { toolbar, row, popup, cog, at } panels (and the row's cog widget); row.mesh.visible / popup.mesh.visible
-// say whether they are shown; at() -> "<top|bottom>-<left|center|right>", where the deck is pinned.
-export function createDesktop(specs, note, { toolbar, row, popup, cog, at }) {
+// stage's message). deck: { toolbar, row, popup, cog, rowH, at } panels (and the row's cog widget); row.mesh.visible /
+// popup.mesh.visible say whether they are shown; rowH: the row's tallest (panel px); at() -> "<top|bottom>-<left|center|right>",
+// where the deck is pinned.
+export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at }) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -166,9 +167,12 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, at }) {
 
 	// first opening: the first window centered just beyond the deck (above it at the bottom, under it at the top), the others
 	// aligned with the deck's side just beyond it, CASCADE further from its side and from it than the previous new window while
-	// that one is still open (only further from it when centered). At most as tall as the space beyond the deck.
+	// that one is still open (only further from it when centered). At most as tall as the space beyond the deck. The deck is the
+	// toolbar plus room for the output row at its tallest (rowH): the row's tiles come with the snapshot, after this.
 	function place(win) {
-		const { panel } = win.spec, d = deck.getBoundingClientRect(), [edge, side] = at().split("-");
+		const { panel } = win.spec, [edge, side] = at().split("-"), t = toolbar.canvas.getBoundingClientRect();
+		const room = (rowH * SCALE + DECK_GAP) * t.height / (toolbar.height * SCALE);
+		const d = { left: t.left, right: t.right, top: t.top - room, bottom: t.bottom + room };
 		const w = Math.min(panel.width * SCALE, innerWidth - 2 * MARGIN);
 		const h = Math.min(panel.height * SCALE + win.bar.offsetHeight, (edge === "top" ? innerHeight - d.bottom : d.top) - 2 * MARGIN);
 		const y = (c) => edge === "top" ? d.bottom + MARGIN + c : d.top - MARGIN - h - c;
