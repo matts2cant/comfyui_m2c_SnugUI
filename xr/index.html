@@ -23,11 +23,11 @@
 	.deck { position: fixed; z-index: 6; display: flex; pointer-events: none; } /* placed by desktop.js renderDeck, its gap DECK_GAP */
 	.deck canvas { pointer-events: auto; flex: none; }
 	.deck .popup { position: absolute; }
-	/* phones (desktop.js renderPhone): the open panel over the image, the dock and the tray, placed inside the safe area read from the padding */
+	/* phones (phone.js): the open panel over the image, the dock and the tray, placed inside the safe area read from the padding */
 	.phone { position: fixed; inset: 0; z-index: 6; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 	.phone > * { position: absolute; pointer-events: auto; }
 	.phone .strip, .phone .pick, .phone .popup, .phone .toast { z-index: 1; } /* over the open panel */
-	/* the tray: its border (the margin) is the padding around the scrolling tiles; desktop.js sets it and the radius */
+	/* the tray: its border (the margin) is the padding around the scrolling tiles; phone.js sets it and the radius */
 	.phone .strip { display: flex; box-sizing: border-box; overflow: auto hidden; scrollbar-width: none; background: #161a22; border: solid #161a22; box-shadow: 0 0 0 1px #323a49; }
 	.phone .strip canvas { flex: none; touch-action: pan-x; }
 	.phone .strip.v { flex-direction: column; overflow: hidden auto; }
