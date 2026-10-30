@@ -84,11 +84,13 @@ export function createBottomPanel({ THREE, store, ui }) {
 				value.value = String(store.get(key));
 				MODES.forEach(([mode], i) => { modes[i].toggled = store.seedMode(key) === mode; });
 			},
+			// narrower than SEED_W (a phone) the label gives its room to the value
 			place(x, y, w) {
 				const mx = x + w - MODES.length * (BTN_W + 6) + 6;
 				for (const wd of [label, minus, value, plus, ...modes]) wd.y = y;
 				label.x = x;
-				minus.x = x + 80;
+				label.visible = w >= SEED_W;
+				minus.x = label.visible ? x + 80 : x;
 				plus.x = mx - 16 - plus.w;
 				value.x = minus.x + minus.w + 6;
 				value.w = plus.x - 6 - value.x;

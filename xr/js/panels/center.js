@@ -3,7 +3,7 @@
 // main.js places everything. Results are kept per App-mode output. The image pans and zooms in the stage plane (`image`).
 import { createModelView } from "../model.js";
 
-const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80;
+const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80, SMALL_TILE = 120;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
@@ -143,17 +143,20 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
 				ctx.fillRect(0, 0, s, s);
 			}
-			ctx.fillStyle = "rgba(0,0,0,0.6)";
-			ctx.fillRect(0, s - 40, s, 40);
-			ctx.beginPath();
-			ctx.arc(30, 30, 22, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.fillStyle = ctx.strokeStyle = theme.fg;
-			ui.drawIcon(ctx, icon, 17, 17, 26);
-			ctx.font = `22px ${theme.font}`;
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-			ctx.fillText(ui.ellipsize(ctx, o.title, s - 20), s / 2, s - 19);
+			// a phone's small tiles keep their thumbnail clear: no badge, no title
+			if (s >= SMALL_TILE) {
+				ctx.fillStyle = "rgba(0,0,0,0.6)";
+				ctx.fillRect(0, s - 40, s, 40);
+				ctx.beginPath();
+				ctx.arc(30, 30, 22, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.fillStyle = ctx.strokeStyle = theme.fg;
+				ui.drawIcon(ctx, icon, 17, 17, 26);
+				ctx.font = `22px ${theme.font}`;
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillText(ui.ellipsize(ctx, o.title, s - 20), s / 2, s - 19);
+			}
 			ctx.restore();
 			ctx.globalAlpha = 1;
 			if (this.toggled) {
@@ -253,6 +256,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
 	// per output: { nodeId (null = any node), title, kind, current (entry on show), fresh (results not shown yet) }
 	let outputs = [], out = null, tiles = [];
+	let tile = TILE, maxW = rowW; // phones: a fixed tile size and no width limit (desktop.js scrolls the row)
 	let shown = null;          // HTMLImageElement on the mesh / layer
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
@@ -307,16 +311,24 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
 	}
 
-	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within rowW, then the cog when any
+	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within maxW, then the cog when any
 	// output's kind has settings (disabled while the selected one has none, so the row keeps its shape); the row panel takes their size
 	function placeRow() {
 		const n = tiles.length, settings = outputs.some((o) => kindControls[o.kind]().length > 0);
-		const s = n && Math.min(TILE, Math.floor((rowW - (settings ? COG : -TILE_GAP)) / n) - TILE_GAP);
+		const s = n && Math.min(tile, Math.floor((maxW - (settings ? COG : -TILE_GAP)) / n) - TILE_GAP);
 		const w = n * (s + TILE_GAP) + (settings ? COG : -TILE_GAP), h = Math.max(s, settings ? COG : 0);
 		tiles.forEach((t, i) => Object.assign(t, { x: i * (s + TILE_GAP), y: h - s, w: s, h: s }));
 		Object.assign(cog, { visible: settings, disabled: !kindControls[out.kind]().length, x: w - COG, y: h - COG });
 		row.mesh.visible = n > 0 || settings;
 		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / 1000, h / 1000);
+	}
+
+	// phones: tiles of `size` px however many there are; null: back to TILE within rowW
+	function rowTile(size) {
+		if ((size ?? TILE) === tile) return;
+		tile = size ?? TILE;
+		maxW = size ? Infinity : rowW;
+		refresh();
 	}
 
 	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere
@@ -766,5 +778,5 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	loadOutputs();
 	pruneMissing([...history]);
 	const closePopup = () => { if (popup.mesh.visible) showPopup(false); };
-	return { group, update, model, image, row, rowH: TILE, cog, popup, closePopup, gallery: galleryPanel, note };
+	return { group, update, model, image, row, rowH: TILE, rowTile, cog, popup, closePopup, gallery: galleryPanel, note };
 }

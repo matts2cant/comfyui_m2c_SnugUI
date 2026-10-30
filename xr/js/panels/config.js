@@ -19,7 +19,10 @@ export function createConfigPanel({ THREE, ui }, onChange) {
 	panel.onResize = () => {
 		title.w = caption.w = panel.width - 2 * M;
 		const bw = (panel.width - 2 * M - 2 * GAP) / 3;
-		buttons.forEach((b, i) => Object.assign(b, { x: M + (i % 3) * (bw + GAP), y: GRID_Y + Math.floor(i / 3) * (BTN_H + GAP), w: bw }));
+		// narrow (a phone): the labels shrink until the longest fits
+		panel.ctx.font = `600 28px ${ui.theme.font}`;
+		const size = Math.min(28, Math.floor(28 * (bw - 24) / Math.max(...buttons.map((b) => panel.ctx.measureText(b.text).width))));
+		buttons.forEach((b, i) => Object.assign(b, { size, x: M + (i % 3) * (bw + GAP), y: GRID_Y + Math.floor(i / 3) * (BTN_H + GAP), w: bw }));
 	};
 	panel.onResize();
 

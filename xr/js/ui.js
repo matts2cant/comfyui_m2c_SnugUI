@@ -467,19 +467,23 @@ export class EditBar extends Widget {
 		};
 		const all = [["Keyboard", showKeyboard], ["Del", () => erase()], ["←", () => caret(-1)], ["→", () => caret(1)], ["Select all", () => field.selectAll()], ["Done", commit]];
 		if (field.multiline) all.splice(1, 0, ["", newline, "corner-down-left"]);
-		this.btns = (compact ? [all[0], all[1], all[all.length - 1]] : all).map(([text, run, icon]) => ({ text, run, icon, y: 8, h: this.h - 16 }));
 		measure.font = font(this.size, true);
-		let x = 8;
-		for (const b of this.btns) {
-			b.x = x;
-			b.w = Math.max(72, Math.ceil(measure.measureText(b.text).width) + 40);
-			x += b.w + 8;
-		}
-		this.w = x;
+		// a panel too narrow for the bar (a phone, whose system keyboard is up and moves the caret) gets it without Keyboard and the arrows
+		this.rows = [compact ? [all[0], all[1], all[all.length - 1]] : all, all.filter(([text]) => !["Keyboard", "←", "→"].includes(text))].map((set) => {
+			let x = 8;
+			const btns = set.map(([text, run, icon]) => {
+				const b = { text, run, icon, x, y: 8, w: Math.max(72, Math.ceil(measure.measureText(text).width) + 40), h: this.h - 16 };
+				x += b.w + 8;
+				return b;
+			});
+			return { btns, w: x };
+		});
+		Object.assign(this, this.rows[0]);
 	}
 
 	place() {
 		const { panel, field } = this, a = field.abs(), below = a.y + field.h + 6;
+		Object.assign(this, this.rows.find((r) => r.w <= panel.width - 16) ?? this.rows[1]);
 		this.x = Math.max(8, Math.min(a.x, panel.width - this.w - 8));
 		this.y = !field.barAbove && below + this.h <= panel.height ? below : Math.max(0, a.y - 6 - this.h);
 	}
@@ -664,7 +668,11 @@ export class TextField extends Widget {
 	}
 
 	draw(ctx) {
-		if (this.ta) this.bar.place();
+		if (this.ta) {
+			// a re-flow that rebuilt the panel (a rotation, a phone's keyboard) dropped the bar
+			if (!this.bar.panel) this.panel.add(this.bar);
+			this.bar.place();
+		}
 		const { w, h } = this, r = theme.radius * 0.7;
 		rrect(ctx, 0, 0, w, h, r);
 		ctx.fillStyle = theme.bg;
@@ -729,6 +737,7 @@ export class Combo extends TextField {
 	// below the toolbar, or above the field when the panel has no room (the toolbar is above the field when it has none below)
 	place() {
 		const { list, bar } = this, a = this.abs();
+		for (const w of [bar, list]) if (!w.panel) this.panel.add(w); // dropped by a re-flow, as in TextField.draw
 		bar.place();
 		list.h = Math.min(this.rows, list.items.length) * list.rowH;
 		list.w = this.w;

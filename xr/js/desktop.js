@@ -4,6 +4,7 @@
 // press over them. The deck, pinned to a corner or edge (the Configuration panel's toolbar position) above every window, holds
 // the toolbar (whose buttons toggle the windows), the output row beside it and the output pop-up by the cog, without chrome.
 // Geometry and open state are kept in localStorage and pushed back inside the browser window when it is smaller.
+// Phones (a narrow window, or a short landscape one) get no windows: one panel at a time and the deck's panels around the image.
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
@@ -11,9 +12,16 @@ import { paths } from "./icons.js";
 const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
 const MARGIN = 12, CASCADE = 32, EDGE = 16, DECK_GAP = 8;
+const PHONE = 0.6; // phones: CSS px per panel px
+const PHONE_TILE = 80, PEEK = 120, COLUMN = 340; // phones: output tile (panel px); portrait: image left over a tall panel; landscape: column width
 
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>`;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// moves the elements into parent, in order, unless they are there already (a move would drop their pointer capture)
+function adopt(parent, ...els) {
+	for (const e of els) if (e.parentNode !== parent) parent.append(e);
+}
 
 function el(tag, cls, parent, html = "") {
 	const e = document.createElement(tag);
@@ -43,8 +51,9 @@ function drag(target, down, move, up) {
 }
 
 // A press on a TextField or its EditBar keeps the edit; any other press commits it once released. A tap with a finger that
-// starts an edit opens the on-screen keyboard (keyboard.js's XR path), the press being the user activation it needs.
-function bindPanel(panel) {
+// starts an edit opens the on-screen keyboard (keyboard.js's XR path on tablets, the textarea itself on phones), the press
+// being the user activation it needs.
+function bindPanel(panel, phone) {
 	const c = panel.canvas;
 	let outside = false, field = null;
 	const at = (e) => {
@@ -54,7 +63,7 @@ function bindPanel(panel) {
 	c.addEventListener("pointerdown", (e) => {
 		if (e.button !== 0) return;
 		c.setPointerCapture(e.pointerId);
-		keyboard.setXR(e.pointerType === "touch");
+		keyboard.setXR(e.pointerType === "touch" && !phone());
 		const [x, y] = at(e), hit = panel.hitTest(x, y);
 		outside = keyboard.isEditing() && !(hit instanceof ui.TextField || hit instanceof ui.EditBar);
 		field = hit instanceof ui.TextField && !hit.ta ? hit : null;
@@ -84,13 +93,15 @@ function load() {
 	}
 }
 
-// specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel its
-// content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content width
-// w). Only the first one is open on the first visit. note: a panel shown alone at the center while note.mesh.visible (the
-// stage's message). deck: { toolbar, row, popup, cog, rowH, at } panels (and the row's cog widget); row.mesh.visible /
-// popup.mesh.visible say whether they are shown; rowH: the row's tallest (panel px); at() -> "<top|bottom>-<left|center|right>",
-// where the deck is pinned.
-export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at }) {
+// specs: [{ name, title, icon, button, panel, minW, minH(w), fit }]: button is the toolbar's, lit while the window is open; panel
+// its content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content
+// width w); fit: on phones as tall as its content (minH), else as tall as there is room. Only the first one is open on the first
+// visit (on phones: at page load). note: a panel shown alone at the center of the image while note.mesh.visible (the stage's
+// message). deck: { toolbar, tabs, phone, row, popup, cog, rowH, rowTile, at } panels (and the row's cog widget);
+// row.mesh.visible / popup.mesh.visible say whether they are shown; rowH: the row's tallest (panel px); at() ->
+// "<top|bottom>-<left|center|right>", where the deck is pinned; for phones, the toolbar's tab bar (tabs) and layouts
+// (phone(mode)) and the row's tile size (rowTile(size)).
+export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, row, popup, cog, rowH, rowTile, at }) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -98,14 +109,17 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 	const deck = el("div", "deck", document.body);
 	deck.append(row.canvas, toolbar.canvas, popup.canvas);
 	popup.canvas.className = "popup";
-	for (const p of [toolbar, row, popup]) bindPanel(p);
-	// keep the edit's focused textarea (or the on-screen keyboard) while pressing the windows and the deck
-	for (const layer of [root, deck]) {
+	const phone = el("div", "phone", document.body), strip = el("div", "strip", phone), pad = el("div", "pad", phone);
+	const isPhone = () => !!layout;
+	for (const p of [toolbar, tabs, row, popup]) bindPanel(p, isPhone);
+	// keep the edit's focused textarea (or the on-screen keyboard) while pressing the windows, the deck and the phone layout
+	for (const layer of [root, deck, phone]) {
 		layer.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); });
 		layer.addEventListener("pointerdown", (e) => { if (keyboard.isEditing() && e.pointerType === "touch") e.preventDefault(); });
 		layer.addEventListener("contextmenu", (e) => e.preventDefault());
 	}
 	let shown = false, lastNew = null;
+	let layout = null, sheet = specs[0].name, bars = null, stage = null; // phones: "portrait" | "landscape", the open panel, the toolbar's sizes, the image's box
 	let top = Math.max(0, ...Object.values(saved).map((s) => s.z ?? 0));
 
 	const save = () => {
@@ -122,7 +136,7 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 		const grip = el("div", "grip", box);
 		close.title = "Close";
 		body.append(spec.panel.canvas);
-		bindPanel(spec.panel);
+		bindPanel(spec.panel, isPhone);
 		const win = { spec, box, bar, body, rect: null, state: saved[spec.name] ?? { open: i === 0 } };
 
 		box.addEventListener("pointerdown", () => raise(win), { capture: true });
@@ -159,6 +173,11 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 
 	function toggle(win) {
 		keyboard.commit();
+		// phones: one panel at a time, a tap on the open one closes it
+		if (layout) {
+			sheet = sheet === win.spec.name ? null : win.spec.name;
+			return update(shown);
+		}
 		win.state.open = !win.state.open;
 		if (win.state.open) raise(win);
 		render(win);
@@ -188,11 +207,13 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 	// loaded in a hidden tab has no size yet: its windows are placed on the first resize.
 	function render(win) {
 		const { box, body, state, spec } = win;
-		box.hidden = !shown || !state.open || !innerWidth;
+		box.hidden = !shown || !!layout || !state.open || !innerWidth;
 		if (shown) {
-			spec.button.toggled = !!state.open;
+			spec.button.toggled = layout ? spec.name === sheet : !!state.open;
 			spec.button.invalidate();
 		}
+		if (layout && spec.name === sheet) return; // renderPhone hosts it
+		adopt(body, spec.panel.canvas);
 		if (box.hidden) return spec.panel.setPx();
 		if (state.x === undefined) place(win);
 		const barH = win.bar.offsetHeight, w = Math.max(spec.minW * SCALE, Math.min(state.w, innerWidth));
@@ -209,7 +230,10 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 	// window's width. The output row is aligned with the toolbar on that side, the pop-up just beyond the row (mirrored at the
 	// top), its right edge over the cog's (its left edge on the left). Hidden, they go back to their VR size.
 	function renderDeck() {
-		deck.hidden = !shown;
+		deck.hidden = !shown || !!layout;
+		if (layout) return;
+		adopt(deck, row.canvas, toolbar.canvas, popup.canvas);
+		toolbar.canvas.hidden = false;
 		row.canvas.hidden = !row.mesh.visible;
 		popup.canvas.hidden = !popup.mesh.visible;
 		for (const p of [toolbar, row, popup]) if (deck.hidden || p.canvas.hidden) p.setPx();
@@ -233,22 +257,128 @@ export function createDesktop(specs, note, { toolbar, row, popup, cog, rowH, at 
 		});
 	}
 
+	// a panel at PHONE scale in the CSS px box [x, y, w, h], re-flowed to it; no box: hidden, back to its VR size
+	function put(p, box) {
+		p.canvas.hidden = !box;
+		if (!box) return p.setPx();
+		const [x, y, w, h] = box, pw = Math.round(w / PHONE), ph = Math.round(h / PHONE);
+		Object.assign(p.canvas.style, { left: x + "px", top: y + "px", width: pw * PHONE + "px", height: ph * PHONE + "px" });
+		p.setPx(pw, ph, PHONE * devicePixelRatio);
+	}
+
+	const boxStyle = (e, [x, y, w, h]) => Object.assign(e.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
+
+	// Phones, inside the safe area (the phone layer's padding is env(safe-area-inset-*)). Portrait, from the top: the image, the
+	// output row's strip, the open panel (as tall as its content, or up to PEEK px under the top), the dock (toolbar over the tab
+	// bar); with the keyboard up (the visual viewport ends above the window) the panel sits on it and the dock hides. Landscape:
+	// the image at the left, a COLUMN with the strip, the panel and the toolbar, the tab rail at the right edge; with the keyboard
+	// up the panel takes the whole width above it. The strip scrolls sideways.
+	function renderPhone() {
+		phone.hidden = !layout;
+		stage = null;
+		if (!layout) return;
+		const cs = getComputedStyle(phone), [t, r, b, l] = ["Top", "Right", "Bottom", "Left"].map((s) => parseFloat(cs["padding" + s]));
+		const W = innerWidth, H = innerHeight, vv = visualViewport, end = vv.offsetTop + vv.height;
+		const kb = keyboard.isEditing() && H - end > 1, top = kb ? Math.max(t, vv.offsetTop) : t;
+		const spec = specs.find((s) => s.name === sheet), rh = row.mesh.visible ? row.height * PHONE : 0;
+		const th = bars.h * PHONE, bar = bars.bar * PHONE;
+		adopt(phone, toolbar.canvas, tabs.canvas, popup.canvas);
+		adopt(strip, row.canvas);
+		if (spec) adopt(phone, spec.panel.canvas);
+		// the open panel's height in w x room: its content's (fit) or all the room
+		const height = (w, room) => spec.fit ? Math.min(spec.minH(Math.round(w / PHONE)) * PHONE, room) : room;
+		let sheetBox = null, stripBox = null, toolbarBox = null, tabsBox = null, padBox = null;
+		if (layout === "portrait") {
+			const w = W - l - r, sw = w - 2 * DECK_GAP, dock = kb ? 0 : th + bar;
+			let y = (kb ? end : H - b - dock) - DECK_GAP;
+			if (spec) {
+				const room = y - top, h = height(sw, kb || spec.fit ? room : Math.max(room - PEEK - (rh && rh + DECK_GAP), room / 2));
+				y -= h;
+				sheetBox = [l + DECK_GAP, y, sw, h];
+				y -= DECK_GAP;
+			}
+			if (rh && y - rh >= top) {
+				y -= rh;
+				stripBox = [l + DECK_GAP, y, sw, rh];
+				y -= DECK_GAP;
+			}
+			if (!kb) {
+				toolbarBox = [l, H - b - dock, w, th];
+				tabsBox = [l, H - b - bar, w, bar];
+				padBox = [0, H - b, W, b];
+			}
+			stage = { x: l, y: top, w, h: Math.max(1, y - top) };
+		} else {
+			const railX = W - r - bar, x = railX - DECK_GAP - COLUMN, toolbarY = H - b - DECK_GAP - th, y = t + DECK_GAP + (rh && rh + DECK_GAP);
+			stage = { x: l, y: t, w: Math.max(1, x - DECK_GAP - l), h: H - t - b };
+			if (kb) sheetBox = [l, top, W - l - r, end - DECK_GAP - top];
+			else {
+				sheetBox = spec && [x, y, COLUMN, height(COLUMN, toolbarY - DECK_GAP - y)];
+				stripBox = rh && [x, t + DECK_GAP, COLUMN, rh];
+				toolbarBox = [x, toolbarY, COLUMN, th];
+				tabsBox = [railX, t, bar, H - t - b];
+				padBox = [W - r, 0, r, H];
+			}
+		}
+		if (spec) put(spec.panel, sheetBox);
+		put(toolbar, toolbarBox);
+		put(tabs, tabsBox);
+		pad.hidden = !padBox;
+		if (padBox) boxStyle(pad, padBox);
+		strip.hidden = !stripBox;
+		if (stripBox) {
+			boxStyle(strip, stripBox);
+			Object.assign(row.canvas.style, { width: row.width * PHONE + "px", height: row.height * PHONE + "px" });
+			row.setPx(row.width, row.height, PHONE * devicePixelRatio);
+		} else row.setPx();
+		placePopup();
+	}
+
+	// the pop-up's right edge over the cog's (inside the window, scaled down when narrower), just over the strip in portrait, under it in landscape
+	function placePopup() {
+		popup.canvas.hidden = !layout || strip.hidden || !popup.mesh.visible;
+		if (popup.canvas.hidden) return popup.setPx();
+		const s = strip.getBoundingClientRect(), k = Math.min(PHONE, (innerWidth - 2 * DECK_GAP) / popup.width), w = popup.width * k, h = popup.height * k;
+		const x = clamp(row.canvas.getBoundingClientRect().left + (cog.x + cog.w) * PHONE - w, DECK_GAP, innerWidth - DECK_GAP - w);
+		boxStyle(popup.canvas, [x, layout === "portrait" ? s.top - DECK_GAP - h : s.bottom + DECK_GAP, w, h]);
+		popup.setPx(popup.width, popup.height, k * devicePixelRatio);
+	}
+	strip.addEventListener("scroll", placePopup);
+
+	// centered on the image (the whole window but on phones), scaled down to fit it
 	function renderNote() {
 		noteBox.hidden = !shown || !note.mesh.visible;
 		if (noteBox.hidden) return;
-		note.setPx(note.width, note.height, SCALE * devicePixelRatio);
-		Object.assign(note.canvas.style, { width: note.width * SCALE + "px", height: note.height * SCALE + "px" });
+		const s = stage ?? { x: 0, y: 0, w: innerWidth, h: innerHeight }, k = Math.min(SCALE, (s.w - 2 * EDGE) / note.width);
+		note.setPx(note.width, note.height, k * devicePixelRatio);
+		Object.assign(note.canvas.style, { width: note.width * k + "px", height: note.height * k + "px" });
+		Object.assign(noteBox.style, { left: s.x + s.w / 2 + "px", top: s.y + s.h / 2 + "px" });
 	}
 
 	// on: the Desktop View with its windows shown (not hidden by H); also re-places them when their content changed. The deck
-	// goes first: the windows' first placement is measured from it.
+	// goes first: the windows' first placement is measured from it. Phones: narrower than 600 px (portrait), or wider than tall
+	// and shorter than 500 px (landscape); the toolbar and the output row switch layouts with them.
 	function update(on) {
 		shown = on;
+		const mode = on && (innerWidth < 600 ? "portrait" : innerWidth > innerHeight && innerHeight < 500 ? "landscape" : null) || null;
+		if (mode !== layout) {
+			layout = mode;
+			bars = toolbarPhone(mode);
+			if (!mode) toolbar.setPx();
+			rowTile(mode && PHONE_TILE);
+		}
 		renderDeck();
 		for (const win of wins) render(win);
+		renderPhone();
 		renderNote();
 	}
 
 	addEventListener("resize", () => update(shown));
-	return { update, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)) };
+	// the phone keyboard comes and goes with the visual viewport
+	for (const type of ["resize", "scroll"]) visualViewport.addEventListener(type, () => { if (layout) update(shown); });
+	return {
+		update, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)),
+		// the image's box (CSS px): the whole window but on phones
+		stage: () => stage ?? { x: 0, y: 0, w: innerWidth, h: innerHeight },
+	};
 }

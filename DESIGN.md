@@ -26,7 +26,8 @@ xr/index.html            VR page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
 xr/js/main.js            bootstrap, renderer, scene, views (Desktop View, VR session, VR-like view), input, layout, recenter
-xr/js/desktop.js         Desktop View windows (the panels' canvases in DOM windows), the deck (toolbar, output row, output pop-up), persistence
+xr/js/desktop.js         Desktop View windows (the panels' canvases in DOM windows), the deck (toolbar, output row, output pop-up), persistence,
+                         the phone layouts
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
 xr/js/icons.js           Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
@@ -35,7 +36,7 @@ xr/js/help.js            insecure-context help screen (DOM)
 xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
 xr/js/rules.js           placement rule table
-xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
+xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate; the phones' tab bar
 xr/js/panels/center.js   image / 3D model display, output row (tiles + cog), output pop-up, gallery panel
 xr/js/panels/bottom.js   prompt panel: workflow name, prompt box, folding negative prompt, seed row
 xr/js/panels/left.js     Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
@@ -267,17 +268,22 @@ main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height
 `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(ctx, onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
-`createToolbar(ctx, buttons) -> { group, panel }`; center is `createCenterPanel(ctx, rowW)`, rowW
-the toolbar's width) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
+`createToolbar(ctx, tabs, view) -> { group, panel, tabs, phone(mode) }` (main.js's panel buttons and view button; `tabs` the phones'
+tab bar panel); center is `createCenterPanel(ctx, rowW)`, rowW the toolbar's width, which also returns `rowTile(size)`) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toolbar and icons
 One canvas panel (`toolbar.js`, "toolbar"), the same object in both views: on the lectern in VR, in the Desktop View's deck. A rounded slab
 (`radius` 56 px) that never collapses. Top tier: the run status at the left and its timer at the right (monospace), then the node progress
 bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main.js's round icon buttons (100 px) Prompt, Gallery, LoRA,
-Light, Input, Configuration (main.js `PANELS`), a separator (`null` in the list), the view button; then a flexible gap, Cancel (round, `x`,
+Light, Input, Configuration (main.js `PANELS`), a separator, the view button; then a flexible gap, Cancel (round, `x`,
 `danger`; the plain grey `default` look and disabled when nothing runs or is queued) and Generate (pill, `accent`, 260 px; disabled
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
+- Phones (`phone(mode)`, desktop.js): the panel buttons (80 px, `PB`) move to the `tabs` panel (radius 0, `BAR` 112 px thick), laid
+  out along its longer side (a tab bar, or a rail when taller than wide); the view button and separator hide; the toolbar re-flows to
+  the width it is given (`setPx`), margins `PM` 16: portrait (radius 0, 208 px tall) the status tier over Cancel (80 px) and a Generate
+  as wide as the rest; landscape (112 px tall) one row: the status tier, Cancel, Generate (`PGEN_W` 164 px, 30 px text, so "Done in
+  m:ss" fits in a 340 px column). `phone(null)` puts the buttons back; desktop.js then calls `setPx()` (world size, desk layout).
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
   and closes the other, pressing the open one closes it; the open one is main.js `open`, "prompt" at page load and at the start of every
   XR session, not persisted); in the Desktop View they toggle the windows (desktop.js lights them from the windows' open state).
@@ -350,7 +356,7 @@ another Lucide icon's path data under its name and change the name where it is u
   meshes), so the image / model take every ray. Showing again restores the same open panel; panels keep their own state (scroll,
   tab). Hands have no B button.
 - Output pop-up: closes on a press anywhere but on it and on the output row (VR: `pointerDown` with the panel hit, or nothing; Desktop
-  View: a capturing window `pointerdown` whose target is not the pop-up's or the row's canvas), on its cog, on Esc, on H, on a view
+  View and phones: a capturing window `pointerdown` whose target is not the pop-up's or the row's canvas), on its cog, on Esc, on H, on a view
   switch. A press on a tile keeps it open (it follows the new output).
 - Mouse and touch on the 3D view (no XR session, main.js): mouse click = pointer events, wheel = scroll on the hovered panel, R =
   recenter (the Desktop View: resets the image / model view), H = hide UI, Esc = close the output pop-up. A drag off the image, the model and the panels looks
@@ -393,11 +399,13 @@ another Lucide icon's path data under its name and change the name where it is u
 
 ### Desktop View (desktop.js, main.js)
 - Viewport: the whole window, a fixed camera at the eye looking straight at the stage (no look around), its vertical fov fitted each
-  frame so the stage fills the window (contain: `max(screen.h, screen.w / aspect)` at `SCREEN_DISTANCE`). The image or 3D model
-  is therefore fitted to the window. When there is neither, the stage's message (no workflow, no images / 3D models yet,
+  frame so the stage fills the image's box, desktop.js `stage()` (the window, or what a phone layout leaves; contain: `max(screen.h,
+  screen.w / aspect)` at `SCREEN_DISTANCE`, aspect the box's), with `camera.setViewOffset(box.w, box.h, -box.x, -box.y, innerWidth,
+  innerHeight)` moving the projection's center to the box's (rays from the whole canvas stay right; `setView` clears it for the VR
+  views). The image or 3D model is therefore fitted to its box. When there is neither, the stage's message (no workflow, no images / 3D models yet,
   loading, missing file, load error: every text of center's `empty` label) is not shown on the 16:9 stage frame, which center
   hides in the Desktop View (`ctx.desktopView()`, each frame in `update()`), but in center's `note` panel: the same text, its
-  width measured, 40 / 20 px padding, shown by desktop.js alone at the window's center (no chrome, clicks pass through) while
+  width measured, 40 / 20 px padding, shown by desktop.js alone at the image box's center (scaled down to fit it; no chrome, clicks pass through) while
   `note.mesh.visible` (the message is up). A changed text re-places it through `screen.onResize`. `scene.background` is lights.js's
   `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
   hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
@@ -405,9 +413,11 @@ another Lucide icon's path data under its name and change the name where it is u
 - Windows: Prompt, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
   is placed in a DOM window (`main.js` passes `createDesktop` one spec per window, `{ name, title, icon, button, panel, minW, minH(w) }`
   in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size; `minW` / `minH(w)` the smallest
-  its layout takes, the height at content width w (Prompt 720 wide, its height from bottom's `minHeight()`; Gallery 500 x 500, LoRA 600 x
-  700, Light 420 x 500, Input 600 x 500, Configuration 720 x its content's height, config's `minHeight()`)). A snapshot load
-  re-places the windows (the prompt panel's entries change its minimum).
+  its layout takes, the height at content width w (Prompt 560 wide, its height from bottom's `minHeight()`; Gallery 500 x 500, LoRA 560 x
+  700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`); `fit`: Prompt and
+  Configuration, as tall as their content on phones). A snapshot load re-places the windows (the prompt panel's entries change its minimum).
+  At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
+  shrink until the longest fits, and an edit toolbar wider than its panel drops Keyboard and the arrows.
   `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onResize` (stage size, output
   row, pop-up or note change) re-places the windows and the deck too. Stored window sizes (the Prompt window held the output band before) are not migrated.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
@@ -423,7 +433,10 @@ another Lucide icon's path data under its name and change the name where it is u
   press, wheel = `panel.scroll`; a drag in a panel scrolls it as in VR). A press on a TextField or EditBar keeps an edit, any other
   window press commits it on release; moving, resizing, closing, a toolbar button do too. The window layer keeps the focused textarea
   (mousedown, and touch pointerdown, prevented while editing). A finger tap that starts an edit opens the on-screen keyboard
-  (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation).
+  (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation; on phones the desktop path: `ta` itself is focused, so the
+  system keyboard edits it with its own caret, selection and backspace).
+  A re-flow during an edit (a rotation, the phone keyboard) keeps it: a TextField whose panel was rebuilt (left / right `panel.clear()`)
+  adds its EditBar back when drawn, a Combo its bar and list.
 - Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
   `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
   The output row (while `row.mesh.visible`) sits `DECK_GAP` 8 px over the toolbar at the bottom, under it at the top (the deck
@@ -439,6 +452,7 @@ another Lucide icon's path data under its name and change the name where it is u
   under `config` when that window held the workflow's inputs is not migrated: the Configuration window takes it), saved after a move,
   resize, open, close or raise; a resize stores the size as shown. Shown geometry is clamped: at least the window's minimum, at
   most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
+- Canvases move between hosts (window body, deck, phone layer) only when they are elsewhere (`adopt`: a move drops pointer capture).
 - Placement on first opening (no stored x), following the deck (rendered before the windows): the first window (Prompt) centered
   horizontally just beyond the deck (`MARGIN` 12 px above it for bottom positions, below it for top ones; the deck's box is the
   toolbar plus room for the output row at its tallest, center's `rowH`, since its tiles come with the snapshot after the first
@@ -450,8 +464,33 @@ another Lucide icon's path data under its name and change the name where it is u
 - Keys: H hides every window and the deck (and shows them again); the image / model keep their fit. R resets the image / model.
   Esc closes the output pop-up.
   Physical keys edit text through `ta` as before.
-- Tablets: the same layout in landscape and portrait (no phone support). Quest's 2D browser before entering VR: the controller
-  pointer acts as a mouse.
+- Tablets: the same layout in landscape and portrait. Quest's 2D browser before entering VR: the controller pointer acts as a mouse.
+
+### Phones (desktop.js `renderPhone`, main.js)
+- When: narrower than 600 CSS px = portrait; wider than tall and shorter than 500 px = landscape; else the Desktop View. Re-evaluated
+  in `update()` (window resize, rotation, relayout) and on `visualViewport` resize / scroll; switching keeps the open panel, its
+  scroll, the selected output and an open edit. Hidden (H) or in VR the layout is off (toolbar, row and panels back to VR geometry).
+  Windows are hidden and their stored geometry untouched (it comes back on a wide window). The toolbar position setting and the
+  view button do not apply.
+- A `.phone` layer (fixed, z 6, clicks pass through but on its children) with `env(safe-area-inset-*)` padding, read back for
+  the insets (`viewport-fit=cover`); its children are placed absolutely in CSS px. Panels are drawn at `PHONE` 0.6 CSS px per panel
+  px and re-flow to their box (`put`: `setPx(w / PHONE, h / PHONE, PHONE * devicePixelRatio)`). No window chrome. Gaps `DECK_GAP` 8.
+- One panel at a time, `sheet` (Prompt at page load, not persisted): its toolbar button toggles it, the open one is lit.
+- Output row: `rowTile(PHONE_TILE)` = 80 px tiles (48 CSS px) with no width limit (center `placeRow`; tiles under `SMALL_TILE` 120
+  px draw no badge and no title), in `.strip`, a sideways-scrolling box (the row canvas `touch-action: pan-x`, so a swipe scrolls and
+  cancels the press; right-aligned while it fits, the cog last). Pop-up: its right edge over the cog's on screen (clamped inside the
+  window, scaled down when the window is narrower than it), `DECK_GAP` above the strip in portrait, under it in landscape (the strip
+  is at the top); re-placed on strip scroll.
+- Portrait, from the top: the image (`stage`, the rest), the strip, the panel, the dock pinned to the bottom, full width: toolbar
+  over the tab bar, a `.pad` in the panel colour under it over the bottom inset. Panel height: `fit` ones `minH(w)` (at most the
+  room), the others the room minus `PEEK` 120 px of image and the strip (at least half the room). Keyboard up (an edit open and
+  the visual viewport ending above the window): the dock hides, the panel's bottom sits on `visualViewport.offsetTop + height`, a
+  tall panel takes all the room up to the top, the strip only shows if it still fits.
+- Landscape: the image at the left (its box never changes with the panel), then a `COLUMN` 340 px wide: the strip at the top, the
+  panel (`fit` ones as tall as their content), the toolbar at the bottom; the tab rail along the right edge, the `.pad` over the right
+  inset. No panel: the column keeps its width. Keyboard up: the panel takes the whole width from the top to the keyboard; everything
+  else hides until it closes.
+- Touch on the image: the Desktop View's (one finger pans / turns, two pinch-zoom and move).
 
 ### Panels (behavior)
 - center: shows the latest image (fit, keep aspect, then the user's pan / zoom) — XR quad layer for crispness when `layers` granted (hole-punch so the

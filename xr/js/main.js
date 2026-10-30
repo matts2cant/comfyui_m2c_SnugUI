@@ -121,7 +121,7 @@ function panelGroup(panel) {
 	return group;
 }
 
-// the toolbar's panel buttons, in order: [name, icon, title (Desktop View window)]; then the view button
+// the toolbar's panel buttons, in order: [name, icon, title (Desktop View window)]; then the view button (none on phones)
 const PANELS = [["prompt", "pencil", "Prompt"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"], ["light", "sun", "Light"], ["input", "sliders-horizontal", "Input"],
 	["config", "settings", "Configuration"]];
 let open = "prompt"; // the panel on the lectern (one at a time, pressing it again closes it); every session starts with Prompt
@@ -132,7 +132,7 @@ const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onC
 	layout();
 } }));
 const viewBtn = new ui.Button({ round: true, onClick: switchView });
-const toolbar = createToolbar(ctx, [...tabs, null, viewBtn]);
+const toolbar = createToolbar(ctx, tabs, viewBtn);
 
 const center = createCenterPanel(ctx, toolbar.panel.width);
 const bottom = createBottomPanel(ctx);
@@ -180,11 +180,15 @@ function layout() {
 	popupGroup.position.set(((cog.x + cog.w) / row.width - 0.5) * size(row)[0] - pw / 2, -h / 2 + ph / 2, -SCREEN_DISTANCE + POPUP_Z);
 }
 
-// Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take)
-const MIN = { prompt: [720, bottom.minHeight], gallery: [500, () => 500], lora: [600, () => 700], light: [420, () => 500], input: [600, () => 500], config: [720, config.minHeight] };
+// Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take).
+// Phones show one at a time: Prompt and Configuration as tall as their content (fit), the others as tall as there is room.
+const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
-	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
-)), center.note, { toolbar: toolbar.panel, row: center.row, popup: center.popup, cog: center.cog, rowH: center.rowH, at: config.toolbarAt });
+	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1], fit: name === "prompt" || name === "config" }
+)), center.note, {
+	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, row: center.row, popup: center.popup, cog: center.cog, rowH: center.rowH,
+	rowTile: center.rowTile, at: config.toolbarAt,
+});
 
 function relayout() {
 	layout();
@@ -198,16 +202,19 @@ function setView(desk) {
 	scene.background = desk ? lights.background : null;
 	yaw = pitch = 0;
 	center.closePopup();
+	camera.clearViewOffset();
 	camera.fov = FOV;
 	camera.updateProjectionMatrix();
 	$("hint").hidden = desk || renderer.xr.isPresenting;
 	relayout();
 }
 
-// Desktop View: the eye looks straight at the stage, which fills the window (contain)
+// Desktop View: the eye looks straight at the stage, which fills the image's box (contain): the window, or its part left by a
+// phone layout, where the view offset moves the projection's center
 function fitCamera() {
-	camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(screen.h, screen.w / camera.aspect) / 2 / SCREEN_DISTANCE));
-	camera.updateProjectionMatrix();
+	const r = windows.stage();
+	camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(screen.h, screen.w / (r.w / r.h)) / 2 / SCREEN_DISTANCE));
+	camera.setViewOffset(r.w, r.h, -r.x, -r.y, innerWidth, innerHeight);
 }
 
 screen.onResize = relayout;

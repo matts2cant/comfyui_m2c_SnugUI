@@ -30,7 +30,7 @@ If Quest Browser opens the page without WebXR, it shows the same instructions wi
 
 ## Desktop View
 
-Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
+Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet (phones: see below): the image or 3D model fills the
 window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt,
 Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
 the middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
@@ -47,6 +47,18 @@ back inside a smaller window). The first time only Prompt is open.
 - The goggles button enters VR on the Quest. In a desktop browser it shows the VR layout instead: drag to look, wheel to
   scroll, click to press, R recenters, H hides the panels; the monitor button in the same place comes back.
   `/appmode-xr?view=vr` opens it directly.
+
+## Phones
+
+On a phone (a window narrower than 600 px, or a landscape one shorter than 500 px) the page uses a phone layout instead of
+windows. Portrait: the image at the top, the output tiles under it (swipe them sideways when they do not fit; the cog's pop-up
+opens just above them), one panel at a time, then a dock with the run status, Cancel, Generate and a tab bar of the six panels
+(tap one to open it, tap it again to close it). Prompt and Configuration are as tall as their content; the others go almost to
+the top. Landscape: the image at the left, a column with the tiles, the open panel and the status / Cancel / Generate block, and
+the tabs along the right edge. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the
+open panel moves above it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag
+the image to zoom and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button
+do not apply on phones; a wider window brings the Desktop View back with its windows as you left them.
 
 ## Input tabs
 
