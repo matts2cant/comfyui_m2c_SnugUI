@@ -3,7 +3,7 @@
 // main.js places everything. Results are kept per App-mode output. The image pans and zooms in the stage plane (`image`).
 import { createModelView } from "../model.js";
 
-const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80, SMALL_TILE = 120;
+const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80, SMALL_TILE = 120, RING = 4;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
@@ -39,6 +39,15 @@ function makeThumb(img) {
 function drawFit(ctx, src, x, y, w, h) {
 	const k = Math.min(w / src.width, h / src.height);
 	ctx.drawImage(src, x + (w - src.width * k) / 2, y + (h - src.height * k) / 2, src.width * k, src.height * k);
+}
+
+// the selection ring of a square tile: inside it, its outer edge on the tile's own rounded outline
+function ring(ctx, x, y, s, r, color) {
+	ctx.beginPath();
+	ctx.roundRect(x + RING / 2, y + RING / 2, s - RING, s - RING, r - RING / 2);
+	ctx.lineWidth = RING;
+	ctx.strokeStyle = color;
+	ctx.stroke();
 }
 
 // temp previews (Preview Image, Preview 3D) do not survive a ComfyUI restart: never persisted
@@ -113,11 +122,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 					ctx.fillStyle = theme.hover;
 					ctx.fill();
 				}
-				if (e === this.selected) {
-					ctx.lineWidth = 7;
-					ctx.strokeStyle = theme.accent;
-					ctx.stroke();
-				}
+				if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
 			}
 			this.drawBar(ctx);
 		}
@@ -159,13 +164,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			}
 			ctx.restore();
 			ctx.globalAlpha = 1;
-			if (this.toggled) {
-				ctx.beginPath();
-				ctx.roundRect(0, 0, s, s, TILE_R);
-				ctx.lineWidth = 7;
-				ctx.strokeStyle = theme.accent;
-				ctx.stroke();
-			}
+			if (this.toggled) ring(ctx, 0, 0, s, TILE_R, theme.accent);
 			if (this.fresh) {
 				ctx.beginPath();
 				ctx.arc(s - 22, 22, 10, 0, Math.PI * 2);

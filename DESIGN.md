@@ -514,8 +514,8 @@ another Lucide icon's path data under its name and change the name where it is u
   Output row (center's `row`, no background): when App mode configures two outputs or more, one square `OutputTile` per output
   (`TILE` 200 px, rounded): the output's latest result from the history (image: its thumbnail, cover-cropped; 3D: `modelThumb`), its
   kind's `image` / `box` icon as a placeholder before the first result (never a live preview), a kind badge (top left), the title along
-  the bottom (ellipsized), a dot (top right) for results that came in since the output was last shown; the selected one has an accent
-  ring; an inactive output (switched off by App mode, Group Switch) is dimmed but still selectable. No tiles with a single output. Then
+  the bottom (ellipsized), a dot (top right) for results that came in since the output was last shown; the selected one has a thin accent
+  ring drawn just inside its rounded edge (`ring`, also the gallery's shown entry); an inactive output (switched off by App mode, Group Switch) is dimmed but still selectable. No tiles with a single output. Then
   the cog (`settings`, round, 80 px, bottom-aligned) at the row's end, shown when `kindControls[kind]()` of any output is not empty and
   disabled while the selected output's is, so switching tiles never moves them; a single output with settings shows the cog alone;
   with neither the row is hidden. The tiles shrink so the row stays within
