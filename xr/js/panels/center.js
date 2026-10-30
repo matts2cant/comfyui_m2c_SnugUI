@@ -81,38 +81,22 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const group = new THREE.Group();
 
 	// ---- widgets ----
-	// scrollable grid of the selected output's history, the shown entry outlined
+	// the grid of the selected output's history (its items are the entries): each thumbnail whole, the shown entry ringed
 	class Gallery extends ui.ImageGrid {
-		draw(ctx) {
-			const g = this.grid();
-			this.clip(ctx, theme.radius * 0.7);
-			if (!this.items.length) {
-				ctx.font = ui.font(30);
-				ctx.fillStyle = theme.muted;
-				ctx.textAlign = "center";
-				ctx.textBaseline = "middle";
-				ctx.fillText("No results yet", this.w / 2, 60);
+		drawTile(ctx, e, i, x, y, s) {
+			ctx.beginPath();
+			ctx.roundRect(x, y, s, s, 16);
+			ctx.fillStyle = theme.surface;
+			ctx.fill();
+			const thumb = thumbOf(e);
+			if (thumb) {
+				ctx.save();
+				ctx.clip();
+				drawFit(ctx, thumb, x, y, s, s);
+				ctx.restore();
 			}
-			const first = Math.floor(this.scroll / g.step) * g.cols;
-			const end = Math.min(this.items.length, Math.ceil((this.scroll + this.h) / g.step) * g.cols);
-			for (let i = first; i < end; i++) {
-				const e = this.items[i], s = g.cw;
-				const x = (i % g.cols) * g.step, y = Math.floor(i / g.cols) * g.step - this.scroll;
-				ctx.beginPath();
-				ctx.roundRect(x, y, s, s, 16);
-				ctx.fillStyle = theme.surface;
-				ctx.fill();
-				const thumb = thumbOf(e);
-				if (thumb) {
-					ctx.save();
-					ctx.clip();
-					drawFit(ctx, thumb, x, y, s, s);
-					ctx.restore();
-				}
-				if (this.hover && i === this.hotItem) ui.drawTint(ctx, false, x, y, s, s, 16);
-				if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
-			}
-			this.drawBar(ctx);
+			if (this.hover && i === this.hotItem) ui.drawTint(ctx, false, x, y, s, s, 16);
+			if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
 		}
 	}
 
@@ -135,17 +119,13 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			ui.tint(ctx, this, 0, 0, s, s, 0); // square: clipped to the tile
 			// a phone's small tiles keep their thumbnail clear: no badge, no title
 			if (s >= SMALL_TILE) {
+				ui.drawCaption(ctx, o.title, 0, 0, s, 20);
 				ctx.fillStyle = "rgba(0,0,0,0.6)";
-				ctx.fillRect(0, s - 40, s, 40);
 				ctx.beginPath();
 				ctx.arc(30, 30, 22, 0, Math.PI * 2);
 				ctx.fill();
-				ctx.fillStyle = ctx.strokeStyle = theme.fg;
+				ctx.strokeStyle = theme.fg;
 				ui.drawIcon(ctx, icon, 17, 17, 26);
-				ctx.font = ui.font(22);
-				ctx.textAlign = "center";
-				ctx.textBaseline = "middle";
-				ctx.fillText(ui.ellipsize(ctx, o.title, s - 20), s / 2, s - 19);
 			}
 			ctx.restore();
 			ctx.globalAlpha = 1;
@@ -199,7 +179,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const noteText = note.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: NOTE_PAD_X, y: NOTE_PAD_Y, h: 72 }));
 
 	const galleryTitle = galleryPanel.add(new ui.Label({ text: "Gallery", size: 34, bold: true, x: 24, y: 14, h: 50 }));
-	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, cell: 250, onSelect: (e) => showEntry(e) }));
+	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, cell: 250, bg: null, empty: "No results yet", onSelect: (e) => showEntry(e) }));
 	// from the panel's size: the Desktop View's window re-flows it
 	galleryPanel.onResize = () => {
 		galleryTitle.w = gallery.w = galleryPanel.width - 48;

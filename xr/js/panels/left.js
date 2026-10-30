@@ -1,5 +1,5 @@
 // Input panel: the workflow's inputs, controls for store.groups.left, all edited in place: sliders and text fields take typed values, COMBO / IMAGE inputs drop down a filtered option list.
-import { Widget, drawTint, ellipsize, font, inRect, theme } from "../ui.js";
+import { SWITCH_W, Widget, drawSwitch, drawTint, ellipsize, font, inRect, theme } from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
 // Pixaroma "Sizes" state, same math as the node's core.mjs: the stored [a, b] pair is oriented (landscape = wider,
@@ -115,18 +115,11 @@ class GroupSwitch extends Widget {
 			ctx.arc(34, cy, 11, 0, Math.PI * 2);
 			ctx.fillStyle = g.color || "#888";
 			ctx.fill();
-			const sw = 92, sh = 44, sx = this.w - sw - 24;
+			const sx = this.w - SWITCH_W - 24;
 			ctx.font = font(30);
 			ctx.fillStyle = on ? theme.fg : theme.muted;
 			ctx.fillText(ellipsize(ctx, g.label, sx - 80), 60, cy + 1);
-			ctx.beginPath();
-			ctx.roundRect(sx, cy - sh / 2, sw, sh, sh / 2);
-			ctx.fillStyle = on ? theme.accent : theme.surfaceHi;
-			ctx.fill();
-			ctx.beginPath();
-			ctx.arc(on ? sx + sw - sh / 2 : sx + sh / 2, cy, sh / 2 - 6, 0, Math.PI * 2);
-			ctx.fillStyle = "#fff";
-			ctx.fill();
+			drawSwitch(ctx, sx, cy, on);
 		});
 	}
 }

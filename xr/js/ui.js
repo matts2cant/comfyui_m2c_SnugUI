@@ -182,6 +182,30 @@ export class Label extends Widget {
 	}
 }
 
+// the caption strip along the bottom of the s x s tile at x, y: the text centered, ellipsized to s - pad
+export function drawCaption(ctx, text, x, y, s, pad = 16) {
+	ctx.fillStyle = "rgba(0,0,0,0.6)";
+	ctx.fillRect(x, y + s - 40, s, 40);
+	ctx.font = font(22);
+	ctx.fillStyle = theme.fg;
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	ctx.fillText(ellipsize(ctx, text, s - pad), x + s / 2, y + s - 19);
+}
+
+// an on / off switch SWITCH_W wide, its left edge at x, centered on cy
+export const SWITCH_W = 92;
+export function drawSwitch(ctx, x, cy, on) {
+	const h = 44;
+	rrect(ctx, x, cy - h / 2, SWITCH_W, h, h / 2);
+	ctx.fillStyle = on ? theme.accent : theme.surfaceHi;
+	ctx.fill();
+	ctx.beginPath();
+	ctx.arc(on ? x + SWITCH_W - h / 2 : x + h / 2, cy, h / 2 - 6, 0, Math.PI * 2);
+	ctx.fillStyle = "#fff";
+	ctx.fill();
+}
+
 // Lucide icon (icons.js) in the s x s box at x, y, stroked with the current strokeStyle
 export function drawIcon(ctx, name, x, y, s) {
 	ctx.save();
@@ -232,14 +256,7 @@ export class Toggle extends Widget {
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
 		ctx.fillText(ellipsize(ctx, this.label, w - 160), 24, h / 2 + 1);
-		const sw = 92, sh = 44, sx = w - sw - 24, sy = (h - sh) / 2;
-		rrect(ctx, sx, sy, sw, sh, sh / 2);
-		ctx.fillStyle = this.value ? theme.accent : theme.surfaceHi;
-		ctx.fill();
-		ctx.beginPath();
-		ctx.arc(this.value ? sx + sw - sh / 2 : sx + sh / 2, h / 2, sh / 2 - 6, 0, Math.PI * 2);
-		ctx.fillStyle = "#fff";
-		ctx.fill();
+		drawSwitch(ctx, w - SWITCH_W - 24, h / 2, this.value);
 	}
 	onClick(p) {
 		this.value = !this.value;
@@ -805,10 +822,11 @@ export class Combo extends TextField {
 	}
 }
 
-// items: [{ url or image (a canvas), label, value }]; the tile whose value is `selected` is outlined
+// items: [{ url or image (a canvas), label, value }]; the tile whose value is `selected` is outlined. bg: the colour behind the
+// tiles (null: none), empty: the text shown without items. A subclass may draw its own tiles (drawTile).
 export class ImageGrid extends Scrollable {
 	constructor(o) {
-		super({ items: [], selected: undefined, cell: 200, gap: 12, w: 600, h: 600, ...o });
+		super({ items: [], selected: undefined, cell: 200, gap: 12, bg: theme.bg, empty: "", w: 600, h: 600, ...o });
 	}
 	grid() {
 		const cols = Math.max(1, Math.floor((this.w + this.gap) / (this.cell + this.gap)));
@@ -835,43 +853,45 @@ export class ImageGrid extends Scrollable {
 		if (i >= 0) this.onSelect?.(this.items[i], i);
 	}
 	draw(ctx) {
-		const g = this.grid(), r = 14;
+		const g = this.grid();
 		this.clip(ctx, theme.radius * 0.7);
-		ctx.fillStyle = theme.bg;
-		ctx.fillRect(0, 0, this.w, this.h);
-		const firstRow = Math.floor(this.scroll / g.step), lastRow = Math.ceil((this.scroll + this.h) / g.step);
-		const end = Math.min(this.items.length, (lastRow + 1) * g.cols);
-		for (let i = firstRow * g.cols; i < end; i++) {
-			const it = this.items[i];
-			const x = (i % g.cols) * g.step, y = Math.floor(i / g.cols) * g.step - this.scroll, s = g.cw;
-			ctx.save();
-			rrect(ctx, x, y, s, s, r);
-			ctx.clip();
-			ctx.fillStyle = theme.surface;
-			ctx.fillRect(x, y, s, s);
-			const img = it.image ?? (it.url ? this.image(it.url) : null);
-			if (img) drawCover(ctx, img, x, y, s);
-			if (it.label) {
-				ctx.fillStyle = "rgba(0,0,0,0.6)";
-				ctx.fillRect(x, y + s - 40, s, 40);
-				ctx.font = font(22);
-				ctx.fillStyle = theme.fg;
-				ctx.textAlign = "center";
-				ctx.textBaseline = "middle";
-				ctx.fillText(ellipsize(ctx, it.label, s - 16), x + s / 2, y + s - 19);
-			}
-			if (this.hover && i === this.hotItem) {
-				ctx.fillStyle = "rgba(255,255,255,0.14)";
-				ctx.fillRect(x, y, s, s);
-			}
-			ctx.restore();
-			if (this.selected === undefined || it.value !== this.selected) continue;
-			rrect(ctx, x, y, s, s, r);
-			ctx.lineWidth = 7;
-			ctx.strokeStyle = theme.accent;
-			ctx.stroke();
+		if (this.bg) {
+			ctx.fillStyle = this.bg;
+			ctx.fillRect(0, 0, this.w, this.h);
 		}
+		if (!this.items.length && this.empty) {
+			ctx.font = font(30);
+			ctx.fillStyle = theme.muted;
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(this.empty, this.w / 2, 60);
+		}
+		// the rows in view
+		const first = Math.floor(this.scroll / g.step) * g.cols, end = Math.min(this.items.length, Math.ceil((this.scroll + this.h) / g.step) * g.cols);
+		for (let i = first; i < end; i++) this.drawTile(ctx, this.items[i], i, (i % g.cols) * g.step, Math.floor(i / g.cols) * g.step - this.scroll, g.cw);
 		this.drawBar(ctx);
+	}
+	// the i-th item's s x s tile at x, y: its image cover-cropped under its caption, outlined when selected
+	drawTile(ctx, it, i, x, y, s) {
+		const r = 14;
+		ctx.save();
+		rrect(ctx, x, y, s, s, r);
+		ctx.clip();
+		ctx.fillStyle = theme.surface;
+		ctx.fillRect(x, y, s, s);
+		const img = it.image ?? (it.url ? this.image(it.url) : null);
+		if (img) drawCover(ctx, img, x, y, s);
+		if (it.label) drawCaption(ctx, it.label, x, y, s);
+		if (this.hover && i === this.hotItem) {
+			ctx.fillStyle = "rgba(255,255,255,0.14)";
+			ctx.fillRect(x, y, s, s);
+		}
+		ctx.restore();
+		if (this.selected === undefined || it.value !== this.selected) return;
+		rrect(ctx, x, y, s, s, r);
+		ctx.lineWidth = 7;
+		ctx.strokeStyle = theme.accent;
+		ctx.stroke();
 	}
 }
 

@@ -162,8 +162,9 @@ Label{text, size, color, align, wrap}, Button{text, icon, round, onClick, varian
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
-Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell} (scrollable, the
-  `selected` value's tile outlined),
+Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty} (scrollable, the
+  `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; a subclass
+  draws its own tiles with `drawTile(ctx, item, i, x, y, s)`, as center's Gallery does),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 List/ImageGrid thumbnails (`url`) load through a module-level cache of the 100 used last; `setItems` drops the widget's images of
 the items gone.
@@ -664,8 +665,9 @@ another Lucide icon's path data under its name and change the name where it is u
   `drawIcon(ctx, name, x, y, s)` (stroked in the current strokeStyle), `drawCover(ctx, img, x, y, s)`, and the drawing helpers the
   panels' own widgets share: `font(size, bold)`, `tint(ctx, widget, x, y, w, h, r)` (a widget's hover / pressed tint, none when
   disabled) and `drawTint(ctx, pressed, x, y, w, h, r)` (a part's: one of its buttons, rows or tiles), `inRect(p, r)` (a pointer
-  event's local point in a part's box) and `parseNumber(text)` (a typed number, "," accepted, or null: the Slider's value and the
-  LoRA weight).
+  event's local point in a part's box), `parseNumber(text)` (a typed number, "," accepted, or null: the Slider's value and the
+  LoRA weight), `drawCaption(ctx, text, x, y, s, pad)` (a tile's caption strip: ImageGrid, the output tiles) and
+  `drawSwitch(ctx, x, cy, on)` (`SWITCH_W` wide: Toggle, the Group Switch rows).
 - localStorage only through prefs.js (`pref(key)`, `prefJSON(key)` -> string / parsed value or null, `setPref(key, value)`): storage that
   throws (disabled, some private windows) reads as empty and drops writes, so the page works without it. Callers keep their key
   names and their own validation.
