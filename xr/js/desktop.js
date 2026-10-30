@@ -5,13 +5,13 @@
 // the toolbar (whose buttons toggle the windows), the output row beside it and the output pop-up by the cog, without chrome.
 // Geometry and open state are kept in localStorage and pushed back inside the browser window when it is smaller.
 // Phones (a narrow window, or a short landscape one) get no windows: one panel at a time over the image, and a dock.
-// Units: CSS px (the page; EDGE, MARGIN, CASCADE, DECK_GAP), panel px (a panel's layout, its widgets, toolbar.js's PM / PB / BAR),
+// Units: CSS px (the page; EDGE, MARGIN, CASCADE, DECK_GAP), panel px (a panel's layout, its widgets, the dock's PM / PB / BAR),
 // and canvas px = panel px x panel.scale; SCALE and PHONE are CSS px per panel px.
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
-import { PB } from "./panels/toolbar.js";
-import { TILE_GAP, TILE_R } from "./panels/center.js";
+import { TIER_H } from "./panels/toolbar.js";
+import { TILE_GAP, TILE_R, COG } from "./panels/center.js";
 
 const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
@@ -19,9 +19,20 @@ const MARGIN = 12, CASCADE = 32, EDGE = 16, DECK_GAP = 8;
 const PHONE = 0.6; // phones: CSS px per panel px
 const PHONE_W = 600, LANDSCAPE_H = 500; // phones: portrait under PHONE_W wide, landscape when wider than tall and under LANDSCAPE_H
 const TOAST_MS = 4000; // phones: error toast
+// phones: the dock's grid is the output row's, so the tray (the row, PM padding) lines up with it: margin PM = the tiles' gap,
+// button PB = the cog (the tiles take it too), BAR the tab bar's thickness (and the landscape run column's width); panel px
+const PM = TILE_GAP, PB = COG, BAR = PB + 2 * PM;
 
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>`;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// phones: n buttons along a side len px long, PM from both ends, the rest spread evenly between them (at least PM, the buttons
+// shrink below PB when the side is too short for that): the tab bar's columns, the rail's rows and the run column's beside it.
+// -> { s: button size, at(i): offset of the i-th }
+function spread(len, n) {
+	const s = Math.min(PB, (len - (n + 1) * PM) / n), gap = (len - 2 * PM - n * s) / (n - 1);
+	return { s, at: (i) => PM + i * (s + gap) };
+}
 
 // moves the elements into parent, in order, unless they are there already (a move would drop their pointer capture)
 function adopt(parent, ...els) {
@@ -101,14 +112,14 @@ function load() {
 // specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel
 // its content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content
 // width w). Only the first one is open on the first visit (on phones: at page load). note: a panel shown alone at the center of
-// the image while shows.note (the stage's message). deck: { toolbar, tabs, phone, shows, row, popup, pick, rowH, rowTile, cogRect,
+// the image while shows.note (the stage's message). deck: { toolbar, arrange, tabs, shows, row, popup, pick, rowH, rowTile, cogRect,
 // closePopup, ringPick, at }: the toolbar, row and pop-up panels; shows: center's { row, popup, note }, what has something to
 // show; rowH: the row's tallest (panel px); cogRect(): the cog's box in the row (panel px); at() ->
-// "<top|bottom>-<left|center|right>", where the deck is pinned; for phones, the toolbar's tab bar (tabs) and layouts
-// (phone(mode, slot)), the output button (pick, ringed by ringPick(on) while the tray is open), the row's tile size and direction
-// (rowTile(size, vertical)). relayout: main.js's layout pass, which calls update(); the browser window's and the phones' own
-// changes go through it.
-export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, shows, row, popup, pick, rowH, rowTile, cogRect, closePopup, ringPick, at }, relayout) {
+// "<top|bottom>-<left|center|right>", where the deck is pinned; for phones, the toolbar's arrange(dock) (the boxes it draws into),
+// main.js's panel buttons (tabs, moved to the tab bar), the output button (pick, ringed by ringPick(on) while the tray is open),
+// the row's tile size and direction (rowTile(size, vertical)). relayout: main.js's layout pass, which calls update(); the browser
+// window's and the phones' own changes go through it.
+export function createDesktop(specs, note, { toolbar, arrange, tabs, shows, row, popup, pick, rowH, rowTile, cogRect, closePopup, ringPick, at }, relayout) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -120,9 +131,16 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	pick.canvas.className = "pick";
 	const phone = el("div", "phone", document.body), strip = el("div", "strip", phone), pad = el("div", "pad", phone), toast = el("div", "toast", phone);
 	toast.hidden = true;
-	strip.style.borderRadius = (TILE_R + TILE_GAP) * PHONE + "px"; // around the tiles' corners, the padding further out
+	strip.style.borderRadius = (TILE_R + PM) * PHONE + "px"; // around the tiles' corners, the padding further out
+	// phones: the tab bar (portrait) or rail (landscape) holding main.js's panel buttons, spread along its longer side
+	const tabBar = new ui.Panel({ name: "tabs", widthM: BAR / ui.PX_PER_M, heightM: BAR / ui.PX_PER_M, radius: 0 });
+	tabBar.onResize = () => {
+		const across = tabBar.width >= tabBar.height, { s, at } = spread(across ? tabBar.width : tabBar.height, tabs.length), c = (BAR - s) / 2;
+		tabs.forEach((b, i) => Object.assign(b, { x: across ? at(i) : c, y: across ? c : at(i), w: s, h: s }));
+	};
+	const gap = PM * PHONE; // phones: every margin, in CSS px
 	const isPhone = () => !!layout;
-	for (const p of [toolbar, tabs, row, popup, pick]) bindPanel(p, isPhone);
+	for (const p of [toolbar, tabBar, row, popup, pick]) bindPanel(p, isPhone);
 	// the tray closes on a press anywhere but on it, its pop-up and the output button
 	addEventListener("pointerdown", (e) => { if (![strip, popup.canvas, pick.canvas].some((n) => n.contains(e.target))) closeTray(); }, true);
 	let tray = false; // phones: the output row open as the tray
@@ -133,7 +151,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		layer.addEventListener("contextmenu", (e) => e.preventDefault());
 	}
 	let shown = false, lastNew = null;
-	let layout = null, sheet = specs[0].name, bars = null, gap = 0, stage = null, toastTimer = 0; // phones: "portrait" | "landscape", the open panel, the toolbar's sizes, its margin (CSS px), the image's box
+	let layout = null, sheet = specs[0].name, stage = null, toastTimer = 0; // phones: "portrait" | "landscape", the open panel, the image's box
 	let top = Math.max(0, ...Object.values(saved).map((s) => s.z ?? 0));
 
 	const save = () => {
@@ -282,6 +300,27 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		p.setPx(pw, ph, PHONE * devicePixelRatio);
 	}
 
+	// phones: the boxes (panel px) of the toolbar at w x h on the dock's grid, the output button's slot first in its run row / column
+	// while the row has something. Portrait: the status tier PM from every side over the tab bar's columns: Cancel over the first
+	// tab (the second, the slot over the first), Generate from the next one to the last. Landscape: on the rail's rows, the status
+	// over all but the last three (four with the slot, on the fourth last), Cancel, then Generate over the last two.
+	function dock(w, h) {
+		const n = tabs.length, i = shows.row ? 1 : 0;
+		if (layout === "portrait") {
+			const { s, at } = spread(w, n), y = h - PM - s;
+			return {
+				status: { x: PM, y: PM, w: w - 2 * PM, h: TIER_H }, slot: { x: at(0), y, s },
+				cancel: { x: at(i), y, w: s, h: s }, generate: { x: at(i + 1), y, w: at(n - 1) + s - at(i + 1), h: s },
+			};
+		}
+		const { s, at } = spread(h, n), x = (w - s) / 2;
+		return {
+			vertical: true,
+			status: { x: 4, y: PM, w: w - 8, h: at(n - 4 - i) + s - PM }, // the word takes all the width it can
+			slot: { x, y: at(n - 4), s }, cancel: { x, y: at(n - 3), w: s, h: s }, generate: { x, y: at(n - 2), w: s, h: at(n - 1) + s - at(n - 2) },
+		};
+	}
+
 	const boxStyle = (e, [x, y, w, h]) => Object.assign(e.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
 
 	// Phones, inside the safe area (the phone layer's padding is env(safe-area-inset-*)). Portrait: the image over the dock (toolbar
@@ -298,8 +337,8 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		const cs = getComputedStyle(phone), [t, r, b, l] = ["Top", "Right", "Bottom", "Left"].map((s) => parseFloat(cs["padding" + s]));
 		const W = innerWidth, H = innerHeight, vv = visualViewport, end = vv.offsetTop + vv.height;
 		const kb = keyboard.isEditing() && H - end > 1, top = kb ? Math.max(t, vv.offsetTop) : t;
-		const spec = specs.find((s) => s.name === sheet), th = bars.size * PHONE, bar = bars.bar * PHONE;
-		adopt(phone, toolbar.canvas, tabs.canvas, popup.canvas, pick.canvas);
+		const spec = specs.find((s) => s.name === sheet), th = (layout === "portrait" ? 3 * PM + TIER_H + PB : BAR) * PHONE, bar = BAR * PHONE;
+		adopt(phone, toolbar.canvas, tabBar.canvas, popup.canvas, pick.canvas);
 		adopt(strip, row.canvas);
 		if (spec) adopt(phone, spec.panel.canvas);
 		let sheetBox = null, stripBox = null, toolbarBox = null, tabsBox = null, padBox = null;
@@ -331,9 +370,9 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 			put(spec.panel, sheetBox);
 		}
 		put(toolbar, toolbarBox);
-		put(tabs, tabsBox);
-		const { x, y, s } = bars.slot;
-		put(pick, shows.row && toolbarBox && [toolbarBox[0] + x * PHONE, toolbarBox[1] + y * PHONE, s * PHONE, s * PHONE]);
+		put(tabBar, tabsBox);
+		const slot = toolbarBox && dock(toolbar.width, toolbar.height).slot;
+		put(pick, shows.row && slot && [toolbarBox[0] + slot.x * PHONE, toolbarBox[1] + slot.y * PHONE, slot.s * PHONE, slot.s * PHONE]);
 		pad.hidden = !padBox;
 		if (padBox) boxStyle(pad, padBox);
 		Object.assign(toast.style, { left: stage.x + stage.w / 2 + "px", top: stage.y + stage.h - gap + "px", maxWidth: stage.w - 4 * gap + "px" });
@@ -387,8 +426,8 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 
 	// on: the Desktop View with its windows shown (not hidden by H); also re-places them when their content changed. The deck
 	// goes first: the windows' first placement is measured from it. Phones: narrower than 600 px (portrait), or wider than tall
-	// and shorter than 500 px (landscape); the output row and the toolbar switch layouts with them, in that order: the toolbar
-	// keeps its slot free while the output button shows, which the row's layout decides.
+	// and shorter than 500 px (landscape); the output row, the panel buttons (to the tab bar and back) and the toolbar switch layouts
+	// with them, the toolbar keeping its slot free while the output button shows (the row has something).
 	function update(on) {
 		shown = on;
 		const mode = on && (innerWidth < PHONE_W ? "portrait" : innerWidth > innerHeight && innerHeight < LANDSCAPE_H ? "landscape" : null) || null;
@@ -398,9 +437,15 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 			rowTile(mode && PB, mode === "landscape");
 			setTray(false);
 			strip.classList.toggle("v", mode === "landscape");
+			if (mode) {
+				for (const b of tabs) if (b.panel !== tabBar) {
+					b.panel.remove(b);
+					tabBar.add(b);
+				}
+				tabBar.onResize();
+			}
 		}
-		bars = toolbarPhone(mode, shows.row);
-		gap = bars.margin * PHONE;
+		arrange(mode && dock);
 		if (changed && !mode) toolbar.setPx();
 		renderDeck();
 		for (const win of wins) render(win);

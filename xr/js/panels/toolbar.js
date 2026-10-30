@@ -1,30 +1,17 @@
 // Toolbar: one rounded slab, the same panel in both views (on the lectern in VR, in the Desktop View's deck).
 // Top tier: the run status and its timer over the node and total progress bars; bottom row: main.js's round panel buttons
 // (`tabs`), a separator and the view button, then Cancel and Generate at the right. Its width follows the icon row, at least
-// MIN_ICONS buttons. Phones (desktop.js calls phone(mode)): the panel buttons move to the `tabs` panel, the tab bar or rail, the
-// view button hides and the toolbar re-flows to the box it is given: the status over Cancel and Generate (portrait), or the run
-// column (landscape): status, timer, bars, Cancel, then Generate as a tall play pill. phone(mode, true) keeps the first place of
-// the run row / column free for a button of the caller's (desktop.js puts the output button there).
-import { TILE_GAP, COG } from "./center.js";
-
+// MIN_ICONS buttons. Phones (desktop.js calls arrange(dock)): the panel buttons leave for desktop.js's tab bar, the view button
+// hides and the toolbar draws the status, Cancel and Generate into the boxes the dock gives it at its size: the status over Cancel
+// and Generate (portrait), or the run column (landscape, `vertical`): status, timer, bars, Cancel, then Generate as a tall play pill.
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
-const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12, TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR;
-// phones: one grid with the output row, so the tray (the row, PM padding) lines up with the dock: margin PM = the tiles' gap, button
-// PB = the cog (desktop.js gives it to the tiles too), BAR the tab bar's thickness (and the landscape run column's width)
-export const PM = TILE_GAP, PB = COG, BAR = PB + 2 * PM;
+const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12;
+export const TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR; // the status tier: status line, node and total bars
 
 const clock = (ms) => {
 	const s = Math.floor(ms / 1000);
 	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
-
-// phones: n buttons along a side len px long, PM from both ends, the rest spread evenly between them (at least PM, the buttons
-// shrink below PB when the side is too short for that): the tab bar's columns, the rail's rows and the run column's beside it.
-// -> { s: button size, at(i): offset of the i-th }
-function spread(len, n) {
-	const s = Math.min(PB, (len - (n + 1) * PM) / n), gap = (len - 2 * PM - n * s) / (n - 1);
-	return { s, at: (i) => PM + i * (s + gap) };
-}
 
 export function createToolbar({ THREE, store, client, ui }, tabs, view, onError) {
 	const { theme } = ui;
@@ -33,10 +20,10 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	// phones: the status word (shrunk to the column) over the timer, then the bars side by side filling upward; a tap on "Error"
 	// or its timer shows the whole message (onError).
 	class Status extends ui.Widget {
-		hitTest(x, y) { return mode === "landscape" && state().error && y < this.y + 2 * STATUS_H ? super.hitTest(x, y) : null; }
+		hitTest(x, y) { return vertical && state().error && y < this.y + 2 * STATUS_H ? super.hitTest(x, y) : null; }
 		onClick() { onError(state().texts[0]); }
 		draw(ctx) {
-			const { w } = this, s = state(), v = mode === "landscape";
+			const { w } = this, s = state(), v = vertical;
 			ctx.textBaseline = "middle";
 			ctx.font = `600 28px ui-monospace, Consolas, monospace`;
 			ctx.fillStyle = theme.muted;
@@ -86,70 +73,46 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "toolbar", widthM: W / ui.PX_PER_M, heightM: H / ui.PX_PER_M, radius: RADIUS });
 	group.add(panel.mesh);
-	const bar = new ui.Panel({ name: "tabs", widthM: BAR / ui.PX_PER_M, heightM: BAR / ui.PX_PER_M, radius: 0 });
 	const status = panel.add(new Status());
 	const sep = panel.add(new Sep({ x: sepX, y: rowY + 18, w: 2, h: B - 36 }));
 	for (const b of [...tabs, view]) panel.add(Object.assign(b, { y: rowY, w: B, h: B }));
 	const cancel = panel.add(new ui.Button({ icon: "x", round: true, onClick: () => client.interrupt() }));
 	const generate = panel.add(new ui.Button({ text: "Generate", size: 34, variant: "accent", round: true, onClick: () => store.generate() }));
-	let mode = null, slotted = false;
-	const slot = { x: 0, y: 0, s: 0 }; // phones: the free place, in panel px
+	let dock = null, vertical = false;
 
 	function layout() {
-		const w = panel.width, h = panel.height;
-		view.visible = sep.visible = !mode;
-		panel.radius = mode ? 0 : RADIUS;
-		generate.text = mode === "landscape" ? "" : "Generate";
-		generate.icon = mode === "landscape" ? "play" : null;
-		if (!mode) {
+		const boxes = dock?.(panel.width, panel.height);
+		vertical = !!boxes?.vertical;
+		view.visible = sep.visible = !dock;
+		panel.radius = dock ? 0 : RADIUS;
+		generate.text = vertical ? "" : "Generate";
+		generate.icon = vertical ? "play" : null;
+		if (!boxes) {
 			tabs.forEach((b, i) => { b.x = M + i * (B + GAP); });
 			view.x = viewX;
 			Object.assign(status, { x: M + 8, y: M, w: W - 2 * M - 16, h: TIER_H });
 			Object.assign(cancel, { x: W - M - GEN_W - GAP - B, y: rowY, w: B, h: B });
 			Object.assign(generate, { x: W - M - GEN_W, y: rowY, w: GEN_W, h: B });
-		} else if (mode === "portrait") {
-			// on the tab bar's columns: Cancel over the first tab (the second, the slot over the first), Generate from the next one
-			// to the last
-			const n = tabs.length, { s, at } = spread(w, n), y = h - PM - s, i = slotted ? 1 : 0;
-			Object.assign(status, { x: PM, y: PM, w: w - 2 * PM, h: TIER_H });
-			Object.assign(slot, { x: at(0), y, s });
-			Object.assign(cancel, { x: at(i), y, w: s, h: s });
-			Object.assign(generate, { x: at(i + 1), y, w: at(n - 1) + s - at(i + 1), h: s });
 		} else {
-			// on the rail's rows: the status over all but the last three (four with the slot, on the fourth last), Cancel, then
-			// Generate over the last two
-			const n = tabs.length, { s, at } = spread(h, n), x = (w - s) / 2, i = slotted ? 1 : 0;
-			Object.assign(status, { x: 4, y: PM, w: w - 8, h: at(n - 4 - i) + s - PM }); // the word takes all the width it can
-			Object.assign(slot, { x, y: at(n - 4), s });
-			Object.assign(cancel, { x, y: at(n - 3), w: s, h: s });
-			Object.assign(generate, { x, y: at(n - 2), w: s, h: at(n - 1) + s - at(n - 2) });
+			Object.assign(status, boxes.status);
+			Object.assign(cancel, boxes.cancel);
+			Object.assign(generate, boxes.generate);
 		}
 		panel.invalidate();
 	}
 	panel.onResize = layout;
 	layout();
 
-	// the panel buttons spread along the longer side: a tab bar, or a rail when taller than wide
-	bar.onResize = () => {
-		const across = bar.width >= bar.height, { s, at } = spread(across ? bar.width : bar.height, tabs.length), c = (BAR - s) / 2;
-		tabs.forEach((b, i) => Object.assign(b, { x: across ? at(i) : c, y: across ? c : at(i), w: s, h: s }));
-	};
-
-	// mode: "portrait" | "landscape" (phones) | null (desk / VR, back at its world size through setPx()); withSlot: keep the slot
-	// free. Returns the toolbar's thickness across the dock (portrait: height, landscape: width), the tab bar's, the margin (panel
-	// px) and the slot ({ x, y, s }, panel px, kept up to date as the toolbar re-flows).
-	function phone(m, withSlot = false) {
-		mode = m;
-		slotted = withSlot;
-		const host = m ? bar : panel;
-		for (const b of tabs) {
-			if (b.panel === host) continue;
+	// phones: dock(w, h) -> { status, cancel, generate: { x, y, w, h }, vertical }, the boxes at the toolbar's size (panel px), re-read
+	// as it re-flows; the panel buttons must be elsewhere (desktop.js's tab bar). null: back to the desk / VR row, the panel buttons
+	// on it again (desktop.js then calls setPx(): the world size).
+	function arrange(d) {
+		dock = d;
+		if (!d) for (const b of tabs) if (b.panel !== panel) {
 			b.panel.remove(b);
-			host.add(Object.assign(b, { y: rowY, w: B, h: B }));
+			panel.add(Object.assign(b, { y: rowY, w: B, h: B }));
 		}
-		if (m) bar.onResize();
 		layout();
-		return { size: m === "portrait" ? 3 * PM + TIER_H + PB : BAR, bar: BAR, margin: PM, slot };
 	}
 
 	// run status: the run being executed (since its first node) and the node ids of every prompt queued from here (its node count)
@@ -243,5 +206,5 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	store.addEventListener("change", (e) => { if (e.detail.key === "switchGroups") checkOutputs(); });
 	showStatus();
 
-	return { group, panel, tabs: bar, phone };
+	return { group, panel, arrange };
 }

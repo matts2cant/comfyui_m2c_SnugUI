@@ -188,7 +188,7 @@ const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: 
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
 )), center.note, {
-	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, shows: center.shows, row: center.row, popup: center.popup, pick: center.pick,
+	toolbar: toolbar.panel, arrange: toolbar.arrange, tabs, shows: center.shows, row: center.row, popup: center.popup, pick: center.pick,
 	rowH: center.rowH, rowTile: center.rowTile, cogRect: center.cogRect, closePopup: center.closePopup, ringPick: center.ringPick, at: config.toolbarAt,
 }, relayout);
 
