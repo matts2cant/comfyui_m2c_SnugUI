@@ -142,6 +142,8 @@ gives the base, where a group that was on keeps its members' own modes (the desk
   keybindings: [{combo:{key:"v", alt:true}, commandId:"AppModeXR.Open"}], actionBarButtons: [{icon, label:"Open in VR", tooltip, onClick}] })`.
 - On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else `window.open("/appmode-xr",
   "appmode-xr")` first (before any await, for the popup blocker), then build the snapshot and POST it. Toast success/error via `app.extensionManager.toast`.
+- Node definitions come from `GET /object_info/<class>`, one request per class for the page's lifetime (`nodeDef` caches the promise,
+  so the inputs and outputs built in parallel share it; a failed request is dropped and retried by the next snapshot).
 
 ## VR page architecture
 ### Shared contracts (implement exactly; panels depend on them)

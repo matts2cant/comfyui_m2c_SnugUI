@@ -22,11 +22,13 @@ function findWidget(node, name) {
     return dup && node.widgets?.filter((w) => w.name === dup[1])[Number(dup[2])];
 }
 
+// one request per class: the snapshot builds every input and output at once; a failed request is dropped so the next snapshot retries
 const defCache = new Map();
-async function nodeDef(classType) {
+function nodeDef(classType) {
     if (!defCache.has(classType)) {
-        const res = await api.fetchApi(`/object_info/${encodeURIComponent(classType)}`);
-        defCache.set(classType, (await res.json())[classType]);
+        const def = api.fetchApi(`/object_info/${encodeURIComponent(classType)}`).then((res) => res.json()).then((info) => info[classType]);
+        def.catch(() => defCache.delete(classType));
+        defCache.set(classType, def);
     }
     return defCache.get(classType);
 }
