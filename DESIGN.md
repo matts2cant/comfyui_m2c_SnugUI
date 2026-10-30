@@ -56,8 +56,8 @@ xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM envi
 ```
 
 ## Server (`__init__.py`)
-- `GET /appmode-xr` → `xr/index.html` (Cache-Control: no-cache). `GET /appmode-xr/static/{path}` → files under `xr/`
-  (no-cache, correct JS MIME `text/javascript`, path containment enforced).
+- `GET /appmode-xr` → `xr/index.html` (Cache-Control: no-cache, no-store, must-revalidate). `GET /appmode-xr/static/{path}` → files
+  under `xr/` (the same Cache-Control, correct JS MIME `text/javascript`, path containment enforced).
 - `POST /appmode-xr/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
   `<ComfyUI user directory>/appmode_xr/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": id})`
   (no sid → all sockets). Returns `{"id": id}`.
@@ -161,17 +161,21 @@ export class Panel {                // a canvas-textured plane
   add(widget) / remove(widget) / clear()
   invalidate()                      // redraw before next frame (Panel.updateAll() called by main each frame)
   pointer(type, x, y, pointerId)    // type: "move"|"down"|"up"|"leave"; x,y canvas px; routed to widgets (capture on down)
+  hitTest(x, y) -> widget|null      // the topmost widget under (x,y)
   scroll(dy, x, y)                  // thumbstick/wheel; routed to the scrollable widget under (x,y)
   setPx(w, h, scale)                // Desktop View: w x h px (any size) drawn at scale canvas px per px; no arguments = the world
                                     // size at scale 1 (VR). A size change calls panel.onResize(), the module's re-flow
+  resize(widthM, heightM)           // new world size at the same density; widgets keep their px positions, the caller re-flows them
 }
-export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; draw(ctx){}; contains(x,y);
-  onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false } ; invalidate() }
+export class Widget { x=0; y=0; w=0; h=0; visible=true; panel; parent (its ScrollView or Slider, null on the panel);
+  hover; pressed; disabled; dragCapture=false (true: keeps the pointer on drag instead of handing it to a scrolling ancestor);
+  draw(ctx){}; contains(x,y); hitTest(x,y) -> this|child|null; abs() -> {x, y} (top-left in panel px); relayout(){};
+  onDown(p){}; onMove(p){}; onUp(p){}; onClick(p){}; onScroll(dy){ return false }; canScroll(){ return false }; invalidate() }
 // Built-ins (constructor takes one options object; all have x,y,w,h):
 Label{text, size, color, align, wrap}, Button{text, icon, round, onClick, variant:"default"|"accent"|"danger", toggled} (icon: an icons.js
   name, centered alone or left of the text, stroked in the text colour; round: circle / pill),
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
-List{items:[{label, value, sub?}], selected, onSelect, rowH} (scrollable),
+List{items:[{label, value, sub?}], selected, onSelect, rowH, outline} (scrollable; outline: an accent border, Combo's dropdown),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
 Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty} (scrollable, the
   `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; a subclass
@@ -289,7 +293,7 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   the stage's size or any of these changed. No host reads center's `mesh.visible` or its cog widget.
 Each panel module exports `export function createXPanel(...) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
 main.js also reads `panel`, the Prompt panel's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
-`closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
+`closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` / `rowH` (the tile size, for the deck) and `model` / `image`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
 `createToolbar(ctx, tabs, view, onError) -> { group, panel, arrange(dock) }` (main.js's panel buttons and view button, and

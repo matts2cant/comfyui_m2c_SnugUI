@@ -2,7 +2,7 @@
 
 Part of the `ComfyUI_matts2cant` package. Personal ComfyUI extension: tweak an App-mode workflow and generate from a Meta Quest 3 (Quest Browser, WebXR).
 An "Open in VR" button snapshots the current App-mode workflow; ComfyUI serves a WebXR page at `/appmode-xr`
-with the inputs on floating panels and the result image in the middle. No internet or CDN at runtime
+with the result image in the middle and, in VR, the inputs on a tilted lectern under it, one panel at a time. No internet or CDN at runtime
 (three.js is vendored in `xr/vendor/`).
 
 ## Setup
@@ -151,7 +151,7 @@ choice is remembered. Panels and images are not lit.
 - Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
-- Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, Del, arrows, Select all, Done). Tap to move
+- Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, New line in multi-line fields, Del, arrows, Select all, Done). Tap to move
   the caret, drag to select, double-tap for a word. Keyboard opens the Quest keyboard, which only inserts text at the caret
   (use Del and the arrows for the rest). Done, tapping elsewhere or Enter (single-line fields) applies the text; Escape reverts it.
 
