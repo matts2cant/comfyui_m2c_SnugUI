@@ -661,7 +661,11 @@ another Lucide icon's path data under its name and change the name where it is u
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
   `drag:false`/`bigStep`, Panel `bg:null` / `radius`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`, `ellipsize(ctx, text, maxW)`,
-  `drawIcon(ctx, name, x, y, s)` (stroked in the current strokeStyle), `drawCover(ctx, img, x, y, s)`.
+  `drawIcon(ctx, name, x, y, s)` (stroked in the current strokeStyle), `drawCover(ctx, img, x, y, s)`, and the drawing helpers the
+  panels' own widgets share: `font(size, bold)`, `tint(ctx, widget, x, y, w, h, r)` (a widget's hover / pressed tint, none when
+  disabled) and `drawTint(ctx, pressed, x, y, w, h, r)` (a part's: one of its buttons, rows or tiles), `inRect(p, r)` (a pointer
+  event's local point in a part's box) and `parseNumber(text)` (a typed number, "," accepted, or null: the Slider's value and the
+  LoRA weight).
 - localStorage only through prefs.js (`pref(key)`, `prefJSON(key)` -> string / parsed value or null, `setPref(key, value)`): storage that
   throws (disabled, some private windows) reads as empty and drops writes, so the page works without it. Callers keep their key
   names and their own validation.

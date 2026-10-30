@@ -3,6 +3,7 @@
 const NO_PREVIEW = "/loras_static/images/no-preview.png";
 const STEP = 0.05;
 const M = 24;
+const CHECK = 60, BTN = 56, VALUE = 120, X_W = 60, G = 8; // a stack row: checkbox, name, −, weight, +, ×
 
 const previewUrl = (url) => !url || /\.(mp4|webm)$/i.test(url) ? NO_PREVIEW : url;
 const round2 = (v) => Number(v.toFixed(2));
@@ -61,12 +62,7 @@ export function createRightPanel({ THREE, store, ui }) {
 	class Check extends ui.Widget {
 		draw(ctx) {
 			const s = 38, x = (this.w - s) / 2, y = (this.h - s) / 2;
-			if (this.hover || this.pressed) {
-				ctx.beginPath();
-				ctx.roundRect(0, 0, this.w, this.h, 12);
-				ctx.fillStyle = this.pressed ? ui.theme.pressed : ui.theme.hover;
-				ctx.fill();
-			}
+			ui.tint(ctx, this, 0, 0, this.w, this.h, 12);
 			ctx.beginPath();
 			ctx.roundRect(x, y, s, s, 8);
 			ctx.fillStyle = this.checked ? ui.theme.accent : ui.theme.surface;
@@ -98,24 +94,24 @@ export function createRightPanel({ THREE, store, ui }) {
 			const y = i * pitch;
 			const setStrength = (v) => edit(l, { strength: v, ...(Number(l.clipStrength) === Number(l.strength) && { clipStrength: v }) });
 			const shown = Number(l.strength).toFixed(2);
-			const rx = rw - 60 - 8 - 56 - 120 - 56; // left edge of the − button
+			const rx = rw - X_W - G - BTN - VALUE - BTN; // left edge of the − button
 			// tap to type the weight (accepts "," as decimal separator); anything that isn't a number reverts
 			const value = new TextField({
-				value: shown, size: 28, compact: true, x: rx + 56, y, w: 120, h,
+				value: shown, size: 28, compact: true, x: rx + BTN, y, w: VALUE, h,
 				onEdit: () => value.selectAll(),
 				onDone: (v) => {
-					const n = Number(v.trim().replace(",", "."));
+					const n = ui.parseNumber(v);
 					value.value = shown;
-					if (v.trim() && Number.isFinite(n)) setStrength(round2(n));
+					if (n !== null) setStrength(round2(n));
 				},
 			});
 			rows.push(
-				new Check({ checked: l.active, x: 0, y, w: 60, h, onClick: () => edit(l, { active: !l.active }) }),
-				new Label({ text: l.name, size: 30, color: l.active ? ui.theme.fg : ui.theme.muted, x: 68, y, w: rx - 68 - 8, h }),
-				new Button({ text: "−", size: 38, x: rx, y, w: 56, h, onClick: () => setStrength(round2(Number(l.strength) - STEP)) }),
+				new Check({ checked: l.active, x: 0, y, w: CHECK, h, onClick: () => edit(l, { active: !l.active }) }),
+				new Label({ text: l.name, size: 30, color: l.active ? ui.theme.fg : ui.theme.muted, x: CHECK + G, y, w: rx - CHECK - 2 * G, h }),
+				new Button({ text: "−", size: 38, x: rx, y, w: BTN, h, onClick: () => setStrength(round2(Number(l.strength) - STEP)) }),
 				value,
-				new Button({ text: "+", size: 38, x: rx + 176, y, w: 56, h, onClick: () => setStrength(round2(Number(l.strength) + STEP)) }),
-				new Button({ text: "×", size: 34, variant: "danger", x: rw - 60, y, w: 60, h, onClick: () => store.setLoras(node.nodeId, list.filter((_, j) => j !== i)) }),
+				new Button({ text: "+", size: 38, x: rx + BTN + VALUE, y, w: BTN, h, onClick: () => setStrength(round2(Number(l.strength) + STEP)) }),
+				new Button({ text: "×", size: 34, variant: "danger", x: rw - X_W, y, w: X_W, h, onClick: () => store.setLoras(node.nodeId, list.filter((_, j) => j !== i)) }),
 			);
 		});
 		if (!list.length) rows.push(new Label({ text: "No LoRAs yet, pick one below", size: 28, color: ui.theme.muted, x: 0, y: 20, w: rw, h: 56 }));

@@ -1,5 +1,5 @@
 // Input panel: the workflow's inputs, controls for store.groups.left, all edited in place: sliders and text fields take typed values, COMBO / IMAGE inputs drop down a filtered option list.
-import { Widget, theme } from "../ui.js";
+import { Widget, drawTint, ellipsize, font, inRect, theme } from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
 // Pixaroma "Sizes" state, same math as the node's core.mjs: the stored [a, b] pair is oriented (landscape = wider,
@@ -25,7 +25,7 @@ class SizePicker extends Widget {
 		this.value.sizes.forEach((pair, i) => list.push({ x: (i % 2) * (half + GAP), y: SIZES_Y + (i >> 1) * ROW, w: half, h: BTN_H, selected: i, text: sizeText(pair, this.value) }));
 		return list.map((b, id) => ({ ...b, id }));
 	}
-	partAt(p) { return this.parts().find((b) => p.lx >= b.x && p.lx < b.x + b.w && p.ly >= b.y && p.ly < b.y + b.h) ?? null; }
+	partAt(p) { return this.parts().find((b) => inRect(p, b)) ?? null; }
 	onMove(p) {
 		const part = this.partAt(p);
 		if (part?.id !== this.hot?.id) { this.hot = part; this.invalidate(); }
@@ -40,11 +40,11 @@ class SizePicker extends Widget {
 	draw(ctx) {
 		const { value: state } = this;
 		ctx.textBaseline = "middle";
-		ctx.font = `28px ${theme.font}`;
+		ctx.font = font(28);
 		ctx.fillStyle = theme.muted;
 		ctx.textAlign = "left";
 		ctx.fillText(this.label, 4, 22);
-		ctx.font = `600 34px ${theme.font}`;
+		ctx.font = font(34, true);
 		ctx.fillStyle = theme.fg;
 		ctx.textAlign = "right";
 		ctx.fillText(`${state.w} × ${state.h}`, this.w - 4, 22);
@@ -55,11 +55,8 @@ class SizePicker extends Widget {
 			ctx.roundRect(b.x, b.y, b.w, b.h, theme.radius * 0.7);
 			ctx.fillStyle = on ? theme.accent : theme.surface;
 			ctx.fill();
-			if (this.hover && b.id === this.hot?.id) {
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fill();
-			}
-			ctx.font = `600 ${b.orientation ? 28 : 30}px ${theme.font}`;
+			if (this.hover && b.id === this.hot?.id) drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, theme.radius * 0.7);
+			ctx.font = font(b.orientation ? 28 : 30, true);
 			ctx.fillStyle = theme.fg;
 			ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 1);
 		}
@@ -87,12 +84,12 @@ class GroupSwitch extends Widget {
 	}
 	draw(ctx) {
 		ctx.textBaseline = "middle";
-		ctx.font = `28px ${theme.font}`;
+		ctx.font = font(28);
 		ctx.fillStyle = theme.muted;
 		ctx.textAlign = "left";
 		ctx.fillText(this.label, 4, 22);
 		const tag = this.action === "bypass" ? "Bypass" : "Mute";
-		ctx.font = `600 24px ${theme.font}`;
+		ctx.font = font(24, true);
 		const tw = ctx.measureText(tag).width + 28;
 		ctx.beginPath();
 		ctx.roundRect(this.w - tw, 4, tw, 38, 10);
@@ -103,7 +100,7 @@ class GroupSwitch extends Widget {
 		ctx.fillText(tag, this.w - tw / 2, 24);
 		ctx.textAlign = "left";
 		if (!this.groups.length) {
-			ctx.font = `26px ${theme.font}`;
+			ctx.font = font(26);
 			ctx.fillStyle = theme.muted;
 			ctx.fillText("No groups in this switch", 4, SW_TOP + SW_ROW / 2);
 		}
@@ -113,20 +110,15 @@ class GroupSwitch extends Widget {
 			ctx.roundRect(0, y, this.w, SW_ROW, theme.radius * 0.7);
 			ctx.fillStyle = theme.surface;
 			ctx.fill();
-			if (this.hover && g === this.hot) {
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fill();
-			}
+			if (this.hover && g === this.hot) drawTint(ctx, this.pressed, 0, y, this.w, SW_ROW, theme.radius * 0.7);
 			ctx.beginPath();
 			ctx.arc(34, cy, 11, 0, Math.PI * 2);
 			ctx.fillStyle = g.color || "#888";
 			ctx.fill();
 			const sw = 92, sh = 44, sx = this.w - sw - 24;
-			ctx.font = `30px ${theme.font}`;
+			ctx.font = font(30);
 			ctx.fillStyle = on ? theme.fg : theme.muted;
-			let text = g.label;
-			while (text.length > 1 && ctx.measureText(text).width > sx - 80) text = text.slice(0, -2) + "…";
-			ctx.fillText(text, 60, cy + 1);
+			ctx.fillText(ellipsize(ctx, g.label, sx - 80), 60, cy + 1);
 			ctx.beginPath();
 			ctx.roundRect(sx, cy - sh / 2, sw, sh, sh / 2);
 			ctx.fillStyle = on ? theme.accent : theme.surfaceHi;

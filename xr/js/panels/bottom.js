@@ -17,12 +17,7 @@ export function createBottomPanel({ THREE, store, ui }) {
 		constructor(o) { super({ open: false, preview: "", ...o }); }
 		draw(ctx) {
 			const { w, h } = this;
-			if (this.hover || this.pressed) {
-				ctx.beginPath();
-				ctx.roundRect(0, 0, w, h, theme.radius * 0.7);
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fill();
-			}
+			ui.tint(ctx, this, 0, 0, w, h, theme.radius * 0.7);
 			ctx.save();
 			ctx.translate(24, h / 2);
 			if (this.open) ctx.rotate(Math.PI / 2);
@@ -33,12 +28,12 @@ export function createBottomPanel({ THREE, store, ui }) {
 			ctx.restore();
 			ctx.fillStyle = theme.fg;
 			ctx.fill();
-			ctx.font = `600 26px ${theme.font}`;
+			ctx.font = ui.font(26, true);
 			ctx.textBaseline = "middle";
 			ctx.fillText("Negative", 48, h / 2 + 1);
 			if (this.open || !this.preview) return;
 			const x = 48 + ctx.measureText("Negative").width + 20;
-			ctx.font = `24px ${theme.font}`;
+			ctx.font = ui.font(24);
 			ctx.fillStyle = theme.muted;
 			ctx.fillText(ui.ellipsize(ctx, this.preview, w - x - 16), x, h / 2 + 1);
 		}

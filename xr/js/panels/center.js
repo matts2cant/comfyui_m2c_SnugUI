@@ -87,7 +87,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			const g = this.grid();
 			this.clip(ctx, theme.radius * 0.7);
 			if (!this.items.length) {
-				ctx.font = `30px ${theme.font}`;
+				ctx.font = ui.font(30);
 				ctx.fillStyle = theme.muted;
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
@@ -109,10 +109,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 					drawFit(ctx, thumb, x, y, s, s);
 					ctx.restore();
 				}
-				if (this.hover && i === this.hotItem) {
-					ctx.fillStyle = theme.hover;
-					ctx.fill();
-				}
+				if (this.hover && i === this.hotItem) ui.drawTint(ctx, false, x, y, s, s, 16);
 				if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
 			}
 			this.drawBar(ctx);
@@ -135,10 +132,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			ctx.strokeStyle = theme.muted;
 			if (thumb) ui.drawCover(ctx, thumb, 0, 0, s);
 			else ui.drawIcon(ctx, icon, s * 0.32, s * 0.26, s * 0.36);
-			if (this.hover || this.pressed) {
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fillRect(0, 0, s, s);
-			}
+			ui.tint(ctx, this, 0, 0, s, s, 0); // square: clipped to the tile
 			// a phone's small tiles keep their thumbnail clear: no badge, no title
 			if (s >= SMALL_TILE) {
 				ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -148,7 +142,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 				ctx.fill();
 				ctx.fillStyle = ctx.strokeStyle = theme.fg;
 				ui.drawIcon(ctx, icon, 17, 17, 26);
-				ctx.font = `22px ${theme.font}`;
+				ctx.font = ui.font(22);
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
 				ctx.fillText(ui.ellipsize(ctx, o.title, s - 20), s / 2, s - 19);
@@ -183,7 +177,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		g.lineJoin = "round";
 		g.strokeStyle = theme.accent;
 		g.stroke();
-		g.font = `24px ${theme.font}`;
+		g.font = ui.font(24);
 		g.fillStyle = theme.fg;
 		g.textAlign = "center";
 		g.textBaseline = "middle";
@@ -370,7 +364,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
 		if (empty.text !== noteText.text) {
-			note.ctx.font = `${empty.size}px ${theme.font}`;
+			note.ctx.font = ui.font(empty.size);
 			noteText.w = Math.ceil(note.ctx.measureText(empty.text).width) + 2;
 			noteText.setText(empty.text);
 			note.setPx(noteText.w + 2 * NOTE_PAD_X, noteText.h + 2 * NOTE_PAD_Y, note.scale);

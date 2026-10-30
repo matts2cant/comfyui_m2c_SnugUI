@@ -32,10 +32,10 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 			const time = clock(s.time);
 			ctx.fillText(time, v ? w / 2 : w, v ? STATUS_H * 1.5 : STATUS_H / 2 + 1);
 			const free = w - ctx.measureText(time).width - 24;
-			ctx.font = `600 28px ${theme.font}`;
+			ctx.font = ui.font(28, true);
 			ctx.fillStyle = s.error ? theme.danger : run ? theme.fg : theme.muted;
 			if (v) {
-				ctx.font = `600 ${Math.min(28, Math.floor(28 * w / ctx.measureText(s.word).width))}px ${theme.font}`;
+				ctx.font = ui.font(Math.min(28, Math.floor(28 * w / ctx.measureText(s.word).width)), true);
 				ctx.fillText(s.word, w / 2, STATUS_H / 2 + 1);
 			} else {
 				ctx.textAlign = "left";

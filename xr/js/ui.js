@@ -28,7 +28,9 @@ export const theme = {
 	font: "system-ui, sans-serif", radius: 18,
 };
 
-const font = (size, bold) => `${bold ? "600 " : ""}${size}px ${theme.font}`;
+export const font = (size, bold) => `${bold ? "600 " : ""}${size}px ${theme.font}`;
+const lineH = (size) => Math.round(size * 1.3);
+const PAD = 20; // a TextField's text inset from its sides
 const measure = document.createElement("canvas").getContext("2d");
 
 export function ellipsize(ctx, text, maxW) {
@@ -75,6 +77,15 @@ function colAt(ctx, text, x) {
 	return lo;
 }
 
+// whether a pointer event's widget-local point is in the box r { x, y, w, h }
+export const inRect = (p, r) => p.lx >= r.x && p.lx < r.x + r.w && p.ly >= r.y && p.ly < r.y + r.h;
+
+// a typed number ("," accepted as decimal separator), or null
+export function parseNumber(text) {
+	const t = text.trim(), n = Number(t.replace(",", "."));
+	return t && Number.isFinite(n) ? n : null;
+}
+
 // square-cropped image (or canvas) filling the s x s box at x, y
 export function drawCover(ctx, img, x, y, s) {
 	const w = img.naturalWidth ?? img.width, h = img.naturalHeight ?? img.height, k = Math.min(w, h);
@@ -86,12 +97,16 @@ function rrect(ctx, x, y, w, h, r) {
 	ctx.roundRect(x, y, w, h, r);
 }
 
-// hover / pressed tint over the current round-rect shape
-function tint(ctx, wd, x, y, w, h, r) {
-	if (wd.disabled || !(wd.pressed || wd.hover)) return;
+// the pressed or hover tint over a round rect (a part of a widget: one of its buttons, rows or tiles)
+export function drawTint(ctx, pressed, x, y, w, h, r) {
 	rrect(ctx, x, y, w, h, r);
-	ctx.fillStyle = wd.pressed ? theme.pressed : theme.hover;
+	ctx.fillStyle = pressed ? theme.pressed : theme.hover;
 	ctx.fill();
+}
+
+// a whole widget's tint while it is pressed or hovered (none when disabled)
+export function tint(ctx, wd, x, y, w, h, r) {
+	if (!wd.disabled && (wd.pressed || wd.hover)) drawTint(ctx, wd.pressed, x, y, w, h, r);
 }
 
 // the IMAGE_CACHE_MAX thumbnails used last, shared by every List / ImageGrid (a re-flowed panel rebuilds its widgets)
@@ -147,13 +162,12 @@ export class Label extends Widget {
 		super({ text: "", size: 30, color: theme.fg, align: "left", wrap: false, bold: false, autoH: o.h === undefined, ...o });
 		this.relayout();
 	}
-	lineH() { return Math.round(this.size * 1.3); }
 	lines() {
 		if (!this.wrap || this.w <= 0) return [String(this.text)];
 		measure.font = font(this.size, this.bold);
 		return wrapLines(measure, this.text, this.w).map((l) => l.text);
 	}
-	relayout() { if (this.autoH) this.h = this.lines().length * this.lineH() + (this.wrap ? 0 : Math.round(this.size * 0.1)); }
+	relayout() { if (this.autoH) this.h = this.lines().length * lineH(this.size) + (this.wrap ? 0 : Math.round(this.size * 0.1)); }
 	setText(text) { this.text = text; this.relayout(); this.invalidate(); }
 	draw(ctx) {
 		ctx.font = font(this.size, this.bold);
@@ -161,7 +175,7 @@ export class Label extends Widget {
 		ctx.textBaseline = "middle";
 		ctx.textAlign = this.align;
 		const x = this.align === "center" ? this.w / 2 : this.align === "right" ? this.w : 0;
-		const lh = this.lineH();
+		const lh = lineH(this.size);
 		const lines = this.lines();
 		const top = lines.length === 1 ? (this.h - lh) / 2 : 0;
 		lines.forEach((line, i) => ctx.fillText(!this.wrap && this.w > 0 ? ellipsize(ctx, line, this.w) : line, x, top + lh * (i + 0.5)));
@@ -242,8 +256,8 @@ export class Slider extends Widget {
 			size: this.size, h: 48, parent: this, compact: true,
 			onEdit: () => this.field.selectAll(),
 			onDone: (v) => {
-				const n = Number(v.trim().replace(",", "."));
-				if (v.trim() && Number.isFinite(n)) this.set(n);
+				const n = parseNumber(v);
+				if (n !== null) this.set(n);
 			},
 		});
 		this.relayout();
@@ -267,7 +281,7 @@ export class Slider extends Widget {
 		for (const [d, t] of right) { rx -= bs; btns.push({ x: rx, y, w: bs, h: bs, d, t }); rx -= gap; }
 		return { btns, x0: x, x1: rx, y };
 	}
-	btnAt(p, parts) { return parts.btns.find((b) => p.lx >= b.x && p.lx < b.x + b.w && p.ly >= b.y && p.ly < b.y + b.h) ?? null; }
+	btnAt(p, parts) { return parts.btns.find((b) => inRect(p, b)) ?? null; }
 	text() {
 		if (this.format) return this.format(this.value);
 		const dec = (String(this.step).split(".")[1] ?? "").length;
@@ -342,11 +356,7 @@ export class Slider extends Widget {
 			rrect(ctx, b.x, b.y, b.w, b.h, 14);
 			ctx.fillStyle = theme.surface;
 			ctx.fill();
-			if (this.hover && b === this.hotBtn || this.pressed && b === this.downBtn) {
-				rrect(ctx, b.x, b.y, b.w, b.h, 14);
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fill();
-			}
+			if (this.hover && b === this.hotBtn || this.pressed && b === this.downBtn) drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, 14);
 			ctx.font = font(b.t.length > 1 ? 28 : 38, true);
 			ctx.fillStyle = theme.fg;
 			ctx.textAlign = "center";
@@ -506,7 +516,7 @@ export class EditBar extends Widget {
 		this.y = !field.barAbove && below + this.h <= panel.height ? below : Math.max(0, a.y - 6 - this.h);
 	}
 
-	btnAt(p) { return this.btns.find((b) => p.lx >= b.x && p.lx < b.x + b.w && p.ly >= b.y && p.ly < b.y + b.h); }
+	btnAt(p) { return this.btns.find((b) => inRect(p, b)); }
 	onDown(p) { this.down = this.btnAt(p); }
 	onMove(p) {
 		const b = this.btnAt(p);
@@ -529,10 +539,7 @@ export class EditBar extends Widget {
 			rrect(ctx, b.x, b.y, b.w, b.h, theme.radius * 0.7);
 			ctx.fillStyle = b.text === "Done" ? theme.accent : theme.surface;
 			ctx.fill();
-			if (b === lit) {
-				ctx.fillStyle = this.pressed ? theme.pressed : theme.hover;
-				ctx.fill();
-			}
+			if (b === lit) drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, theme.radius * 0.7);
 			ctx.fillStyle = ctx.strokeStyle = theme.fg;
 			if (b.icon) drawIcon(ctx, b.icon, b.x + (b.w - 36) / 2, b.y + (b.h - 36) / 2, 36);
 			else ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 1);
@@ -602,7 +609,7 @@ export class TextField extends Widget {
 	// lines and the window of them shown while editing; scrolls to keep the caret visible. Shared by draw() and clicks.
 	layout() {
 		measure.font = font(this.size);
-		const text = this.ta.value, inner = this.w - 40, lh = Math.round(this.size * 1.3), caret = this.caret();
+		const text = this.ta.value, inner = this.w - 2 * PAD, lh = lineH(this.size), caret = this.caret();
 		if (!this.multiline) {
 			const dx = Math.max(0, measure.measureText(text.slice(0, caret)).width - inner + 2);
 			return { lines: [{ text, start: 0 }], first: 0, rows: 1, lh, top: (this.h - lh) / 2 + 1, dx, caret };
@@ -618,7 +625,7 @@ export class TextField extends Widget {
 	indexAt(p) {
 		const { lines, first, rows, lh, top, dx } = this.layout();
 		const i = Math.min(lines.length - 1, first + rows - 1, Math.max(first, first + Math.floor((p.ly - top) / lh)));
-		return lines[i].start + colAt(measure, lines[i].text, p.lx - 20 + dx);
+		return lines[i].start + colAt(measure, lines[i].text, p.lx - PAD + dx);
 	}
 
 	// a press while editing sets the caret and anchors a drag selection; a second one close by in time selects the word
@@ -661,26 +668,26 @@ export class TextField extends Widget {
 		const width = (text) => measure.measureText(text).width;
 		ctx.save();
 		ctx.beginPath();
-		ctx.rect(20, 0, this.w - 40, this.h);
+		ctx.rect(PAD, 0, this.w - 2 * PAD, this.h);
 		ctx.clip();
 		for (let i = first; i < Math.min(lines.length, first + rows); i++) {
 			const { text, start } = lines[i], y = top + lh * (i - first);
 			if (e > s && e > start && s <= start + text.length) {
 				const x0 = width(text.slice(0, Math.max(0, s - start))), x1 = width(text.slice(0, e - start)) + (e > start + text.length ? 8 : 0);
 				ctx.fillStyle = "rgba(76,141,255,0.45)";
-				ctx.fillRect(20 - dx + x0, y, x1 - x0, lh);
+				ctx.fillRect(PAD - dx + x0, y, x1 - x0, lh);
 			}
 			ctx.fillStyle = theme.fg;
-			ctx.fillText(text, 20 - dx, y + lh / 2);
+			ctx.fillText(text, PAD - dx, y + lh / 2);
 		}
 		if (!this.ta.value) {
 			ctx.fillStyle = theme.muted;
-			ctx.fillText(this.placeholder, 20, top + lh / 2);
+			ctx.fillText(this.placeholder, PAD, top + lh / 2);
 		}
 		const ci = lineAt(lines, caret);
 		if (this.blink && ci >= first && ci < first + rows) {
 			ctx.fillStyle = theme.fg;
-			ctx.fillRect(20 - dx + width(lines[ci].text.slice(0, caret - lines[ci].start)) - 1.5, top + lh * (ci - first) + 3, 3, lh - 6);
+			ctx.fillRect(PAD - dx + width(lines[ci].text.slice(0, caret - lines[ci].start)) - 1.5, top + lh * (ci - first) + 3, 3, lh - 6);
 		}
 		ctx.restore();
 	}
@@ -704,13 +711,13 @@ export class TextField extends Widget {
 		ctx.textBaseline = "middle";
 		if (this.ta) return this.drawEdit(ctx);
 		ctx.fillStyle = this.value ? theme.fg : theme.muted;
-		if (!this.multiline) { ctx.fillText(ellipsize(ctx, this.value || this.placeholder, w - 40), 20, h / 2 + 1); return; }
+		if (!this.multiline) { ctx.fillText(ellipsize(ctx, this.value || this.placeholder, w - 2 * PAD), PAD, h / 2 + 1); return; }
 		// multiline: word-wrapped from the top, clipped with "…" when it overflows the box
-		const lh = Math.round(this.size * 1.3);
-		const lines = wrapLines(ctx, this.value || this.placeholder, w - 40).map((l) => l.text);
+		const lh = lineH(this.size);
+		const lines = wrapLines(ctx, this.value || this.placeholder, w - 2 * PAD).map((l) => l.text);
 		const max = Math.max(1, Math.floor((h - 32) / lh));
-		if (lines.length > max) { lines.length = max; lines[max - 1] = ellipsize(ctx, lines[max - 1] + "…", w - 40); }
-		lines.forEach((line, i) => ctx.fillText(line, 20, 16 + lh * (i + 0.5)));
+		if (lines.length > max) { lines.length = max; lines[max - 1] = ellipsize(ctx, lines[max - 1] + "…", w - 2 * PAD); }
+		lines.forEach((line, i) => ctx.fillText(line, PAD, 16 + lh * (i + 0.5)));
 	}
 }
 
