@@ -92,9 +92,12 @@ function tint(ctx, wd, x, y, w, h, r) {
 	ctx.fill();
 }
 
+// the IMAGE_CACHE_MAX thumbnails used last, shared by every List / ImageGrid (a re-flowed panel rebuilds its widgets)
+const IMAGE_CACHE_MAX = 100;
 const imageCache = new Map();
 function loadImage(url) {
 	let p = imageCache.get(url);
+	imageCache.delete(url);
 	if (!p) {
 		p = new Promise((resolve, reject) => {
 			const img = new Image();
@@ -103,8 +106,9 @@ function loadImage(url) {
 			img.onerror = () => { imageCache.delete(url); reject(new Error("image load failed: " + url)); };
 			img.src = url;
 		});
-		imageCache.set(url, p);
+		if (imageCache.size >= IMAGE_CACHE_MAX) imageCache.delete(imageCache.keys().next().value);
 	}
+	imageCache.set(url, p);
 	return p;
 }
 
@@ -352,15 +356,28 @@ export class Slider extends Widget {
 class Scrollable extends Widget {
 	scroll = 0;
 	imgs = new Map();
-	// loaded image for url, or null/false while loading/failed; repaints once it arrives
+	// loaded image for url, or null/false while loading/failed; repaints once it arrives (unless its item left meanwhile)
 	image(url) {
 		let img = this.imgs.get(url);
 		if (img === undefined) {
 			this.imgs.set(url, null);
-			loadImage(url).then((i) => this.imgs.set(url, i), () => this.imgs.set(url, false)).then(() => this.invalidate());
+			const done = (i) => {
+				if (!this.imgs.has(url)) return;
+				this.imgs.set(url, i);
+				this.invalidate();
+			};
+			loadImage(url).then(done, () => done(false));
 			img = null;
 		}
 		return img;
+	}
+	// List and ImageGrid items; the images of the items gone are dropped
+	setItems(items) {
+		const urls = new Set(items.map((it) => it.url));
+		for (const url of this.imgs.keys()) if (!urls.has(url)) this.imgs.delete(url);
+		this.items = items;
+		this.scroll = 0;
+		this.invalidate();
 	}
 	contentH() { return this.h; }
 	maxScroll() { return Math.max(0, this.contentH() - this.h); }
@@ -394,7 +411,6 @@ export class List extends Scrollable {
 		const i = Math.floor((p.ly + this.scroll) / this.rowH);
 		return i >= 0 && i < this.items.length ? i : -1;
 	}
-	setItems(items) { this.items = items; this.scroll = 0; this.invalidate(); }
 	onMove(p) {
 		const i = this.rowAt(p);
 		if (i !== this.hotRow) { this.hotRow = i; this.invalidate(); }
@@ -801,7 +817,6 @@ export class ImageGrid extends Scrollable {
 		const i = row * g.cols + col;
 		return i >= 0 && i < this.items.length ? i : -1;
 	}
-	setItems(items) { this.items = items; this.scroll = 0; this.invalidate(); }
 	onMove(p) {
 		const i = this.itemAt(p);
 		if (i !== this.hotItem) { this.hotItem = i; this.invalidate(); }

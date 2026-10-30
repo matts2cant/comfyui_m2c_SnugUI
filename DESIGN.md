@@ -162,7 +162,8 @@ TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKe
 Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell} (scrollable, the
   `selected` value's tile outlined),
 ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
-List/ImageGrid thumbnails (`url`) load through a module-level image cache.
+List/ImageGrid thumbnails (`url`) load through a module-level cache of the 100 used last; `setItems` drops the widget's images of
+the items gone.
 ```
 `keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
 plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()`, `erase(dir)` and `newline()`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
@@ -528,7 +529,7 @@ another Lucide icon's path data under its name and change the name where it is u
 ### Panels (behavior)
 - center: shows the latest image (fit, keep aspect, then the user's pan / zoom) — XR quad layer for crispness when `layers` granted (hole-punch so the
   projection layer doesn't cover it; the HD button falls back to a mesh), mesh texture otherwise. Live previews from "preview" events
-  while running; a batch shows its last image (all of them are in the gallery).
+  while running; a batch shows its last image (all of them are in the gallery). An empty stage frees the image's textures.
   Gallery panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
   output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
   Output row (center's `row`, no background): when App mode configures two outputs or more, one square `OutputTile` per output

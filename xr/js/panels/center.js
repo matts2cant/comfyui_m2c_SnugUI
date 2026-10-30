@@ -373,7 +373,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		if (current && current !== (current.kind === "3d" ? model.entry : shownEntry)) return showEntry(current);
 		notice = "";
 		// an image output without results shows nothing; a 3D one keeps the stage as it is
-		if (!current && o.kind === "image") shown = shownEntry = null;
+		if (!current && o.kind === "image") clearShown();
 		refresh();
 	}
 
@@ -447,6 +447,16 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		layoutImage();
 	}
 
+	// nothing on the stage: its textures are freed
+	function clearShown() {
+		shownTex?.dispose();
+		halves.forEach((t) => t.dispose());
+		shown = shownEntry = shownTex = null;
+		halves = [];
+		imageMat.map = eyeMat.map = null;
+		imageMat.needsUpdate = eyeMat.needsUpdate = true;
+	}
+
 	// maps shownTex whole, or one half per eye in the stereo modes (L/R: left half is the left eye, R/L: crossed)
 	function layoutImage() {
 		const split = isSplit();
@@ -490,7 +500,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		history.splice(0, history.length, ...history.filter((e) => !gone.includes(e)));
 		saveHistory(history);
 		for (const o of outputs) if (gone.includes(o.current)) o.current = history.find((e) => ownerOf(e) === o) ?? null;
-		if (gone.includes(shownEntry) || !out.current && out.kind === "image") shown = shownEntry = null;
+		if (gone.includes(shownEntry) || !out.current && out.kind === "image") clearShown();
 		if (!gone.includes(current)) return refresh();
 		if (out.current) showEntry(out.current);
 		else refresh();
@@ -563,7 +573,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		previewing = false;
 		if (out.current) showEntry(out.current);
 		else {
-			shown = null;
+			clearShown();
 			refresh();
 		}
 	}
