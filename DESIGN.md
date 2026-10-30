@@ -609,7 +609,8 @@ another Lucide icon's path data under its name and change the name where it is u
 - right (LoRA panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
   the value is a compact TextField like the Slider's: tapping selects it to type a number, "," accepted as decimal separator, stored
   rounded to 2 decimals, not clamped, anything else reverts; clip strength follows while equal), remove ×. Row edits apply to the store's
-  current list (matched by entry identity): the weight field commits only after a press elsewhere has run (× on another row).
+  current list, matched by name (unique per node): the weight field commits only after a press elsewhere has run (× on another row,
+  or the same row's −, + or checkbox, which replace its entry; the typed weight then lands on the new entry).
   Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (12 per page, paging
   buttons, thumbnails from item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). No query:
   `GET /api/lm/loras/list?sort_by=name&page_size=<n>&page=<p>`. With a query: LoRA Manager's `search` only matches file_name and

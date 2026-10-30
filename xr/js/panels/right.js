@@ -90,8 +90,9 @@ export function createRightPanel({ THREE, store, ui }) {
 	function buildRows(node, W) {
 		const list = store.loras(node.nodeId);
 		const rw = W - 16, h = 60, pitch = 68;
-		// against the current list: the weight field commits on a press elsewhere, after that press's own edit (× on another row)
-		const edit = (l, patch) => store.setLoras(node.nodeId, store.loras(node.nodeId).map((x) => x === l ? { ...x, ...patch } : x));
+		// against the current list, by name (unique per node): the weight field commits on a press elsewhere, after that press's
+		// own edit (×, or the same row's −, + or checkbox, which replace its entry)
+		const edit = (l, patch) => store.setLoras(node.nodeId, store.loras(node.nodeId).map((x) => x.name === l.name ? { ...x, ...patch } : x));
 		const rows = [];
 		list.forEach((l, i) => {
 			const y = i * pitch;
