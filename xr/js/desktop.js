@@ -5,15 +5,19 @@
 // the toolbar (whose buttons toggle the windows), the output row beside it and the output pop-up by the cog, without chrome.
 // Geometry and open state are kept in localStorage and pushed back inside the browser window when it is smaller.
 // Phones (a narrow window, or a short landscape one) get no windows: one panel at a time over the image, and a dock.
+// Units: CSS px (the page; EDGE, MARGIN, CASCADE, DECK_GAP), panel px (a panel's layout, its widgets, toolbar.js's PM / PB / BAR),
+// and canvas px = panel px x panel.scale; SCALE and PHONE are CSS px per panel px.
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
 import { PB } from "./panels/toolbar.js";
+import { TILE_GAP, TILE_R } from "./panels/center.js";
 
 const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
 const MARGIN = 12, CASCADE = 32, EDGE = 16, DECK_GAP = 8;
 const PHONE = 0.6; // phones: CSS px per panel px
+const PHONE_W = 600, LANDSCAPE_H = 500; // phones: portrait under PHONE_W wide, landscape when wider than tall and under LANDSCAPE_H
 const TOAST_MS = 4000; // phones: error toast
 
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>`;
@@ -109,11 +113,13 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	const noteBox = el("div", "note", root);
 	noteBox.append(note.canvas);
 	const deck = el("div", "deck", document.body);
+	deck.style.gap = DECK_GAP + "px";
 	deck.append(row.canvas, toolbar.canvas, popup.canvas);
 	popup.canvas.className = "popup";
 	pick.canvas.className = "pick";
 	const phone = el("div", "phone", document.body), strip = el("div", "strip", phone), pad = el("div", "pad", phone), toast = el("div", "toast", phone);
 	toast.hidden = true;
+	strip.style.borderRadius = (TILE_R + TILE_GAP) * PHONE + "px"; // around the tiles' corners, the padding further out
 	const isPhone = () => !!layout;
 	for (const p of [toolbar, tabs, row, popup, pick]) bindPanel(p, isPhone);
 	// the tray closes on a press anywhere but on it, its pop-up and the output button
@@ -368,7 +374,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	// keeps its slot free while the output button shows, which the row's layout decides.
 	function update(on) {
 		shown = on;
-		const mode = on && (innerWidth < 600 ? "portrait" : innerWidth > innerHeight && innerHeight < 500 ? "landscape" : null) || null;
+		const mode = on && (innerWidth < PHONE_W ? "portrait" : innerWidth > innerHeight && innerHeight < LANDSCAPE_H ? "landscape" : null) || null;
 		const changed = mode !== layout;
 		if (changed) {
 			layout = mode;

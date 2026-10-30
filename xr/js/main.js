@@ -106,7 +106,7 @@ const PANEL_SCALE = 0.35, LECTERN_TILT = Math.PI / 4;
 const GAP_SCREEN = 0.012, GAP = 0.006, POPUP_Z = 0.02;
 
 // size of the screen, filled in by the center panel whenever the displayed aspect changes
-const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: 1000 / PANEL_SCALE, w: 0, h: 0, onResize() {} };
+const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: ui.PX_PER_M / PANEL_SCALE, w: 0, h: 0, onResize() {} };
 const ctx = {
 	THREE, store, ui, scene, renderer, camera, screen,
 	client: new ComfyClient(),

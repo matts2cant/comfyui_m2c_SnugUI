@@ -4,7 +4,8 @@
 // plane (`image`).
 import { createModelView } from "../model.js";
 
-const TILE = 200, TILE_GAP = 16, TILE_R = 24, COG = 80, SMALL_TILE = 120, RING = 4;
+export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, toolbar.js)
+const TILE = 200, SMALL_TILE = 120, RING = 4;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
@@ -203,7 +204,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 
 	// ---- panels ----
 	const stage = new ui.Panel({ name: "center-stage", widthM: 1, heightM: 1, pxPerM: screen.pxPerM }); // sized by fitStage
-	const row = new ui.Panel({ name: "output-row", widthM: COG / 1000, heightM: COG / 1000, bg: null }); // sized by placeRow
+	const row = new ui.Panel({ name: "output-row", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null }); // sized by placeRow
 	// the output pop-up (cog): the selected output's name over its kind's controls; popup.mesh.visible = open
 	const popup = new ui.Panel({ name: "output-popup", widthM: 0.58, heightM: 0.164, radius: 32 });
 	popup.mesh.visible = false;
@@ -233,7 +234,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const cog = new ui.Button({ icon: "settings", round: true, w: COG, h: COG, onClick: () => showPopup(!popup.mesh.visible) });
 	// phones: the dock's output button (desktop.js), the selected output's tile; a tap opens the row as a tray, ringed while open.
 	// pick.mesh.visible: shown (whenever the row has something: several outputs, or a single one with settings)
-	const pick = new ui.Panel({ name: "output-pick", widthM: COG / 1000, heightM: COG / 1000, bg: null });
+	const pick = new ui.Panel({ name: "output-pick", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null });
 	const pickTile = pick.add(new OutputTile({ w: COG, h: COG, onClick: () => showTray(!tray) }));
 	pick.onResize = () => { pickTile.w = pickTile.h = pick.width; };
 
@@ -330,7 +331,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		Object.assign(cog, { visible: settings, disabled: !kindControls[out.kind]().length, x: w - COG, y: h - COG });
 		row.mesh.visible = (n > 0 || settings) && tray !== false;
 		pick.mesh.visible = (n > 0 || settings) && tray !== null;
-		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / 1000, h / 1000);
+		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / ui.PX_PER_M, h / ui.PX_PER_M);
 	}
 
 	// phones: tiles of `size` px however many there are, in a column when vertical, the tray and the pop-up closed; null: back to

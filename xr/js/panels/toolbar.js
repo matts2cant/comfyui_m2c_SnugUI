@@ -5,10 +5,13 @@
 // view button hides and the toolbar re-flows to the box it is given: the status over Cancel and Generate (portrait), or the run
 // column (landscape): status, timer, bars, Cancel, then Generate as a tall play pill. phone(mode, true) keeps the first place of
 // the run row / column free for a button of the caller's (desktop.js puts the output button there).
+import { TILE_GAP, COG } from "./center.js";
+
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
 const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12, TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR;
-export const PB = 80; // phones: the dock's button size (desktop.js gives it to the output row's tiles too)
-const PM = 16, BAR = PB + 2 * PM; // phones: margin, tab bar thickness (and the landscape run column's width)
+// phones: one grid with the output row, so the tray (the row, PM padding) lines up with the dock: margin PM = the tiles' gap, button
+// PB = the cog (desktop.js gives it to the tiles too), BAR the tab bar's thickness (and the landscape run column's width)
+export const PM = TILE_GAP, PB = COG, BAR = PB + 2 * PM;
 
 const clock = (ms) => {
 	const s = Math.floor(ms / 1000);
@@ -81,9 +84,9 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	const rowY = M + TIER_H + 22, sepX = M + tabs.length * (B + GAP), viewX = sepX + SEP;
 	const W = Math.max(viewX + B + GAP, M + MIN_ICONS * (B + GAP)) + FLEX + B + GAP + GEN_W + M, H = rowY + B + M;
 	const group = new THREE.Group();
-	const panel = new ui.Panel({ name: "toolbar", widthM: W / 1000, heightM: H / 1000, radius: RADIUS });
+	const panel = new ui.Panel({ name: "toolbar", widthM: W / ui.PX_PER_M, heightM: H / ui.PX_PER_M, radius: RADIUS });
 	group.add(panel.mesh);
-	const bar = new ui.Panel({ name: "tabs", widthM: BAR / 1000, heightM: BAR / 1000, radius: 0 });
+	const bar = new ui.Panel({ name: "tabs", widthM: BAR / ui.PX_PER_M, heightM: BAR / ui.PX_PER_M, radius: 0 });
 	const status = panel.add(new Status());
 	const sep = panel.add(new Sep({ x: sepX, y: rowY + 18, w: 2, h: B - 36 }));
 	for (const b of [...tabs, view]) panel.add(Object.assign(b, { y: rowY, w: B, h: B }));

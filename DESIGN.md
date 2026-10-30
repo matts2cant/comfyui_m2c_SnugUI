@@ -140,7 +140,7 @@ gives the base, where a group that was on keeps its members' own modes (the desk
 ```js
 export const theme = { bg, panel, surface, surfaceHi, border, fg, muted, accent, danger, pressed, hover, font: "system-ui, sans-serif", radius: 18 }
 export class Panel {                // a canvas-textured plane
-  constructor({ name, widthM, heightM, pxPerM = 1000, bg = theme.panel, radius = theme.radius })   // canvas = round(widthM*pxPerM) x
+  constructor({ name, widthM, heightM, pxPerM = PX_PER_M, bg = theme.panel, radius = theme.radius })   // export PX_PER_M = 1000   // canvas = round(widthM*pxPerM) x
                                     // round(heightM*pxPerM), max 2048; bg null = no slab
   mesh                              // THREE.Mesh, add to scene/group; mesh.userData.panel = this
   canvas; ctx; width; height        // canvas px
@@ -281,7 +281,8 @@ bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main
 Light, Input, Configuration (main.js `PANELS`), a separator, the view button; then a flexible gap, Cancel (round, `x`,
 `danger`; the plain grey `default` look and disabled when nothing runs or is queued) and Generate (pill, `accent`, 260 px; disabled
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
-- Phones (`phone(mode, slot)`, desktop.js): one grid, margin `PM` 16, button `PB` 80. The panel buttons move to the `tabs` panel (radius 0,
+- Phones (`phone(mode, slot)`, desktop.js): one grid, margin `PM` 16, button `PB` 80, the output row's own `TILE_GAP` and `COG`
+  (center.js exports them, toolbar.js names them `PM` / `PB` and exports those to desktop.js). The panel buttons move to the `tabs` panel (radius 0,
   `BAR` 112 px thick), laid out along its longer side (a tab bar, or a rail when taller than wide) by `spread`: `PM` from both ends,
   the leftover spread evenly as the gaps between them; when the side is too short for gaps of at least `PM` the gaps stay `PM` and
   the buttons shrink below `PB` (a landscape window under 355 CSS px tall, a portrait one under 355 px wide). The view button and
@@ -455,7 +456,7 @@ another Lucide icon's path data under its name and change the name where it is u
   adds its EditBar back when drawn, a Combo its bar and list.
 - Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
   `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
-  The output row (while `row.mesh.visible`) sits `DECK_GAP` 8 px over the toolbar at the bottom, under it at the top (the deck
+  The output row (while `row.mesh.visible`) sits `DECK_GAP` 8 px over the toolbar (desktop.js sets it as the deck's flex `gap`) at the bottom, under it at the top (the deck
   mirrors vertically, flex `column-reverse`), aligned with the toolbar on the deck's side (left / center / right); both are
   chrome-less canvases at `SCALE`. The output pop-up (while `popup.mesh.visible`) is absolutely placed `DECK_GAP` beyond the row
   (above it at the bottom, under it at the top), its right edge over the cog's (its left edge on the cog's for left positions).
@@ -483,12 +484,15 @@ another Lucide icon's path data under its name and change the name where it is u
 - Tablets: the same layout in landscape and portrait. Quest's 2D browser before entering VR: the controller pointer acts as a mouse.
 
 ### Phones (desktop.js `renderPhone`, main.js)
-- When: narrower than 600 CSS px = portrait; wider than tall and shorter than 500 px = landscape; else the Desktop View. Re-evaluated
+- When: narrower than `PHONE_W` 600 CSS px = portrait; wider than tall and shorter than `LANDSCAPE_H` 500 px = landscape; else the Desktop View. Re-evaluated
   in `update()` (window resize, rotation, relayout) and on `visualViewport` resize / scroll; the output row takes its phone tiles
   (`rowTile`) before the toolbar its layout, which keeps the slot free while the row has something; switching keeps the open panel, its
   scroll, the selected output and an open edit. Hidden (H) or in VR the layout is off (toolbar, row and panels back to VR geometry).
   Windows are hidden and their stored geometry untouched (it comes back on a wide window). The toolbar position setting and the
   view button do not apply.
+- Units in desktop.js: CSS px (the page; `EDGE`, `MARGIN`, `CASCADE`, `DECK_GAP`), panel px (layouts, widgets, `PM` / `PB` / `BAR`),
+  canvas px = panel px x `panel.scale`; `SCALE` and `PHONE` are CSS px per panel px. A panel's world size is its px at `ui.PX_PER_M`
+  1000 px per meter (unless it sets `pxPerM`).
 - A `.phone` layer (fixed, z 6, clicks pass through but on its children) with `env(safe-area-inset-*)` padding, read back for
   the insets (`viewport-fit=cover`); its children are placed absolutely in CSS px. Panels are drawn at `PHONE` 0.6 CSS px per panel
   px and re-flow to their box (`put`: `setPx(w / PHONE, h / PHONE, PHONE * devicePixelRatio)`). No window chrome. Every margin and
@@ -505,10 +509,10 @@ another Lucide icon's path data under its name and change the name where it is u
   `pick.mesh.visible` to the toolbar's `phone(mode, slot)` on every `update()` and puts the button over the toolbar's free square
   (`slot`), at its size (`PB` 80 px, 48 CSS px, like the tiles).
 - Tray: tapping the button opens the output row (center's `tray`: on phones `row.mesh.visible` only while it is open; null off phones,
-  where the row shows as before) in `.strip`, a box in the panel colour with a 1 px border colour ring and 24 px corners (the tiles'
-  `TILE_R` 14.4 CSS px plus the margin), its border the margin wide in the panel colour (desktop.js sets the width to `gap`), so the
+  where the row shows as before) in `.strip`, a box in the panel colour with a 1 px border colour ring and 24 px corners (desktop.js sets
+  them: the tiles' `TILE_R` plus `TILE_GAP`, the padding, at `PHONE`), its border the margin wide in the panel colour (desktop.js sets the width to `gap`), so the
   tiles scroll inside the padding. `rowTile(button, landscape)` = tiles of the toolbar's button size `PB` 80 px (`TILE_GAP` 16 = `PM`
-  apart, the cog `COG` 80 too) with no length limit (center `placeRow`; tiles under `SMALL_TILE` 120 px draw no badge and no title),
+  apart, the cog `COG` 80 = `PB` too) with no length limit (center `placeRow`; tiles under `SMALL_TILE` 120 px draw no badge and no title),
   the cog last, start-aligned. Portrait: a row `gap` above the dock, left and right edges `gap` from the window's (inside the safe
   area), as tall as the tiles plus the padding, scrolling sideways (the canvas `touch-action: pan-x`, so a swipe scrolls and cancels
   the press). Landscape: a column (`.strip.v`) `gap` left of the dock, top and bottom `gap` from the window's, scrolling vertically

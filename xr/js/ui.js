@@ -19,6 +19,8 @@ export function setRenderer(renderer) {
 	for (const p of Panel.all) p.texture.anisotropy = maxAnisotropy;
 }
 
+export const PX_PER_M = 1000; // a Panel's canvas px per meter of its world size, unless it sets pxPerM
+
 export const theme = {
 	bg: "#0b0e13", panel: "#161a22", surface: "#242a35", surfaceHi: "#303846", border: "#323a49",
 	fg: "#e8ecf2", muted: "#8c96a8", accent: "#4c8dff", danger: "#e5484d",
@@ -931,7 +933,7 @@ export class Panel {
 	static all = new Set();
 	static updateAll() { for (const p of Panel.all) if (p.dirty) p.draw(); }
 
-	constructor({ name = "panel", widthM, heightM, pxPerM = 1000, bg = theme.panel, radius = theme.radius }) {
+	constructor({ name = "panel", widthM, heightM, pxPerM = PX_PER_M, bg = theme.panel, radius = theme.radius }) {
 		this.name = name;
 		this.maxPxPerM = pxPerM;
 		this.bg = bg;
