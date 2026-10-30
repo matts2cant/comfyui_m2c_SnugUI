@@ -1,7 +1,8 @@
-# AppMode XR — design spec (source of truth for all agents)
+# SnugUI — design spec (source of truth for all agents)
 
-Personal-use ComfyUI extension: an "Open in VR" button snapshots the current App-mode workflow; a WebXR page
-served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a Meta Quest 3 (standalone Quest Browser).
+Personal-use ComfyUI custom-node package: a "SnugUI" button snapshots the current App-mode workflow; a page served by ComfyUI
+(`/snugui`) lets the user tweak inputs and generate from a phone (portrait and landscape), a desktop browser or tablet (the
+Desktop View) or a Meta Quest 3 (standalone Quest Browser, WebXR).
 
 ## Hard rules
 - Its own custom-node package, `custom_nodes/comfyui_m2c_SnugUI/` (no nodes, no dependency on other custom nodes). Only create/modify
@@ -10,7 +11,7 @@ served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a
 - No CDN / internet at runtime. Libraries are vendored in `xr/vendor/`.
 - Plain ES modules, no build step, no npm deps at runtime. Modern JS (Quest Browser = recent Chromium).
 - Match a hand-written style: small direct code, sparse useful comments, no defensive boilerplate.
-- Only `web/appmode_xr.js` may hold frontend extension code (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
+- Only `web/snugui.js` may hold frontend extension code (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
 - No git commits unless your task says so.
 
 ## Environment facts
@@ -23,8 +24,8 @@ served by ComfyUI (`/appmode-xr`) lets the user tweak inputs and generate from a
 ```
 __init__.py              package entry and server: routes + snapshot store; empty NODE_CLASS_MAPPINGS / NODE_DISPLAY_NAME_MAPPINGS,
                          WEB_DIRECTORY = "./web"
-web/appmode_xr.js        desktop extension: button, Alt+V, snapshot builder
-xr/index.html            VR page shell
+web/snugui.js            desktop extension: button, Alt+S, snapshot builder
+xr/index.html            page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
 xr/js/main.js            bootstrap and the VR host: renderer, scene, views (Desktop View, VR session, VR-like view), the panels, their
@@ -58,16 +59,16 @@ xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM envi
 ```
 
 ## Server (`__init__.py`)
-- `GET /appmode-xr` → `xr/index.html` (Cache-Control: no-cache, no-store, must-revalidate). `GET /appmode-xr/static/{path}` → files
+- `GET /snugui` → `xr/index.html` (Cache-Control: no-cache, no-store, must-revalidate). `GET /snugui/static/{path}` → files
   under `xr/` (the same Cache-Control, correct JS MIME `text/javascript`, path containment enforced).
-- `POST /appmode-xr/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
-  `<ComfyUI user directory>/appmode_xr/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": id})`
+- `POST /snugui/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
+  `<ComfyUI user directory>/snugui/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("snugui_snapshot", {"id": id})`
   (no sid → all sockets). Returns `{"id": id}`.
-- `GET /appmode-xr/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present (an unreadable file is
+- `GET /snugui/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present (an unreadable file is
   ignored with a `logging` warning).
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).
 
-## Snapshot schema (built by `web/appmode_xr.js`)
+## Snapshot schema (built by `web/snugui.js`)
 ```js
 {
   version: 1, id, created,            // id/created set by server
@@ -91,7 +92,7 @@ xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM envi
     widget: "seed", label: "seed",     // widget = prompt input name; label = App-mode widget label/name
     targets: [ {nodeId: "260:310", input: "seed", classType: "KSampler"} ],  // every prompt input the widget feeds
     type: "INT"|"FLOAT"|"BOOLEAN"|"STRING"|"COMBO"|"IMAGE"|"PIXAROMA_SIZES"|"PIXAROMA_GROUP_SWITCH"|"UNSUPPORTED",   // from the first target's /object_info spec; IMAGE = combo with image_upload (LoadImage); PIXAROMA_SIZES = Pixaroma Sizes state object
-    disabled: false,                   // no targets and the host node is muted (2) or bypassed (4) on the desktop: hidden in VR
+    disabled: false,                   // no targets and the host node is muted (2) or bypassed (4) on the desktop: hidden on the page
     action, restriction, groups,       // PIXAROMA_GROUP_SWITCH only: "mute"|"bypass", "any"|"one"|"always", [{id, label, color}] (see below)
     multiline: false,                  // STRING only
     options: [...],                    // COMBO/IMAGE values
@@ -125,7 +126,7 @@ gets a dedicated type (`PIXAROMA_SIZES`: the Input panel's size picker, in the s
 
 Pixaroma Group Switch (`PixaromaGroupSwitch:group_switch_ui`, a DOM widget with `serialize: false`; the node is in the API prompt with no
 inputs but never runs) mutes or bypasses whole groups through `window.PixaromaPixGroup` (`listGroups`, `getGroupState`, `setGroupSwitch`).
-Muting drops nodes from the prompt and bypassing also rewires their consumers, and the VR page has no graph, so the switches become prompt
+Muting drops nodes from the prompt and bypassing also rewires their consumers, and the page has no graph, so the switches become prompt
 edits. The builder (`switchPrompts`) records every node's mode (root and subgraphs), turns the switched-off groups of the App-mode switches
 back on, runs the sentinel pass and `graphToPrompt` on that base (so widgets in switched-off groups get targets), then for each group and
 action turns that group alone off, runs `graphToPrompt` and stores the diff against the base, restoring the base modes after each; a
@@ -140,15 +141,16 @@ follows the replacements transitively (a chain of bypassed groups ends at the fi
 the input); then the diffs' other input changes; then values, skipping targets and LoRA nodes that were removed. Turning a group back on
 gives the base, where a group that was on keeps its members' own modes (the desktop's "on" sets them all to 0).
 
-## Desktop extension (`web/appmode_xr.js`)
-- `app.registerExtension({ name: "AppModeXR", commands: [{id:"AppModeXR.Open", label:"Open in VR", icon, function}],
-  keybindings: [{combo:{key:"v", alt:true}, commandId:"AppModeXR.Open"}], actionBarButtons: [{icon, label:"Open in VR", tooltip, onClick}] })`.
-- On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else `window.open("/appmode-xr",
-  "appmode-xr")` first (before any await, for the popup blocker), then build the snapshot and POST it. Toast success/error via `app.extensionManager.toast`.
+## Desktop extension (`web/snugui.js`)
+- `app.registerExtension({ name: "SnugUI", commands: [{id:"SnugUI.Open", label:"SnugUI", icon, function}],
+  keybindings: [{combo:{key:"s", alt:true}, commandId:"SnugUI.Open"}], actionBarButtons: [{icon, label:"SnugUI", tooltip, onClick}] })`;
+  the tooltip is "Send the App-mode workflow to SnugUI and open it (Alt+S)".
+- On run: if workflow has no `extra.linearData.inputs` → toast "Configure App mode first". Else `window.open("/snugui",
+  "snugui")` first (before any await, for the popup blocker), then build the snapshot and POST it. Toast success/error via `app.extensionManager.toast`, titled "SnugUI".
 - Node definitions come from `GET /object_info/<class>`, one request per class for the page's lifetime (`nodeDef` caches the promise,
   so the inputs and outputs built in parallel share it; a failed request is dropped and retried by the next snapshot).
 
-## VR page architecture
+## Page architecture
 ### Shared contracts (implement exactly; panels depend on them)
 `ui.js`:
 ```js
@@ -215,7 +217,7 @@ TextField and EditBar (on release). Only one edit at a time.
 export class ComfyClient extends EventTarget {
   clientId                          // random uuid, used for /ws?clientId= and prompt client_id
   connect()                         // reconnects with backoff; "reconnected" when a socket that was open opens again
-  getSnapshot() -> snapshot|null    // GET /appmode-xr/snapshot
+  getSnapshot() -> snapshot|null    // GET /snugui/snapshot
   queue(prompt, previewMethod) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id, extra_data: {preview_method}}; throws Error(message) on 4xx with node_errors summary
   interrupt()                       // POST /interrupt
   viewUrl({filename, subfolder, type})
@@ -229,7 +231,7 @@ Binary ws frames: uint32 BE event type; 1 = PREVIEW_IMAGE (next uint32 BE image 
 4 = PREVIEW_IMAGE_WITH_METADATA (uint32 BE metadata length, JSON metadata incl. prompt_id and image_type (mime), then image bytes). See `server.py`/`protocol.py`.
 Live previews: the server only sends them when the run's `extra_data.preview_method` names a method (execution.py `set_preview_method`; the
 server default here is none). `queue()` sends the snapshot's `previewMethod` when it is auto/latent2rgb/taesd, otherwise "auto" (previews are
-always wanted in VR). Previews are sent to the queueing client's socket only; the client drops type 4 frames whose prompt_id it did not queue
+always wanted on the page). Previews are sent to the queueing client's socket only; the client drops type 4 frames whose prompt_id it did not queue
 (or that is done: "done" drops it from the queued set).
 Type 2 (UNENCODED_PREVIEW_IMAGE) is encoded server-side into type 1 and type 1 is only sent to clients without `supports_preview_metadata`
 (this client sets it), so in practice only type 4 arrives; type 1 is still parsed (no prompt_id).
@@ -445,7 +447,7 @@ another Lucide icon's path data under its name and change the name where it is u
   `view` with the image.
 - Each frame: in the Desktop View `fitCamera()`; the pointers' `update(dt)` (the VR-like view's look, the panel meshes to raycast, the
   controllers); center's `update(dt)`; `Panel.updateAll()`.
-- Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
+- Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (SnugUI / Alt+S)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept). On client "reconnected" (a ComfyUI
   restart, a Quest sleep) → fetch, and `store.load()` only when its `id` differs from the loaded one, so the user's edits survive.
 
@@ -499,8 +501,8 @@ another Lucide icon's path data under its name and change the name where it is u
   `translateX(-50%)` when centered; `transform-origin` = the position; drawn at `SCALE * devicePixelRatio * k`; no re-flow). A change
   of the setting re-renders it at once (main.js `relayout`); windows keep their geometry. The same pointer binding and edit-keeping
   as the windows. Hidden in the VR view and by H (its panels go back to their world size). The VR lectern ignores the setting.
-- Persistence: localStorage `appmode-xr.desktop` = `{ <name>: { x, y, w, h, open, z } }` (CSS px, w / h = the window's size
-  with its title bar; prefs.js, the page works without it; the zoom version's `appmode-xr.windows` is ignored; geometry stored
+- Persistence: localStorage `snugui.desktop` = `{ <name>: { x, y, w, h, open, z } }` (CSS px, w / h = the window's size
+  with its title bar; prefs.js, the page works without it; the zoom version's `snugui.windows` is ignored; geometry stored
   under `config` when that window held the workflow's inputs is not migrated: the Configuration window takes it), saved after a move,
   resize, open, close or raise; a resize stores the size as shown. Shown geometry is clamped: at least the window's minimum, at
   most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
@@ -588,7 +590,7 @@ another Lucide icon's path data under its name and change the name where it is u
   with neither the row is hidden. The tiles shrink so the row stays within
   the toolbar's width (`rowW`); the row panel is resized to its content (`placeRow`), centered over the toolbar in VR and aligned
   with it on the deck's side in the Desktop View; on phones it is the tray (see Phones).
-  Selection is manual only and kept in localStorage `appmode-xr.output.<workflowName>` (falls back to the first active
+  Selection is manual only and kept in localStorage `snugui.output.<workflowName>` (falls back to the first active
   output; an inactive saved one is not restored). With no outputs one catch-all output takes every node.
   Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
   On a `"switchGroups"` change, if the selected output went inactive the first active one is selected (screen, gallery and pop-up
@@ -596,14 +598,14 @@ another Lucide icon's path data under its name and change the name where it is u
   the toolbar's status says "No active output". Inactive outputs keep their history, current entry and dot.
   Output pop-up (center's `popup`, 580 x 164 px card, radius 32, no title bar; open = `shows.popup`, the cog `toggled` while
   open): the selected output's name, then the controls of its kind, `kindControls[kind]()`. Image: Flat / 3D R/L / 3D L/R (side-by-side
-  image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD (disabled in stereo, on the
+  image, one half per eye on XR layers 1/2, persisted in `snugui.stereo`; previews stay flat), HD (disabled in stereo, on the
   desktop and while a 3D result is on show). Mesh: none yet (the cog is disabled). Picking an option keeps it open; nothing about it is remembered
   (it always opens at the cog). When the selection changes it follows the new output, closing when that one has no controls.
   Results come from `executed` events whose node is an output: images from `ui.images` (png/jpg/jpeg/webp) and 3D files (glb/gltf) from
   `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
   `ui.result[0]` = a path under output/ (deprecated Preview 3D); the same shapes the frontend's readModel3DOutput reads. Each output keeps
   its own current entry; a result for an output not on show only sets a dot on its tile.
-  History persistence (history.js; localStorage `appmode-xr.history`, last 50 of `{filename, subfolder, type, kind, node}`): entries of `type` temp
+  History persistence (history.js; localStorage `snugui.history`, last 50 of `{filename, subfolder, type, kind, node}`): entries of `type` temp
   (Preview Image, Preview 3D (Advanced); ComfyUI deletes its temp folder on every start and shutdown) are shown for the page session only,
   never saved, and dropped if found in storage. At start every saved entry gets a `HEAD` request on its `/view` URL (4 in parallel, not
   blocking); the 404s leave the history and the gallery and the history is saved. Showing an entry whose image or GLB fails to load does the
@@ -627,7 +629,7 @@ another Lucide icon's path data under its name and change the name where it is u
   emptied, also while editing); tap edits in place (live onInput) and store.set the whole text.
   Negative prompt: a header row (`Fold`: a chevron, "Negative" and, folded, the start of its text in muted, ellipsized) that folds
   and unfolds it on a tap; unfolded, its box (140 px, at most half the space the two boxes share) sits under the header and the
-  prompt box shrinks. Folded by default; the state is kept in localStorage `appmode-xr.negative` (`open` / `closed`).
+  prompt box shrinks. Folded by default; the state is kept in localStorage `snugui.negative` (`open` / `closed`).
   Missing entries leave no empty box: only the negative one (not in the owner's spec) is a plain box, alone, full height, with no
   header; neither leaves the space empty.
   Seed row (64 px, at the bottom, `SEED_W` 680 px wide at most, left-aligned) for `store.groups.seed` if any: "Seed", −, value field,
@@ -651,7 +653,7 @@ another Lucide icon's path data under its name and change the name where it is u
   original value's type on commit; state.js writes such a value into the prompt only after it was edited. Inputs without targets are read-only.
   Tabs: the left inputs are grouped by `tab` in order of first appearance (App-mode order kept inside each tab). With one tab there is no
   tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
-  and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` and falls back to the first tab
+  and resets the scroll. The selected tab is kept in localStorage `snugui.tab.<workflowName>` and falls back to the first tab
   when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
 - lora (LoRA panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
   the value is a compact TextField like the Slider's: tapping selects it to type a number, "," accepted as decimal separator, stored
@@ -669,7 +671,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 3 columns in VR; the Desktop View's
   window re-flows it), each the preset's sky gradient (`skyCanvas`, the colours `paintSky` gives the room) with the preset name as
   its label, drawn like the LoRA library tiles; the current one outlined (`selected`, as the gallery outlines the shown entry). Applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
-  Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting`.
+  Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `snugui.lighting`.
   Each preset (table in lights.js) gives key / fill / rim `[color, intensity, x, y, z]` (x y z towards the light in the stage frame,
   +z towards the viewer), the hemisphere `[sky, ground, intensity]`, a 3-stop sky gradient (top, horizon, bottom) and `env`
   `[panel side, radiance gain]`. The room's sphere is painted with the preset gradient and `scene.environment` is the preset's PMREM:
@@ -682,7 +684,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - config (Configuration panel, 0.85 m wide, as tall as its content): settings of the page's own UI, not of the workflow. Title, then
   "Toolbar position": a 3 x 2 grid of buttons laid out like the screen (top row Top left / Top center / Top right, bottom row Bottom
   left / Bottom center / Bottom right), the current one `toggled`; the grid re-flows to the panel's width. Kept in localStorage
-  `appmode-xr.toolbar` (default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
+  `snugui.toolbar` (default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
 
 ## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
@@ -700,8 +702,8 @@ another Lucide icon's path data under its name and change the name where it is u
   names and their own validation.
 - main.js builds in order: renderer and scene, ctx, the panels, the windows (createDesktop), then `screen.onChange = relayout`
   (a no-op until then: center reports its first state while it is created), the snapshot, the pointers, `setView`.
-- `window.__xr = ctx` for debugging (the page's objects; the modules are the page's own instances through
-  `await import("/appmode-xr/static/js/ui.js")`, `state.js`...). main calls `keyboard.commit()` on XR session start/end.
+- `window.__snugui = ctx` for debugging (the page's objects; the modules are the page's own instances through
+  `await import("/snugui/static/js/ui.js")`, `state.js`...). main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
-- Desktop snapshot POST goes to `/api/appmode-xr/snapshot` (ComfyUI mirrors routes under /api).
+- Desktop snapshot POST goes to `/api/snugui/snapshot` (ComfyUI mirrors routes under /api).

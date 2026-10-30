@@ -6,7 +6,7 @@ import * as THREE from "three";
 import * as ui from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
-const PRESET_KEY = "appmode-xr.lighting";
+const PRESET_KEY = "snugui.lighting";
 const ENV_DIST = 5;
 
 // key / fill / rim: [color, intensity, x, y, z], x y z pointing at the light in the stage frame (+y up, +z towards the viewer);

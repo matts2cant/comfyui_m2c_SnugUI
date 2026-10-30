@@ -100,7 +100,7 @@ async function findTargets(entries) {
     const sentinels = entries.map(({ node, widget }, i) => {
         if (!widget || !node.isSubgraphNode()) return null;
         if (typeof widget.value === "number") return 912345.678 + i;
-        return typeof widget.value === "object" ? null : `__appmodexr_${i}__`;
+        return typeof widget.value === "object" ? null : `__snugui_${i}__`;
     });
     const originals = entries.map(({ widget }) => widget?.value);
     let output;
@@ -119,7 +119,7 @@ async function findTargets(entries) {
     });
 }
 
-// widgets with their own VR control, keyed by classType:widget
+// widgets with their own SnugUI control, keyed by classType:widget
 const JSON_WIDGET_TYPES = { "PixaromaSizes:sizes_ui": "PIXAROMA_SIZES" };
 
 // Pixaroma Group Switch: a frontend-only node whose switches mute or bypass whole groups through the
@@ -284,30 +284,30 @@ async function buildSnapshot(linearData) {
     };
 }
 
-async function openInVR() {
+async function openSnugUI() {
     const linearData = app.rootGraph?.extra?.linearData;
-    if (!linearData?.inputs?.length) return toast("warn", "Open in VR", "Configure App mode first");
+    if (!linearData?.inputs?.length) return toast("warn", "SnugUI", "Configure App mode first");
     // opened before any await so the popup blocker sees the user gesture
-    window.open(new URL("/appmode-xr", location.href).href, "appmode-xr");
+    window.open(new URL("/snugui", location.href).href, "snugui");
     try {
-        const res = await api.fetchApi("/appmode-xr/snapshot", {
+        const res = await api.fetchApi("/snugui/snapshot", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(await buildSnapshot(linearData)),
         });
         if (!res.ok) throw new Error(`server returned ${res.status}`);
-        toast("success", "Open in VR", "Snapshot sent");
+        toast("success", "SnugUI", "Snapshot sent");
     } catch (err) {
-        console.error("[AppModeXR]", err);
-        toast("error", "Open in VR failed", err.message);
+        console.error("[SnugUI]", err);
+        toast("error", "SnugUI failed", err.message);
     }
 }
 
 const icon = "icon-[lucide--eye]";
 
 app.registerExtension({
-    name: "AppModeXR",
-    commands: [{ id: "AppModeXR.Open", label: "Open in VR", icon, function: openInVR }],
-    keybindings: [{ combo: { key: "v", alt: true }, commandId: "AppModeXR.Open" }],
-    actionBarButtons: [{ icon, label: "Open in VR", tooltip: "Open the App-mode workflow in VR (Alt+V)", onClick: openInVR }],
+    name: "SnugUI",
+    commands: [{ id: "SnugUI.Open", label: "SnugUI", icon, function: openSnugUI }],
+    keybindings: [{ combo: { key: "s", alt: true }, commandId: "SnugUI.Open" }],
+    actionBarButtons: [{ icon, label: "SnugUI", tooltip: "Send the App-mode workflow to SnugUI and open it (Alt+S)", onClick: openSnugUI }],
 });

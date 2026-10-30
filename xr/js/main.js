@@ -119,7 +119,7 @@ const ctx = {
 	xr: { isPresenting: () => renderer.xr.isPresenting },
 	desktopView: () => deskView,
 };
-window.__xr = ctx;
+window.__snugui = ctx;
 
 function panelGroup(panel) {
 	const group = new THREE.Group();

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import * as ui from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
-const TOOLBAR_KEY = "appmode-xr.toolbar";
+const TOOLBAR_KEY = "snugui.toolbar";
 // the grid as on the screen: top row, then bottom row
 const POSITIONS = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
 const M = 24, GAP = 8, BTN_H = 72, GRID_Y = 140, H = GRID_Y + 2 * BTN_H + GAP + M;

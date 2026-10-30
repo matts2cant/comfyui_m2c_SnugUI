@@ -1,4 +1,4 @@
-// The page's own settings in localStorage (keys "appmode-xr.*"). Storage may throw (disabled, some private windows): reads
+// The page's own settings in localStorage (keys "snugui.*"). Storage may throw (disabled, some private windows): reads
 // then give null and writes are dropped, so the page works without it.
 export function pref(key) {
 	try {

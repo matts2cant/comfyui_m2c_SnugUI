@@ -7,7 +7,7 @@ import { pref, setPref } from "../prefs.js";
 
 const MODES = [["fixed", "lock"], ["increment", "plus"], ["randomize", "shuffle"]];
 const M = 20, GAP = 12, TOP = 60, ROW_H = 64, BTN_W = 60, FOLD_H = 52, NEG_H = 140, MIN_BOX = 140, SEED_W = 680;
-const NEGATIVE_KEY = "appmode-xr.negative";
+const NEGATIVE_KEY = "snugui.negative";
 
 const { theme } = ui;
 

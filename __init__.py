@@ -15,7 +15,7 @@ __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 
 ROOT = Path(__file__).resolve().parent
 XR_DIR = ROOT / "xr"
-SNAPSHOT_FILE = Path(folder_paths.get_user_directory()) / "appmode_xr" / "snapshot.json"
+SNAPSHOT_FILE = Path(folder_paths.get_user_directory()) / "snugui" / "snapshot.json"
 NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 snapshot = None
@@ -23,7 +23,7 @@ if SNAPSHOT_FILE.is_file():
     try:
         snapshot = json.loads(SNAPSHOT_FILE.read_text(encoding="utf-8"))
     except ValueError:
-        logging.warning("AppMode XR: ignoring unreadable %s", SNAPSHOT_FILE)
+        logging.warning("SnugUI: ignoring unreadable %s", SNAPSHOT_FILE)
 
 routes = PromptServer.instance.routes
 
@@ -35,12 +35,12 @@ def serve(path: Path):
     return web.FileResponse(path, headers=headers)
 
 
-@routes.get("/appmode-xr")
+@routes.get("/snugui")
 async def xr_index(request):
     return serve(XR_DIR / "index.html")
 
 
-@routes.get("/appmode-xr/static/{path:.*}")
+@routes.get("/snugui/static/{path:.*}")
 async def xr_static(request):
     path = (XR_DIR / request.match_info["path"]).resolve()
     if not path.is_relative_to(XR_DIR) or not path.is_file():
@@ -48,7 +48,7 @@ async def xr_static(request):
     return serve(path)
 
 
-@routes.post("/appmode-xr/snapshot")
+@routes.post("/snugui/snapshot")
 async def post_snapshot(request):
     global snapshot
     body = await request.json()
@@ -57,11 +57,11 @@ async def post_snapshot(request):
     snapshot = {**body, "id": uuid.uuid4().hex, "created": int(time.time() * 1000)}
     SNAPSHOT_FILE.parent.mkdir(exist_ok=True)
     SNAPSHOT_FILE.write_text(json.dumps(snapshot), encoding="utf-8")
-    PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": snapshot["id"]})
+    PromptServer.instance.send_sync("snugui_snapshot", {"id": snapshot["id"]})
     return web.json_response({"id": snapshot["id"]})
 
 
-@routes.get("/appmode-xr/snapshot")
+@routes.get("/snugui/snapshot")
 async def get_snapshot(request):
     if snapshot is None:
         return web.json_response({"error": "no snapshot"}, status=404, headers=NO_CACHE)

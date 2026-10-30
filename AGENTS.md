@@ -1,6 +1,6 @@
 # Agent guide
 
-Personal ComfyUI custom-node package: a page served by ComfyUI to run an App-mode workflow from a phone, a desktop browser or
+SnugUI, a personal ComfyUI custom-node package: a page served by ComfyUI to run an App-mode workflow from a phone, a desktop browser or
 a Meta Quest. Follow the style rules in the ComfyUI root [AGENTS.md](../../AGENTS.md): small direct changes, hand-written
 look, no new dependencies, no internet requests.
 
@@ -11,7 +11,7 @@ config.
 
 ```
 __init__.py        package entry and server: the page's routes and the snapshot store; no nodes (empty mappings), WEB_DIRECTORY = "./web"
-web/appmode_xr.js  the ComfyUI frontend extension (ComfyUI loads every .js under web/ into its UI: nothing else goes there)
+web/snugui.js      the ComfyUI frontend extension (ComfyUI loads every .js under web/ into its UI: nothing else goes there)
 xr/                the page: index.html, js/ (plain ES modules, no build step), vendor/ (three.js)
 ```
 
@@ -33,7 +33,7 @@ ComfyUI root:
 
 - The snapshot lives in the ComfyUI user directory, so a sandbox with its own `--user-directory` can't touch the owner's.
 - Stop only the sandbox process you started, by PID.
-- Drive the page with a headless browser on a fresh profile (screenshots, `window.__xr`); close every browser you start. Never
+- Drive the page with a headless browser on a fresh profile (screenshots, `window.__snugui`); close every browser you start. Never
   screenshot the LoRA panel with the owner's LoRA library.
 - Node.js for syntax checks and quick script tests: Comfy Desktop's Electron exe
   `%LOCALAPPDATA%\Programs\@comfyorgcomfyui-electron\ComfyUI.exe` run with env `ELECTRON_RUN_AS_NODE=1`. Without that variable

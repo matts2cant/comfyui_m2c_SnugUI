@@ -250,7 +250,7 @@ export function createInputPanel({ client }) {
 		}
 	}
 
-	const tabKey = () => `appmode-xr.tab.${store.snapshot?.workflowName}`;
+	const tabKey = () => `snugui.tab.${store.snapshot?.workflowName}`;
 
 	// hidden: inputs whose every target node the switched-off groups drop, or that were disabled on the desktop; never a
 	// Group Switch, which turns them back on

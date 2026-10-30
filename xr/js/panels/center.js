@@ -17,8 +17,8 @@ const TILE = 200, SMALL_TILE = 120, RING = 4;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const MISSING = "File no longer exists — removed from the gallery";
-const STEREO_KEY = "appmode-xr.stereo";
-const OUTPUT_KEY = "appmode-xr.output"; // + .<workflowName>
+const STEREO_KEY = "snugui.stereo";
+const OUTPUT_KEY = "snugui.output"; // + .<workflowName>
 const STEREO_MODES = [["flat", "Flat"], ["rl", "3D R/L"], ["lr", "3D L/R"]];
 const THUMB = 512;
 const IMAGE_ZOOM_MIN = 0.25, IMAGE_ZOOM_MAX = 16;
@@ -327,7 +327,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		gallery.selected = current;
 		gallery.items = history.entries.filter((e) => ownerOf(e) === out);
 		galleryTitle.setText(outputs.length > 1 ? `Gallery · ${out.title}` : "Gallery");
-		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
+		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (SnugUI / Alt+S)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
 		if (empty.text !== noteText.text) {
 			note.ctx.font = ui.font(empty.size);

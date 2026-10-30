@@ -3,7 +3,7 @@
 // folder on every start and shutdown. center.js decides which output an entry goes to and what is shown.
 import { prefJSON, setPref } from "./prefs.js";
 
-const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
+const HISTORY_KEY = "snugui.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 const MODEL_EXT = /\.(glb|gltf)$/i;
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ComfyUI App Mode XR</title>
+<title>SnugUI</title>
 <style>
 	/* the page's colours, which ui.js's theme (the canvas panels) and help.js take from here too */
 	:root { --bg: #0b0e13; --panel: #161a22; --surface-hi: #303846; --border: #323a49; --fg: #e8ecf2; --muted: #8c96a8; --accent: #4c8dff; --danger: #e5484d; }
@@ -41,10 +41,10 @@
 		.grip { width: 40px; height: 40px; background-size: 22px 22px; background-position: right bottom; background-repeat: no-repeat; }
 	}
 </style>
-<script type="importmap">{ "imports": { "three": "/appmode-xr/static/vendor/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "/snugui/static/vendor/three.module.js" } }</script>
 </head>
 <body>
 <div id="hint" hidden>VR view on the desktop: drag to look, wheel to scroll, click to press; drag / wheel on the image pans / zooms it, shift- or right-drag moves the 3D model. R recenters, H hides the panels, the toolbar's monitor button goes back to the Desktop View.</div>
-<script type="module" src="/appmode-xr/static/js/main.js"></script>
+<script type="module" src="/snugui/static/js/main.js"></script>
 </body>
 </html>

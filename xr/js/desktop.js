@@ -13,7 +13,7 @@ import { adopt, bindPanel, clamp, el, keepEdit, sizePanel } from "./dom.js";
 import { createPhone } from "./phone.js";
 import { prefJSON, setPref } from "./prefs.js";
 
-const STORE_KEY = "appmode-xr.desktop";
+const STORE_KEY = "snugui.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
 const MARGIN = 12, CASCADE = 32, EDGE = 16, DECK_GAP = 8;
 const PHONE_W = 600, LANDSCAPE_H = 500; // phones: portrait under PHONE_W wide, landscape when wider than tall and under LANDSCAPE_H

@@ -56,7 +56,7 @@ export class ComfyClient extends EventTarget {
 
 	#onMessage({ type, data }) {
 		switch (type) {
-			case "appmode_xr_snapshot":
+			case "snugui_snapshot":
 				this.#emit("snapshot", { id: data.id });
 				break;
 			case "status":
@@ -119,7 +119,7 @@ export class ComfyClient extends EventTarget {
 	}
 
 	async getSnapshot() {
-		const res = await fetch("/appmode-xr/snapshot");
+		const res = await fetch("/snugui/snapshot");
 		return res.ok ? res.json() : null;
 	}
 
