@@ -1,7 +1,7 @@
 // Toolbar: one rounded slab, the same panel in both views (on the lectern in VR, in the Desktop View's deck).
 // Top tier: the run status and its timer over the node and total progress bars; bottom row: main.js's round panel buttons
 // (`tabs`), a separator and the view button, then Cancel and Generate at the right. Its width follows the icon row, at least
-// MIN_ICONS buttons. Phones (desktop.js calls arrange(dock)): the panel buttons leave for desktop.js's tab bar, the view button
+// MIN_ICONS buttons. Phones (phone.js calls arrange(dock)): the panel buttons leave for phone.js's tab bar, the view button
 // hides and the toolbar draws the status, Cancel and Generate into the boxes the dock gives it at its size: the status over Cancel
 // and Generate (portrait), or the run column (landscape, `vertical`): status, timer, bars, Cancel, then Generate as a tall play pill.
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
@@ -104,8 +104,8 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	layout();
 
 	// phones: dock(w, h) -> { status, cancel, generate: { x, y, w, h }, vertical }, the boxes at the toolbar's size (panel px), re-read
-	// as it re-flows; the panel buttons must be elsewhere (desktop.js's tab bar). null: back to the desk / VR row, the panel buttons
-	// on it again (desktop.js then calls setPx(): the world size).
+	// as it re-flows; the panel buttons must be elsewhere (phone.js's tab bar). null: back to the desk / VR row, the panel buttons
+	// on it again (phone.js then calls setPx(): the world size).
 	function arrange(d) {
 		dock = d;
 		if (!d) for (const b of tabs) if (b.panel !== panel) {

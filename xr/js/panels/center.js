@@ -1,6 +1,6 @@
 // Center panel: image (mesh or XR quad layer) or 3D model on a stage centered on the group origin, plus the output row (tiles
 // and the cog), its output pop-up, the phones' output button and the gallery panel. The stage takes the aspect of what it shows
-// at the screen diagonal; the hosts (main.js, desktop.js) place everything from `shows` and call screen.onChange() when it changes. Results are kept per App-mode output. The image pans and zooms in the stage
+// at the screen diagonal; the hosts (main.js, desktop.js, phone.js) place everything from `shows` and call screen.onChange() when it changes. Results are kept per App-mode output. The image pans and zooms in the stage
 // plane (`image`).
 import { createModelView } from "../model.js";
 
@@ -230,7 +230,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	// the pop-up's controls per output kind; none hides the cog
 	const kindControls = { image: () => [...modeBtns, hdBtn], "3d": () => [] };
 	const cog = new ui.Button({ icon: "settings", round: true, w: COG, h: COG, onClick: () => showPopup(!shows.popup) });
-	// phones: the dock's output button (desktop.js, while the row has something), the selected output's tile; desktop.js opens the
+	// phones: the dock's output button (phone.js, while the row has something), the selected output's tile; phone.js opens the
 	// row as a tray on a tap (onPick) and rings it while open (ringPick)
 	const pick = new ui.Panel({ name: "output-pick", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null });
 	const pickTile = pick.add(new OutputTile({ w: COG, h: COG, onClick: () => onPick() }));
@@ -260,7 +260,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
 	// per output: { nodeId (null = any node), title, kind, current (entry on show), fresh (results not shown yet) }
 	let outputs = [], out = null, tiles = [];
-	let tile = TILE, maxW = rowW, vertical = false; // phones: a fixed tile size and no length limit (desktop.js scrolls the row), a column in landscape
+	let tile = TILE, maxW = rowW, vertical = false; // phones: a fixed tile size and no length limit (phone.js scrolls the row), a column in landscape
 	// what the hosts show around the stage: the output row (it has something: several outputs, or a single one with settings), the
 	// pop-up (open), the note (a message is up)
 	const shows = { row: false, popup: false, note: false };
@@ -334,7 +334,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	}
 
 	// phones: tiles of `size` px however many there are, in a column when vertical; null: back to a row of TILE within rowW. Layout
-	// only, called by desktop.js during its layout pass, which places the row from its new size.
+	// only, called by phone.js during its layout pass, which places the row from its new size.
 	function rowTile(size, v = false) {
 		tile = size ?? TILE;
 		maxW = size ? Infinity : rowW;
@@ -343,7 +343,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		row.invalidate();
 	}
 
-	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere, desktop.js with
+	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere, phone.js with
 	// the phones' tray
 	function showPopup(on) {
 		shows.popup = cog.toggled = on;
