@@ -6,8 +6,7 @@ Desktop View) or a Meta Quest 3 (standalone Quest Browser, WebXR).
 
 ## Hard rules
 - Its own custom-node package, `custom_nodes/comfyui_m2c_SnugUI/` (no nodes, no dependency on other custom nodes). Only create/modify
-  files inside it. Never touch ComfyUI core, other custom nodes,
-  the venv (no pip installs), Comfy Desktop config, or `%APPDATA%`.
+  files inside it. Never touch ComfyUI core, other custom nodes, the venv (no pip installs), Comfy Desktop config, or `%APPDATA%`.
 - No CDN / internet at runtime. Libraries are vendored in `app/vendor/`.
 - Plain ES modules, no build step, no npm deps at runtime. Modern JS (Quest Browser = recent Chromium).
 - Match a hand-written style: small direct code, sparse useful comments, no defensive boilerplate.

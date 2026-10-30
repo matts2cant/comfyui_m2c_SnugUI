@@ -1,56 +1,39 @@
 # SnugUI
 
-Personal ComfyUI custom-node package (`comfyui_m2c_SnugUI`): tweak an App-mode workflow and generate from a Meta Quest 3 (Quest Browser, WebXR).
-A "SnugUI" button snapshots the current App-mode workflow; ComfyUI serves a WebXR page at `/snugui`
-with the result image in the middle and, in VR, the inputs on a tilted lectern under it, one panel at a time. No internet or CDN at runtime
+Personal ComfyUI custom-node package (`comfyui_m2c_SnugUI`): one interface to tweak an App-mode workflow and generate from a
+phone (portrait and landscape), a desktop browser or tablet (the Desktop View) or a Meta Quest 3 (Quest Browser, WebXR).
+A "SnugUI" button in ComfyUI snapshots the current App-mode workflow; ComfyUI serves the page at `/snugui`, with the result
+image or 3D model in the middle and the workflow's inputs in panels around it. It adds no nodes. No internet or CDN at runtime
 (three.js is vendored in `app/vendor/`).
+
+## Install
+
+Put this folder in `ComfyUI/custom_nodes/` and restart ComfyUI. It needs nothing beyond ComfyUI itself; the LoRA panel uses
+LoRA Manager and the Input panel shows Pixaroma's Group Switch when the workflow has them. The Sapiens2 nodes that used to ship
+with this code are now in their own package, `comfyui_m2c_sapiens2_tools`; SnugUI shows their GLBs like any other 3D output.
 
 ## Setup
 
-1. ComfyUI must be reachable from the Quest. In Comfy Desktop: Settings -> Server Config -> listen address
-   `0.0.0.0`, then restart ComfyUI. Allow the port (default 8000) through the Windows firewall if asked.
-2. Find the PC's LAN IP (`ipconfig`, the IPv4 address of your Wi-Fi/Ethernet adapter).
-3. WebXR needs a secure origin and ComfyUI is plain http, so tell Quest Browser to trust it once:
+1. On the desktop, configure App mode for your workflow (choose the inputs and outputs).
+2. In graph mode click "SnugUI" in the toolbar (or press Alt+S). This sends a snapshot to the server and opens `/snugui` in a
+   browser tab. Sending again replaces the snapshot on every open page. A page that lost its connection (ComfyUI restarted, the
+   phone or headset slept) loads a snapshot sent meanwhile when it reconnects, and keeps your edits if the snapshot is unchanged.
+3. To use a phone, a tablet or the Quest, ComfyUI must be reachable from it. In Comfy Desktop: Settings -> Server Config ->
+   listen address `0.0.0.0`, then restart ComfyUI. Allow the port (default 8000) through the Windows firewall if asked.
+   Find the PC's LAN IP (`ipconfig`, the IPv4 address of your Wi-Fi/Ethernet adapter) and open `http://<pc-ip>:<port>/snugui`
+   on the device.
+4. Quest only: WebXR needs a secure origin and ComfyUI is plain http, so tell Quest Browser to trust it once:
    open `chrome://flags`, search "Insecure origins treated as secure", add `http://<pc-ip>:<port>`
    (for example `http://192.168.1.20:8000`), set it to Enabled, tap Relaunch.
+   If Quest Browser opens the page without WebXR, it shows the same instructions with your address prefilled.
 
-If Quest Browser opens the page without WebXR, it shows the same instructions with your address prefilled.
+## Views
 
-## Usage
+The page picks its layout from the window: the phone layout on a phone, the Desktop View on a wider window; the goggles button
+on the toolbar enters VR. Every view has the same panels, Prompt, Gallery, LoRA, Light, Input (the workflow's inputs) and
+Configuration (settings of this page), and the same toolbar: the run status, a timer, two progress bars, Cancel and Generate.
 
-1. On the desktop, configure App mode for your workflow (choose the inputs and outputs).
-2. In graph mode click "SnugUI" in the toolbar (or press Alt+S). This sends a snapshot to the server.
-   Sending again replaces the snapshot on every open VR page. A page that lost its connection (ComfyUI restarted, the headset
-   slept) loads a snapshot sent meanwhile when it reconnects, and keeps your edits if the snapshot is unchanged.
-3. On the Quest open `http://<pc-ip>:<port>/snugui` and press the VR button (goggles icon) on the toolbar, bottom right.
-4. Layout: the image in the middle; under it a tilted lectern with, from the top: the output tiles (several outputs only), the
-   toolbar, then one open panel. The toolbar shows the run status, a timer and two progress bars over round buttons: Prompt,
-   Gallery, LoRA, Light, Input (the workflow's inputs), Configuration (settings of this page) (each opens its panel on the lectern
-   and closes the other; press the open one again to close it), Desktop View (monitor icon, leaves VR), then Cancel and Generate.
-   Prompt is open when VR starts. Text fields have an edit toolbar with a Quest keyboard button.
-
-## Desktop View
-
-Without a VR session the page opens in the Desktop View, for a desktop browser or a tablet (phones: see below): the image or 3D model fills the
-window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt,
-Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
-the middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
-down to fit a narrow window). Configuration > Toolbar position moves them to another corner or to the middle of the top or
-bottom edge (at the top the tiles go under the toolbar); it only applies to the Desktop View and is remembered. The toolbar's
-round buttons open and close the windows; several can be open at once. Drag a title bar to move a window, its corner to resize
-it freely (the text keeps its size, the content re-flows: a bigger prompt box, more rows in the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed
-back inside a smaller window). The first time only Prompt is open.
-
-- Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
-- Touch: one finger pans the image (turns the model), two fingers pinch to zoom and move it. Tapping a text field opens the
-  on-screen keyboard; use the edit toolbar to delete and move the caret.
-- H hides the windows and the toolbar (H again shows them), R resets the image / model, Esc closes the output pop-up (not with
-  Ctrl, Alt or Cmd held, nor while typing in a page field).
-- The goggles button enters VR on the Quest. In a desktop browser it shows the VR layout instead: drag to look, wheel to
-  scroll, click to press, R recenters, H hides the panels; the monitor button in the same place comes back.
-  `/snugui?view=vr` opens it directly.
-
-## Phones
+### Phones
 
 On a phone (a window narrower than 600 px, or a landscape one shorter than 500 px) the page uses a phone layout instead of
 windows. Portrait: the image above a dock with the run status, Cancel and Generate (lined up over the first tab and the other
@@ -66,6 +49,36 @@ close it. Tapping a text field opens the phone's own keyboard (normal caret, sel
 it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag the image to zoom
 and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button do not apply on
 phones; a wider window brings the Desktop View back with its windows as you left them.
+
+### Desktop View
+
+Without a VR session a window wider than a phone's opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
+window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt,
+Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
+the middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
+down to fit a narrow window). Configuration > Toolbar position moves them to another corner or to the middle of the top or
+bottom edge (at the top the tiles go under the toolbar); it only applies to the Desktop View and is remembered. The toolbar's
+round buttons open and close the windows; several can be open at once. Drag a title bar to move a window, its corner to resize
+it freely (the text keeps its size, the content re-flows: a bigger prompt box, more rows in the lists), the X to close it; a click brings a window to the front. Positions, sizes and open windows are remembered (and pushed
+back inside a smaller window). The first time only Prompt is open.
+
+- Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
+- Touch: one finger pans the image (turns the model), two fingers pinch to zoom and move it. Tapping a text field opens the
+  on-screen keyboard; use the edit toolbar to delete and move the caret.
+- H hides the windows and the toolbar (H again shows them), R resets the image / model, Esc closes the output pop-up (not with
+  Ctrl, Alt or Cmd held, nor while typing in a page field).
+- The goggles button enters VR on the Quest. In a desktop browser it shows the VR layout instead (the VR-like view): drag to
+  look, wheel to scroll, click to press, R recenters, H hides the panels; the monitor button in the same place comes back.
+  `/snugui?view=vr` opens it directly.
+
+### VR
+
+On the Quest open `http://<pc-ip>:<port>/snugui` and press the VR button (goggles icon) on the toolbar, bottom right.
+Layout: the image in the middle; under it a tilted lectern with, from the top: the output tiles (several outputs only), the
+toolbar, then one open panel. The toolbar's round panel buttons each open their panel on the lectern and close the other;
+press the open one again to close it. Then come Desktop View (monitor icon, leaves VR), Cancel and Generate. Prompt is open
+when VR starts. Text fields have an edit toolbar with a Quest keyboard button. The controllers and hands are under Controls
+below.
 
 ## Input tabs
 
@@ -106,8 +119,8 @@ bar is the running node's steps, the thick one the whole run (nodes done, cached
 ## Group switches
 
 A Pixaroma "Group Switch" added to App mode shows in the Input panel as a list of switches, one per group (colour dot, name, Mute or
-Bypass tag), following the switch's rule (any number on, only one on, always keep one on). Switching a group off in VR mutes or
-bypasses its nodes in the prompts sent from VR only; the desktop graph is not changed. Settings whose nodes are all switched off (or
+Bypass tag), following the switch's rule (any number on, only one on, always keep one on). Switching a group off in SnugUI mutes or
+bypasses its nodes in the prompts sent from SnugUI only; the desktop graph is not changed. Settings whose nodes are all switched off (or
 already muted or bypassed on the desktop) are hidden, with their tab when it empties, and come back with their values when the group is
 turned back on. Output tiles of switched-off outputs are dimmed; if every output is off, Generate is disabled ("No active output").
 
@@ -160,7 +173,7 @@ choice is remembered. Panels and images are not lit.
 - Images and GLB/glTF models only: video, audio and other 3D formats (OBJ, STL, FBX, splats...) are ignored.
 - Large models (1M triangles, tens of MB) are untested on the Quest.
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
-- Changes made in VR are not written back to the desktop workflow; they only affect the prompts sent
-  from VR.
+- Changes made in SnugUI are not written back to the desktop workflow; they only affect the prompts sent
+  from SnugUI.
 - Quest-only paths (quad layer, system keyboard, hands, grabbing, the B button) are untested on hardware. Hands pinch to click and
   turn; grabbing with a hand only works if Quest Browser reports a hand squeeze.
