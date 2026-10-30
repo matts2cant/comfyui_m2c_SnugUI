@@ -6,7 +6,9 @@ import * as THREE from "three";
 import * as ui from "../ui.js";
 import { store } from "../state.js";
 import { createModelView } from "../model.js";
-import { pref, prefJSON, setPref } from "../prefs.js";
+import { pref, setPref } from "../prefs.js";
+import { createHistory, isMissing, resultFiles } from "../history.js";
+import { createQuadLayer } from "../quad.js";
 
 const { theme } = ui;
 
@@ -14,16 +16,12 @@ export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phon
 const TILE = 200, SMALL_TILE = 120, RING = 4;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
-const HISTORY_KEY = "appmode-xr.history", HISTORY_MAX = 50, CHECK_PARALLEL = 4;
 const MISSING = "File no longer exists — removed from the gallery";
 const STEREO_KEY = "appmode-xr.stereo";
 const OUTPUT_KEY = "appmode-xr.output"; // + .<workflowName>
 const STEREO_MODES = [["flat", "Flat"], ["rl", "3D R/L"], ["lr", "3D L/R"]];
-const THUMB = 512, LAYER_MAX = 3072;
+const THUMB = 512;
 const IMAGE_ZOOM_MIN = 0.25, IMAGE_ZOOM_MAX = 16;
-const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
-const MODEL_EXT = /\.(glb|gltf)$/i;
-const FLIP_Y = true; // layer textures follow GL row order, bottom row first
 
 // not ui.js's cached loader: preview blob URLs are one-shot
 const loadImg = (url) => new Promise((resolve, reject) => {
@@ -58,26 +56,9 @@ function ring(ctx, x, y, s, r, color) {
 	ctx.stroke();
 }
 
-// temp previews (Preview Image, Preview 3D) do not survive a ComfyUI restart: never persisted
-const loadHistory = () => (prefJSON(HISTORY_KEY) ?? []).filter((e) => e.type !== "temp");
-
 function loadStereo() {
 	const mode = pref(STEREO_KEY);
 	return STEREO_MODES.some(([m]) => m === mode) ? mode : "flat";
-}
-
-function saveHistory(history) {
-	setPref(HISTORY_KEY, JSON.stringify(history.filter((e) => e.type !== "temp").map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
-}
-
-// images from ui.images; 3D files from ui["3d"] (Save 3D Model, Preview 3D (Advanced)...) or ui.result[0] (Preview 3D: a
-// path under output/). Only formats the page can show.
-function resultFiles({ images = [], result, "3d": saved } = {}) {
-	const path = typeof result?.[0] === "string" ? result[0].replaceAll("\\", "/") : null;
-	const i = path?.lastIndexOf("/");
-	const models = saved ?? (path ? [{ filename: path.slice(i + 1), subfolder: path.slice(0, Math.max(i, 0)), type: "output" }] : []);
-	const pick = (kind) => ({ filename, subfolder, type }) => ({ filename, subfolder, type, kind });
-	return [...images.filter((f) => IMAGE_EXT.test(f.filename)).map(pick("image")), ...models.filter((f) => MODEL_EXT.test(f.filename)).map(pick("3d"))];
 }
 
 // rowW: the output row's widest, the toolbar's width (panel px); onPick(): a tap on the phones' output button
@@ -109,7 +90,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	class OutputTile extends ui.Widget {
 		draw(ctx) {
 			const { w: s, output: o } = this, icon = o.kind === "3d" ? "box" : "image";
-			const latest = history.find((e) => ownerOf(e) === o), thumb = latest && thumbOf(latest);
+			const latest = history.entries.find((e) => ownerOf(e) === o), thumb = latest && thumbOf(latest);
 			ctx.globalAlpha = active(o) ? 1 : 0.4;
 			ctx.save();
 			ctx.beginPath();
@@ -222,9 +203,10 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	const view = new THREE.Group(); // the image's pan (position, z = 0) and zoom (uniform scale) in the stage plane
 	view.add(imageMesh, holeMesh, eyeMesh);
 	group.add(view);
+	const layer = createQuadLayer({ renderer, xr }, holeMesh);
 
 	// ---- state ----
-	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
+	const history = createHistory(client);
 	// per output: { nodeId (null = any node), title, kind, current (entry on show), fresh (results not shown yet) }
 	let outputs = [], out = null, tiles = [];
 	let tile = TILE, maxW = rowW, vertical = false; // phones: a fixed tile size and no length limit (phone.js scrolls the row), a column in landscape
@@ -318,7 +300,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	function select(o) {
 		out = o;
 		o.fresh = false;
-		o.current ??= history.find((e) => ownerOf(e) === o) ?? null;
+		o.current ??= history.entries.find((e) => ownerOf(e) === o) ?? null;
 		previewing = false;
 		gallery.scroll = 0;
 		const controls = kindControls[o.kind]();
@@ -343,7 +325,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		model.group.visible = modelOn && model.entry === current;
 		shows.note = !singleOn && !model.group.visible;
 		gallery.selected = current;
-		gallery.items = history.filter((e) => ownerOf(e) === out);
+		gallery.items = history.entries.filter((e) => ownerOf(e) === out);
 		galleryTitle.setText(outputs.length > 1 ? `Gallery · ${out.title}` : "Gallery");
 		empty.setText(!store.snapshot ? "Send a workflow from ComfyUI (Open in VR / Alt+V)"
 			: modelOn ? notice || "Loading 3D model…" : notice || (out.kind === "3d" ? "No 3D models yet" : "No images yet"));
@@ -445,15 +427,11 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		});
 	}
 
-	// only a 404 means the file is gone; the rest (network, parse) leave the history alone
-	const isMissing = (entry) => fetch(entry.url, { method: "HEAD" }).then((r) => r.status === 404, () => false);
-
 	// removes entries whose file is gone; an output that showed one falls back to its next entry
 	function dropEntries(gone) {
 		const { current } = out;
-		history.splice(0, history.length, ...history.filter((e) => !gone.includes(e)));
-		saveHistory(history);
-		for (const o of outputs) if (gone.includes(o.current)) o.current = history.find((e) => ownerOf(e) === o) ?? null;
+		history.drop(gone);
+		for (const o of outputs) if (gone.includes(o.current)) o.current = history.entries.find((e) => ownerOf(e) === o) ?? null;
 		if (gone.includes(shownEntry) || !out.current && out.kind === "image") clearShown();
 		if (!gone.includes(current)) return refresh();
 		if (out.current) showEntry(out.current);
@@ -464,14 +442,6 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	function showMissing() {
 		notice = MISSING;
 		refresh();
-	}
-
-	async function pruneMissing(entries) {
-		const gone = [];
-		await Promise.all(Array.from({ length: CHECK_PARALLEL }, async () => {
-			for (let e; (e = entries.shift());) if (await isMissing(e)) gone.push(e);
-		}));
-		if (gone.length) dropEntries(gone);
 	}
 
 	async function showEntry(entry) {
@@ -566,10 +536,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		const o = outputs.find((o) => o.nodeId === null || o.nodeId === String(detail.node));
 		const files = o ? resultFiles(detail.output) : [];
 		if (!files.length) return;
-		const entries = files.map((f) => ({ ...f, node: o.nodeId, url: client.viewUrl(f) }));
-		history.unshift(...[...entries].reverse());
-		history.length = Math.min(history.length, HISTORY_MAX);
-		saveHistory(history);
+		const entries = history.add(files, o.nodeId);
 		o.current = entries[entries.length - 1];
 		if (o !== out) {
 			o.fresh = true;
@@ -650,87 +617,6 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		},
 	};
 
-	// ---- XR quad layer (HD) ----
-	let hdSupported = false, layerFailed = false;
-	let layerSession = null, quad = null, quadW = 0, quadH = 0, inLayers = false, uploaded = null;
-	const lastPose = new THREE.Matrix4();
-	const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
-	const scaler = document.createElement("canvas");
-
-	function applyPose(m) {
-		m.decompose(pos, quat, scl);
-		quad.width = scl.x / 2;
-		quad.height = scl.y / 2;
-		quad.transform = new XRRigidTransform(pos, quat);
-		lastPose.copy(m);
-	}
-
-	function upload(binding, pw, ph) {
-		let src = shown;
-		if (pw !== shown.naturalWidth) {
-			scaler.width = pw;
-			scaler.height = ph;
-			scaler.getContext("2d").drawImage(shown, 0, 0, pw, ph);
-			src = scaler;
-		}
-		const gl = renderer.getContext();
-		const sub = binding.getSubImage(quad, renderer.xr.getFrame());
-		renderer.state.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
-		gl.getError();
-		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, FLIP_Y);
-		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
-		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-		// a rejected upload would leave the hole over an empty layer
-		if (gl.getError()) throw new Error("quad layer upload failed");
-		uploaded = shown;
-	}
-
-	// Mirrors three's webxr_vr_layers example: [quad layer, projection layer] with a transparent hole
-	// punched where the image is. Sets imageMesh / holeMesh visibility. Quest Browser takes quad width/height
-	// as half extents (three halves them too). Size and pose follow holeMesh's world matrix, so the image's pan and zoom.
-	function updateLayer() {
-		const session = xr.isPresenting() ? renderer.xr.getSession() : null;
-		if (session !== layerSession) {
-			layerSession = session;
-			quad = uploaded = null;
-			inLayers = false;
-		}
-		const binding = session && !layerFailed ? renderer.xr.getBinding() : null;
-		hdSupported = !!binding;
-		let hole = false;
-		if (binding && hd && singleOn && !previewing && !isSplit()) {
-			const k = Math.min(1, LAYER_MAX / Math.max(shown.naturalWidth, shown.naturalHeight));
-			const pw = Math.round(shown.naturalWidth * k), ph = Math.round(shown.naturalHeight * k);
-			holeMesh.updateWorldMatrix(true, false);
-			const m = holeMesh.matrixWorld;
-			if (!quad || quadW !== pw || quadH !== ph) {
-				quad?.destroy();
-				m.decompose(pos, quat, scl);
-				quad = binding.createQuadLayer({
-					space: renderer.xr.getReferenceSpace(), layout: "mono", viewPixelWidth: pw, viewPixelHeight: ph,
-					width: scl.x / 2, height: scl.y / 2, transform: new XRRigidTransform(pos, quat),
-				});
-				lastPose.copy(m);
-				quadW = pw;
-				quadH = ph;
-				uploaded = null;
-				inLayers = false;
-			} else if (!lastPose.equals(m)) applyPose(m);
-			if (!inLayers) {
-				session.updateRenderState({ layers: [quad, renderer.xr.getBaseLayer()] });
-				inLayers = true;
-			} else {
-				if (uploaded !== shown || quad.needsRedraw) upload(binding, pw, ph);
-				hole = true;
-			}
-		} else if (inLayers) {
-			inLayers = false;
-			session.updateRenderState({ layers: [renderer.xr.getBaseLayer()] });
-		}
-		holeMesh.visible = hole;
-		imageMesh.visible = singleOn && !hole;
-	}
-
 	// XR eyes render layers 1 (left) and 2 (right); the desktop camera only sees layer 0, so it shows the left eye there
 	function updateEyes() {
 		const split = singleOn && isSplit();
@@ -739,20 +625,10 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	}
 
 	function update() {
-		try {
-			updateLayer();
-		} catch (e) {
-			console.warn("quad layer disabled", e);
-			layerFailed = true;
-			quad = null;
-			if (inLayers) renderer.xr.getSession().updateRenderState({ layers: [renderer.xr.getBaseLayer()] });
-			inLayers = false;
-			holeMesh.visible = false;
-			imageMesh.visible = singleOn;
-		}
+		imageMesh.visible = singleOn && !layer.update(shown, hd && singleOn && !previewing && !isSplit());
 		updateEyes();
 		stage.mesh.visible = shows.note && !desktopView();
-		const hdUsable = hdSupported && !isSplit() && !stage3d;
+		const hdUsable = layer.supported() && !isSplit() && !stage3d;
 		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;
 			hdBtn.disabled = !hdUsable;
@@ -762,7 +638,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 
 	syncModeBtns();
 	loadOutputs();
-	pruneMissing([...history]);
+	history.missing().then((gone) => { if (gone.length) dropEntries(gone); });
 	const closePopup = () => { if (shows.popup) showPopup(false); };
 	// the cog's box in the row (panel px), where the pop-up is placed
 	const cogRect = () => ({ x: cog.x, y: cog.y, w: cog.w, h: cog.h });

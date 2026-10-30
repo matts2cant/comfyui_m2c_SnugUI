@@ -31,6 +31,8 @@ xr/js/desktop.js         Desktop View host: windows (the panels' canvases in DOM
 xr/js/phone.js           phone host: one panel at a time, the dock (its grid, the tab bar, the toolbar's boxes), the output button and tray, the toast
 xr/js/dom.js             what both DOM hosts share: adopt, el, clamp, sizePanel, keepEdit, bindPanel (pointer input, edit keeping)
 xr/js/prefs.js           the page's settings in localStorage: pref, prefJSON, setPref (storage that throws reads as empty, writes are dropped)
+xr/js/history.js         the results history (center's): entries, add, drop, missing() (the HEAD check), its localStorage; resultFiles, isMissing
+xr/js/quad.js            the image's XR quad layer (HD): createQuadLayer(ctx, holeMesh) -> { update(shown, enabled), supported() }
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
 xr/js/icons.js           Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
@@ -41,6 +43,7 @@ xr/js/state.js           store: snapshot model, values, seeds, loras, buildPromp
 xr/js/rules.js           placement rule table
 xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 xr/js/panels/center.js   image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
+                         (the results in history.js, the HD layer in quad.js)
 xr/js/panels/prompt.js   Prompt panel: workflow name, prompt box, folding negative prompt, seed row
 xr/js/panels/input.js    Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
 xr/js/panels/config.js   Configuration panel: settings of the page's own UI (toolbar position)
@@ -419,7 +422,7 @@ another Lucide icon's path data under its name and change the name where it is u
   Reset (pan 0, zoom 1): on recenter() (also the R key), on a snapshot load, and on a Flat / 3D mode change (the stage changes
   size). New images (live previews, results, gallery picks, fallbacks) and output tile switches keep the view; it is relative to
   the stage fit, so an image of another aspect keeps the same relative zoom. A hand still holding carries it on from the reset
-  view. Both stereo eyes are in `view`, so they share the transform. HD: the quad layer takes width / height / transform from
+  view. Both stereo eyes are in `view`, so they share the transform. HD: the quad layer (quad.js) takes width / height / transform from
   holeMesh's world matrix each frame (`applyPose` when it changed), so it follows the pan and zoom, and the hole mesh is in
   `view` with the image.
 - Each frame: `Panel.updateAll()`, panels' `update(dt)`; in the Desktop View `fitCamera()`.
@@ -580,7 +583,7 @@ another Lucide icon's path data under its name and change the name where it is u
   `ui["3d"]` = [{filename, subfolder, type}] (Save 3D Model, Save 3D / Preview 3D (Advanced), type temp for previews) or
   `ui.result[0]` = a path under output/ (deprecated Preview 3D); the same shapes the frontend's readModel3DOutput reads. Each output keeps
   its own current entry; a result for an output not on show only sets a dot on its tile.
-  History persistence (localStorage `appmode-xr.history`, last 50 of `{filename, subfolder, type, kind, node}`): entries of `type` temp
+  History persistence (history.js; localStorage `appmode-xr.history`, last 50 of `{filename, subfolder, type, kind, node}`): entries of `type` temp
   (Preview Image, Preview 3D (Advanced); ComfyUI deletes its temp folder on every start and shutdown) are shown for the page session only,
   never saved, and dropped if found in storage. At start every saved entry gets a `HEAD` request on its `/view` URL (4 in parallel, not
   blocking); the 404s leave the history and the gallery and the history is saved. Showing an entry whose image or GLB fails to load does the
