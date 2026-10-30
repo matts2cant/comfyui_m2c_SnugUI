@@ -52,11 +52,12 @@ back inside a smaller window). The first time only Prompt is open.
 
 On a phone (a window narrower than 600 px, or a landscape one shorter than 500 px) the page uses a phone layout instead of
 windows. Portrait: the image at the top, the output tiles under it (swipe them sideways when they do not fit; the cog's pop-up
-opens just above them), one panel at a time, then a dock with the run status, Cancel, Generate and a tab bar of the six panels
+opens just above them), one panel at a time, then a dock with the run status, Cancel and Generate (lined up over the first tab and the other five) and a tab bar of the six panels
 (tap one to open it, tap it again to close it). Prompt and Configuration are as tall as their content; the others go almost to
 the top. Landscape: the image at the left, then the tiles in a column (swipe them up and down; the cog's pop-up opens to its
 left), the open panel, and a dock along the right edge: a run column (one-word status, timer, upright progress bars, Cancel, a
-play button for Generate; tap a red "Error" to read the whole message) and the tabs. With no panel open the image grows. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the
+play button for Generate; tap a red "Error" to read the whole message) and the tabs, on the same rows: Cancel level with the
+fourth tab, Generate with the last two. With no panel open the image grows. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the
 open panel moves above it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag
 the image to zoom and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button
 do not apply on phones; a wider window brings the Desktop View back with its windows as you left them.

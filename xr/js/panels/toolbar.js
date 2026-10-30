@@ -6,12 +6,20 @@
 // column (landscape): status, timer, bars, Cancel, then Generate as a tall play pill.
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
 const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12, TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR;
-const PM = 16, PB = 80, BAR = PB + 2 * PM, RUN = 96; // phones: margin, button, tab bar thickness, landscape run column width
+const PM = 16, PB = 80, BAR = PB + 2 * PM; // phones: margin, button, tab bar thickness (and the landscape run column's width)
 
 const clock = (ms) => {
 	const s = Math.floor(ms / 1000);
 	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
+
+// phones: n buttons along a side len px long, PM from both ends, the rest spread evenly between them (at least PM, the buttons
+// shrink below PB when the side is too short for that): the tab bar's columns, the rail's rows and the run column's beside it.
+// -> { s: button size, at(i): offset of the i-th }
+function spread(len, n) {
+	const s = Math.min(PB, (len - (n + 1) * PM) / n), gap = (len - 2 * PM - n * s) / (n - 1);
+	return { s, at: (i) => PM + i * (s + gap) };
+}
 
 export function createToolbar({ THREE, store, client, ui }, tabs, view, onError) {
 	const { theme } = ui;
@@ -94,14 +102,17 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 			Object.assign(cancel, { x: W - M - GEN_W - GAP - B, y: rowY, w: B, h: B });
 			Object.assign(generate, { x: W - M - GEN_W, y: rowY, w: GEN_W, h: B });
 		} else if (mode === "portrait") {
-			Object.assign(status, { x: PM + 8, y: PM, w: w - 2 * PM - 16, h: TIER_H });
-			Object.assign(cancel, { x: PM, y: h - PM - PB, w: PB, h: PB });
-			Object.assign(generate, { x: PM + PB + GAP, y: h - PM - PB, w: w - 2 * PM - PB - GAP, h: PB });
+			// on the tab bar's columns: Cancel over the first tab, Generate from the second to the last
+			const { s, at } = spread(w, tabs.length), y = h - PM - s;
+			Object.assign(status, { x: PM, y: PM, w: w - 2 * PM, h: TIER_H });
+			Object.assign(cancel, { x: at(0), y, w: s, h: s });
+			Object.assign(generate, { x: at(1), y, w: at(tabs.length - 1) + s - at(1), h: s });
 		} else {
-			const m = (w - PB) / 2;
-			Object.assign(generate, { x: m, y: h - PM - 2 * PB, w: PB, h: 2 * PB });
-			Object.assign(cancel, { x: m, y: generate.y - GAP - PB, w: PB, h: PB });
-			Object.assign(status, { x: 4, y: PM, w: w - 8, h: cancel.y - GAP - PM }); // the word takes all the width it can
+			// on the rail's rows: the status over all but the last three, Cancel, then Generate over the last two
+			const n = tabs.length, { s, at } = spread(h, n), x = (w - s) / 2;
+			Object.assign(status, { x: 4, y: PM, w: w - 8, h: at(n - 4) + s - PM }); // the word takes all the width it can
+			Object.assign(cancel, { x, y: at(n - 3), w: s, h: s });
+			Object.assign(generate, { x, y: at(n - 2), w: s, h: at(n - 1) + s - at(n - 2) });
 		}
 		panel.invalidate();
 	}
@@ -110,12 +121,12 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 
 	// the panel buttons spread along the longer side: a tab bar, or a rail when taller than wide
 	bar.onResize = () => {
-		const across = bar.width >= bar.height, step = (across ? bar.width : bar.height) / tabs.length;
-		tabs.forEach((b, i) => Object.assign(b, { x: across ? i * step + (step - PB) / 2 : PM, y: across ? PM : i * step + (step - PB) / 2, w: PB, h: PB }));
+		const across = bar.width >= bar.height, { s, at } = spread(across ? bar.width : bar.height, tabs.length), c = (BAR - s) / 2;
+		tabs.forEach((b, i) => Object.assign(b, { x: across ? at(i) : c, y: across ? c : at(i), w: s, h: s }));
 	};
 
 	// mode: "portrait" | "landscape" (phones) | null (desk / VR, back at its world size through setPx()). Returns the toolbar's
-	// thickness across the dock (portrait: height, landscape: width) and the tab bar's (panel px).
+	// thickness across the dock (portrait: height, landscape: width), the tab bar's, the margin and the button size (panel px).
 	function phone(m) {
 		mode = m;
 		const host = m ? bar : panel;
@@ -126,7 +137,7 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 		}
 		if (m) bar.onResize();
 		layout();
-		return { size: m === "portrait" ? 3 * PM + TIER_H + PB : RUN, bar: BAR };
+		return { size: m === "portrait" ? 3 * PM + TIER_H + PB : BAR, bar: BAR, margin: PM, button: PB };
 	}
 
 	// run status: the run being executed (since its first node) and the node ids of every prompt queued from here (its node count)

@@ -13,7 +13,7 @@ const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
 const MARGIN = 12, CASCADE = 32, EDGE = 16, DECK_GAP = 8;
 const PHONE = 0.6; // phones: CSS px per panel px
-const PHONE_TILE = 80, PEEK = 120, COLUMN = 340, TOAST_MS = 4000; // phones: output tile (panel px); portrait: image left over a tall panel; landscape: panel width, error toast
+const PEEK = 120, COLUMN = 340, TOAST_MS = 4000; // phones: portrait: image left over a tall panel; landscape: panel width, error toast
 
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>`;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -120,7 +120,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		layer.addEventListener("contextmenu", (e) => e.preventDefault());
 	}
 	let shown = false, lastNew = null;
-	let layout = null, sheet = specs[0].name, bars = null, stage = null, toastTimer = 0; // phones: "portrait" | "landscape", the open panel, the toolbar's sizes, the image's box
+	let layout = null, sheet = specs[0].name, bars = null, gap = 0, stage = null, toastTimer = 0; // phones: "portrait" | "landscape", the open panel, the toolbar's sizes, its margin (CSS px), the image's box
 	let top = Math.max(0, ...Object.values(saved).map((s) => s.z ?? 0));
 
 	const save = () => {
@@ -274,7 +274,8 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	// bar); with the keyboard up (the visual viewport ends above the window) the panel sits on it and the dock hides; the strip
 	// scrolls sideways. Landscape, from the left: the image, the strip (a column, scrolling vertically), the open panel (COLUMN
 	// wide, full height), the dock along the right edge (the toolbar's run column, then the tab rail); with the keyboard up the
-	// panel takes the whole width above it.
+	// panel takes the whole width above it. Every margin and gap is the toolbar's (gap), so the panel and the strip line up with
+	// the dock's buttons.
 	function renderPhone() {
 		phone.hidden = !layout;
 		stage = null;
@@ -289,18 +290,18 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (spec) adopt(phone, spec.panel.canvas);
 		let sheetBox = null, stripBox = null, toolbarBox = null, tabsBox = null, padBox = null;
 		if (layout === "portrait") {
-			const w = W - l - r, sw = w - 2 * DECK_GAP, dock = kb ? 0 : th + bar;
-			let y = (kb ? end : H - b - dock) - DECK_GAP;
+			const w = W - l - r, sw = w - 2 * gap, dock = kb ? 0 : th + bar;
+			let y = (kb ? end : H - b - dock) - gap;
 			if (spec) {
-				const room = y - top, h = spec.fit ? Math.min(spec.minH(Math.round(sw / PHONE)) * PHONE, room) : kb ? room : Math.max(room - PEEK - (rh && rh + DECK_GAP), room / 2);
+				const room = y - top, h = spec.fit ? Math.min(spec.minH(Math.round(sw / PHONE)) * PHONE, room) : kb ? room : Math.max(room - PEEK - (rh && rh + gap), room / 2);
 				y -= h;
-				sheetBox = [l + DECK_GAP, y, sw, h];
-				y -= DECK_GAP;
+				sheetBox = [l + gap, y, sw, h];
+				y -= gap;
 			}
 			if (rh && y - rh >= top) {
 				y -= rh;
-				stripBox = [l + DECK_GAP, y, sw, rh];
-				y -= DECK_GAP;
+				stripBox = [l + gap, y, sw, rh];
+				y -= gap;
 			}
 			if (!kb) {
 				toolbarBox = [l, H - b - dock, w, th];
@@ -314,11 +315,11 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 			toolbarBox = [x, t, th, h];
 			tabsBox = [x + th, t, bar, h];
 			padBox = [x, 0, W - x, H]; // under the dock, over the insets
-			if (spec) sheetBox = [x -= DECK_GAP + COLUMN, t + DECK_GAP, COLUMN, h - 2 * DECK_GAP];
-			if (rw) stripBox = [x -= DECK_GAP + rw, t + DECK_GAP, rw, h - 2 * DECK_GAP];
-			stage = { x: l, y: t, w: Math.max(1, x - DECK_GAP - l), h };
+			if (spec) sheetBox = [x -= gap + COLUMN, t + gap, COLUMN, h - 2 * gap];
+			if (rw) stripBox = [x -= gap + rw, t + gap, rw, h - 2 * gap];
+			stage = { x: l, y: t, w: Math.max(1, x - gap - l), h };
 			if (kb) {
-				sheetBox = [l, top, W - l - r, end - DECK_GAP - top];
+				sheetBox = [l, top, W - l - r, end - gap - top];
 				stripBox = toolbarBox = tabsBox = padBox = null;
 			}
 		}
@@ -327,7 +328,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		put(tabs, tabsBox);
 		pad.hidden = !padBox;
 		if (padBox) boxStyle(pad, padBox);
-		Object.assign(toast.style, { left: stage.x + stage.w / 2 + "px", top: stage.y + stage.h - DECK_GAP + "px", maxWidth: stage.w - 4 * DECK_GAP + "px" });
+		Object.assign(toast.style, { left: stage.x + stage.w / 2 + "px", top: stage.y + stage.h - gap + "px", maxWidth: stage.w - 4 * gap + "px" });
 		strip.hidden = !stripBox;
 		if (stripBox) {
 			boxStyle(strip, stripBox);
@@ -343,9 +344,9 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		popup.canvas.hidden = !layout || strip.hidden || !popup.mesh.visible;
 		if (popup.canvas.hidden) return popup.setPx();
 		const s = strip.getBoundingClientRect(), c = row.canvas.getBoundingClientRect(), v = layout === "landscape";
-		const k = Math.min(PHONE, ((v ? s.left : innerWidth) - 2 * DECK_GAP) / popup.width), w = popup.width * k, h = popup.height * k;
-		boxStyle(popup.canvas, v ? [s.left - DECK_GAP - w, clamp(c.top + (cog.y + cog.h) * PHONE - h, DECK_GAP, innerHeight - DECK_GAP - h), w, h]
-			: [clamp(c.left + (cog.x + cog.w) * PHONE - w, DECK_GAP, innerWidth - DECK_GAP - w), s.top - DECK_GAP - h, w, h]);
+		const k = Math.min(PHONE, ((v ? s.left : innerWidth) - 2 * gap) / popup.width), w = popup.width * k, h = popup.height * k;
+		boxStyle(popup.canvas, v ? [s.left - gap - w, clamp(c.top + (cog.y + cog.h) * PHONE - h, gap, innerHeight - gap - h), w, h]
+			: [clamp(c.left + (cog.x + cog.w) * PHONE - w, gap, innerWidth - gap - w), s.top - gap - h, w, h]);
 		popup.setPx(popup.width, popup.height, k * devicePixelRatio);
 	}
 	strip.addEventListener("scroll", placePopup);
@@ -369,8 +370,9 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (mode !== layout) {
 			layout = mode;
 			bars = toolbarPhone(mode);
+			gap = bars.margin * PHONE;
 			if (!mode) toolbar.setPx();
-			rowTile(mode && PHONE_TILE, mode === "landscape");
+			rowTile(mode && bars.button, mode === "landscape");
 			strip.classList.toggle("v", mode === "landscape");
 		}
 		renderDeck();

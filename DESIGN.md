@@ -280,14 +280,19 @@ bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main
 Light, Input, Configuration (main.js `PANELS`), a separator, the view button; then a flexible gap, Cancel (round, `x`,
 `danger`; the plain grey `default` look and disabled when nothing runs or is queued) and Generate (pill, `accent`, 260 px; disabled
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
-- Phones (`phone(mode)`, desktop.js): the panel buttons (80 px, `PB`) move to the `tabs` panel (radius 0, `BAR` 112 px thick), laid
-  out along its longer side (a tab bar, or a rail when taller than wide); the view button and separator hide; the toolbar re-flows to
-  the box it is given (`setPx`), radius 0, margins `PM` 16: portrait (208 px tall) the status tier over Cancel (80 px) and a Generate
-  as wide as the rest; landscape (`RUN` 96 px wide, full height) the run column, top to bottom: one status word (Ready, Queued,
-  Running, Done, Interrupted, Error in red, Inactive for "No active output"; 28 px, shrunk to the column's width), the timer, the node
-  and total bars side by side, vertical, filling bottom-up over the rest of the height, Cancel (80 px), then Generate as an 80 × 160
-  play pill (`play` icon, no text; a round button's icon follows its shorter side). A tap on "Error" or its timer calls
-  `onError(message)`. `phone(null)` puts the buttons back; desktop.js then calls `setPx()` (world size, desk layout).
+- Phones (`phone(mode)`, desktop.js): one grid, margin `PM` 16, button `PB` 80. The panel buttons move to the `tabs` panel (radius 0,
+  `BAR` 112 px thick), laid out along its longer side (a tab bar, or a rail when taller than wide) by `spread`: `PM` from both ends,
+  the leftover spread evenly as the gaps between them; when the side is too short for gaps of at least `PM` the gaps stay `PM` and
+  the buttons shrink below `PB` (a landscape window under 355 CSS px tall, a portrait one under 355 px wide). The view button and
+  separator hide; the toolbar re-flows to the box it is given (`setPx`), radius 0: portrait (208 px tall) the status tier (`PM` from
+  every side) over Cancel and Generate on the tab bar's columns: Cancel over the first tab, Generate from the second tab's left edge to
+  the last one's right edge; landscape (`BAR` wide, full height: the dock is two equal halves) the run column on the rail's rows (the
+  same `spread`): rows 1–3 one status word (Ready, Queued, Running, Done, Interrupted, Error in red, Inactive for "No active output";
+  28 px, shrunk to the column's width), the timer, then the node and total bars side by side, vertical, filling bottom-up to the
+  bottom of row 3; Cancel on row 4 (level with Light); Generate a play pill from the top of row 5 to the bottom of row 6 (`play` icon,
+  no text; a round button's icon follows its shorter side). A tap on "Error" or its timer calls `onError(message)`. `phone(mode)`
+  returns `{ size, bar, margin, button }` (panel px). `phone(null)` puts the buttons back; desktop.js then calls `setPx()` (world
+  size, desk layout).
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
   and closes the other, pressing the open one closes it; the open one is main.js `open`, "prompt" at page load and at the start of every
   XR session, not persisted); in the Desktop View they toggle the windows (desktop.js lights them from the windows' open state).
@@ -478,21 +483,23 @@ another Lucide icon's path data under its name and change the name where it is u
   view button do not apply.
 - A `.phone` layer (fixed, z 6, clicks pass through but on its children) with `env(safe-area-inset-*)` padding, read back for
   the insets (`viewport-fit=cover`); its children are placed absolutely in CSS px. Panels are drawn at `PHONE` 0.6 CSS px per panel
-  px and re-flow to their box (`put`: `setPx(w / PHONE, h / PHONE, PHONE * devicePixelRatio)`). No window chrome. Gaps `DECK_GAP` 8.
+  px and re-flow to their box (`put`: `setPx(w / PHONE, h / PHONE, PHONE * devicePixelRatio)`). No window chrome. Every margin and
+  gap is the toolbar's `PM` (`gap` = 9.6 CSS px), so the panel's and the strip's edges line up with the dock's buttons.
 - One panel at a time, `sheet` (Prompt at page load, not persisted): its toolbar button toggles it, the open one is lit.
-- Output row: `rowTile(PHONE_TILE, landscape)` = 80 px tiles (48 CSS px) with no length limit (center `placeRow`; tiles under
-  `SMALL_TILE` 120 px draw no badge and no title), the cog last, in `.strip`: portrait a row in a sideways-scrolling box (the canvas
+- Output row: `rowTile(button, landscape)` = tiles of the toolbar's button size `PB` 80 px (48 CSS px; `TILE_GAP` 16 = `PM` apart,
+  the cog `COG` 80 too) with no length limit (center `placeRow`; tiles under `SMALL_TILE` 120 px draw no badge and no title),
+  the cog last, in `.strip`: portrait a row in a sideways-scrolling box (the canvas
   `touch-action: pan-x`, so a swipe scrolls and cancels the press; right-aligned while it fits), landscape a column (`.strip.v`,
   scrolling vertically, `pan-y`, bottom-aligned while it fits). Pop-up, re-placed on strip scroll: portrait, its right edge over the
-  cog's on screen (clamped inside the window, scaled down when the window is narrower than it), `DECK_GAP` above the strip; landscape,
-  `DECK_GAP` left of the strip over the image (scaled down to fit there), its bottom edge on the cog's (clamped inside the window).
+  cog's on screen (clamped inside the window, scaled down when the window is narrower than it), `gap` above the strip; landscape,
+  `gap` left of the strip over the image (scaled down to fit there), its bottom edge on the cog's (clamped inside the window).
 - Portrait, from the top: the image (`stage`, the rest), the strip, the panel, the dock pinned to the bottom, full width: toolbar
   over the tab bar, a `.pad` in the panel colour under it over the bottom inset. Panel height: `fit` ones `minH(w)` (at most the
   room), the others the room minus `PEEK` 120 px of image and the strip (at least half the room). Keyboard up (an edit open and
   the visual viewport ending above the window): the dock hides, the panel's bottom sits on `visualViewport.offsetTop + height`, a
   tall panel takes all the room up to the top, the strip only shows if it still fits.
 - Landscape, from the left: the image (`stage`, the rest), the strip, the panel (`COLUMN` 340 px wide, full height inside the safe area,
-  `DECK_GAP` margins), the dock against the right edge, full height: the toolbar's run column then the tab rail, a `.pad` in the panel
+  `gap` margins: level with the dock's first and last rows), the dock against the right edge, full height: the toolbar's run column then the tab rail, a `.pad` in the panel
   colour under both, over the right inset and the top / bottom ones. No panel: the image takes its width. Keyboard up: the panel takes
   the whole width from the top to the keyboard; everything else hides until it closes. Error toast (desktop.js `toast(text)`): the
   whole message in a `.toast` centered at the foot of the image (red text, no pointer events) for `TOAST_MS` 4 s.
