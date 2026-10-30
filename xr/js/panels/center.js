@@ -12,7 +12,7 @@ import { createQuadLayer } from "../quad.js";
 
 const { theme } = ui;
 
-export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, toolbar.js)
+export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, phone.js)
 const TILE = 200, SMALL_TILE = 120, RING = 4;
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
