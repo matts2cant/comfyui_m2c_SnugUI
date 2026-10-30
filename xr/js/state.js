@@ -56,6 +56,7 @@ class Store extends EventTarget {
 	#loras = new Map();
 	#loraTexts = new Map();
 	#groupStates = new Map();
+	#removed = new Set(); // removedNodes(), recomputed when the group states change
 
 	load(snapshot) {
 		this.snapshot = snapshot;
@@ -68,6 +69,7 @@ class Store extends EventTarget {
 		this.#loras.clear();
 		this.#loraTexts.clear();
 		this.#groupStates = new Map(Object.entries(snapshot.switchGroups ?? {}).map(([id, g]) => [id, g.state]));
+		this.#removed = new Set(this.#offDiffs().flatMap((d) => d.removed));
 		for (const input of this.inputs) {
 			this.#values.set(input.key, input.value);
 			if (input.control != null) this.#seedModes.set(input.key, input.control);
@@ -121,6 +123,7 @@ class Store extends EventTarget {
 
 	setGroupStates(states) {
 		for (const [id, state] of Object.entries(states)) this.#groupStates.set(id, state);
+		this.#removed = new Set(this.#offDiffs().flatMap((d) => d.removed));
 		emit(this, "change", { key: "switchGroups" });
 	}
 
@@ -132,7 +135,7 @@ class Store extends EventTarget {
 
 	// API node ids the switched-off groups drop from the prompt
 	removedNodes() {
-		return new Set(this.#offDiffs().flatMap((d) => d.removed));
+		return this.#removed;
 	}
 
 	// an output node runs when it is in the snapshot prompt (not muted or bypassed on the desktop) and no switched-off
@@ -147,7 +150,7 @@ class Store extends EventTarget {
 
 	#applyGroupStates(prompt) {
 		const diffs = this.#offDiffs();
-		const removed = new Set(diffs.flatMap((d) => d.removed));
+		const removed = this.#removed;
 		const replace = Object.assign({}, ...diffs.map((d) => d.replace));
 		for (const id of removed) delete prompt[id];
 		for (const node of Object.values(prompt)) {

@@ -20,7 +20,8 @@ If Quest Browser opens the page without WebXR, it shows the same instructions wi
 
 1. On the desktop, configure App mode for your workflow (choose the inputs and outputs).
 2. In graph mode click "Open in VR" in the toolbar (or press Alt+V). This sends a snapshot to the server.
-   Sending again replaces the snapshot on every open VR page.
+   Sending again replaces the snapshot on every open VR page. A page that lost its connection (ComfyUI restarted, the headset
+   slept) loads a snapshot sent meanwhile when it reconnects, and keeps your edits if the snapshot is unchanged.
 3. On the Quest open `http://<pc-ip>:<port>/appmode-xr` and press the VR button (goggles icon) on the toolbar, bottom right.
 4. Layout: the image in the middle; under it a tilted lectern with, from the top: the output tiles (several outputs only), the
    toolbar, then one open panel. The toolbar shows the run status, a timer and two progress bars over round buttons: Prompt,
@@ -43,7 +44,8 @@ back inside a smaller window). The first time only Prompt is open.
 - Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
 - Touch: one finger pans the image (turns the model), two fingers pinch to zoom and move it. Tapping a text field opens the
   on-screen keyboard; use the edit toolbar to delete and move the caret.
-- H hides the windows and the toolbar (H again shows them), R resets the image / model, Esc closes the output pop-up.
+- H hides the windows and the toolbar (H again shows them), R resets the image / model, Esc closes the output pop-up (not with
+  Ctrl, Alt or Cmd held, nor while typing in a page field).
 - The goggles button enters VR on the Quest. In a desktop browser it shows the VR layout instead: drag to look, wheel to
   scroll, click to press, R recenters, H hides the panels; the monitor button in the same place comes back.
   `/appmode-xr?view=vr` opens it directly.

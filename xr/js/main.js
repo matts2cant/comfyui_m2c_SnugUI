@@ -238,19 +238,21 @@ function fitCamera() {
 }
 
 // ---- snapshot ----
-async function loadSnapshot() {
+// onlyNew: keep the loaded one (and the user's edits) when the server's has the same id
+async function loadSnapshot(onlyNew) {
 	try {
 		const snapshot = await ctx.client.getSnapshot();
-		if (snapshot) store.load(snapshot);
+		if (snapshot && !(onlyNew && snapshot.id === store.snapshot?.id)) store.load(snapshot);
 	} catch (e) {
 		console.warn("snapshot load failed", e);
 	}
 }
 store.client = ctx.client; // the store queues through the page's client
 store.addEventListener("load", relayout); // the prompt window's minimum follows the prompt panel's entries
-ctx.client.addEventListener("snapshot", loadSnapshot);
+ctx.client.addEventListener("snapshot", () => loadSnapshot(false));
+ctx.client.addEventListener("reconnected", () => loadSnapshot(true)); // one may have been posted while the socket was down
 ctx.client.connect();
-loadSnapshot();
+loadSnapshot(false);
 
 // ---- pointer input (pointers.js): XR controllers and hands, the mouse and fingers on the 3D view ----
 const input = createPointers({ renderer, camera, scene, uiGroup, center, isDesk: () => deskView, onRecenter: recenter, onToggleUI: toggleUI });
@@ -284,8 +286,10 @@ function recenter() {
 	center.image.reset();
 }
 
-// page keys: R recenters (the Desktop View: resets the image / model), H hides the UI, Esc closes the output pop-up and the phones' tray
+// page keys: R recenters (the Desktop View: resets the image / model), H hides the UI, Esc closes the output pop-up and the phones' tray;
+// not with Ctrl, Meta or Alt (Ctrl+R reloads) nor in a DOM field (the help overlay's address)
 addEventListener("keydown", (e) => {
+	if (e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 	if (e.key === "r") recenter();
 	else if (e.key === "h") toggleUI();
 	else if (e.key === "Escape") {

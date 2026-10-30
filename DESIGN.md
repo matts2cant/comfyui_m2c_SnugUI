@@ -205,7 +205,7 @@ TextField and EditBar (on release). Only one edit at a time.
 ```js
 export class ComfyClient extends EventTarget {
   clientId                          // random uuid, used for /ws?clientId= and prompt client_id
-  connect()                         // reconnects with backoff
+  connect()                         // reconnects with backoff; "reconnected" when a socket that was open opens again
   getSnapshot() -> snapshot|null    // GET /appmode-xr/snapshot
   queue(prompt, previewMethod) -> {prompt_id, node_errors}   // POST /prompt {prompt, client_id, extra_data: {preview_method}}; throws Error(message) on 4xx with node_errors summary
   interrupt()                       // POST /interrupt
@@ -213,13 +213,15 @@ export class ComfyClient extends EventTarget {
   // events (CustomEvent detail): "snapshot" {id} | "status" {queueRemaining} | "cached" {nodes, prompt_id} | "executing" {node, prompt_id}
   // | "progress" {value, max, node, prompt_id} | "preview" {url (blob URL), prompt_id?} | "executed" {node, output, prompt_id}
   // | "done" {prompt_id} (executing with node null / execution_success) | "error" {prompt_id, message} | "interrupted" {prompt_id}
+  // | "reconnected"
 }
 ```
 Binary ws frames: uint32 BE event type; 1 = PREVIEW_IMAGE (next uint32 BE image type 1=jpeg 2=png, then bytes);
 4 = PREVIEW_IMAGE_WITH_METADATA (uint32 BE metadata length, JSON metadata incl. prompt_id and image_type (mime), then image bytes). See `server.py`/`protocol.py`.
 Live previews: the server only sends them when the run's `extra_data.preview_method` names a method (execution.py `set_preview_method`; the
 server default here is none). `queue()` sends the snapshot's `previewMethod` when it is auto/latent2rgb/taesd, otherwise "auto" (previews are
-always wanted in VR). Previews are sent to the queueing client's socket only; the client drops type 4 frames whose prompt_id it did not queue.
+always wanted in VR). Previews are sent to the queueing client's socket only; the client drops type 4 frames whose prompt_id it did not queue
+(or that is done: "done" drops it from the queued set).
 Type 2 (UNENCODED_PREVIEW_IMAGE) is encoded server-side into type 1 and type 1 is only sent to clients without `supports_preview_metadata`
 (this client sets it), so in practice only type 4 arrives; type 1 is still parsed (no prompt_id).
 
@@ -237,6 +239,9 @@ store.loras(nodeId) -> [{name,strength,clipStrength,active}] / setLoras(nodeId, 
 store.buildPrompt() -> deep-cloned API prompt with all values + lora text/loras applied
 store.generate()                     // dispatches "generate"; apply seed modes BEFORE queue (randomize: random int in [min, min(max, 2^53-1)];
                                      // increment: +1), dispatch "change", queue(buildPrompt()); dispatches "queued" {prompt_id, nodes (the prompt's node ids)}; "error" {message}
+store.groupState(id) / setGroupStates({id: state})   // "change" {key:"switchGroups"}
+store.removedNodes() -> Set          // node ids the switched-off groups drop, kept by the store and recomputed by load / setGroupStates
+store.outputActive(nodeId) / hasActiveOutput()
 store.groups                         // from rules.js classify(): { prompt: input|null, negative: input|null, seed: input|null, left: [input], lora: [loraNode] }
 ```
 LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__value__: list}` if lorasWrapped) and
@@ -394,7 +399,8 @@ another Lucide icon's path data under its name and change the name where it is u
   View and phones: a capturing window `pointerdown` whose target is not the pop-up's or the row's canvas), on its cog, on Esc, on H, on a view
   switch, with the phones' tray and on a change of phone layout. A press on a tile keeps it open (it follows the new output).
 - Mouse and touch on the 3D view (no XR session, pointers.js; the keys are main.js's): mouse click = pointer events, wheel = scroll on the hovered panel, R =
-  recenter (the Desktop View: resets the image / model view), H = hide UI, Esc = close the output pop-up (and the phones' tray). A drag off the image, the model and the panels looks
+  recenter (the Desktop View: resets the image / model view), H = hide UI, Esc = close the output pop-up (and the phones' tray); the keys
+  are ignored with Ctrl, Meta or Alt and in a DOM input or textarea (the help overlay's address). A drag off the image, the model and the panels looks
   around (yaw / pitch) in the VR-like view only. Each finger is a pointer of its own (`fingers`, keyed by pointerId, dropped on
   release). A second finger while another holds the image or the model pinches it: both slide it in one plane (`slide`, so the
   image's or the model's two-hand grab: their distance zooms it, their midpoint moves it); a finger turning the model first
@@ -431,7 +437,8 @@ another Lucide icon's path data under its name and change the name where it is u
 - Each frame: in the Desktop View `fitCamera()`; the pointers' `update(dt)` (the VR-like view's look, the panel meshes to raycast, the
   controllers); center's `update(dt)`; `Panel.updateAll()`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
-  in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
+  in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept). On client "reconnected" (a ComfyUI
+  restart, a Quest sleep) → fetch, and `store.load()` only when its `id` differs from the loaded one, so the user's edits survive.
 
 ### Desktop View (desktop.js, main.js)
 - Viewport: the whole window, a fixed camera at the eye looking straight at the stage (no look around), its vertical fov fitted each
@@ -498,7 +505,7 @@ another Lucide icon's path data under its name and change the name where it is u
   space beyond the deck minus margins. Stored geometry is not moved when the setting changes. First visit: only Prompt is open.
   A page loaded without a size (hidden tab) places its windows on the first resize.
 - Keys: H hides every window and the deck (and shows them again); the image / model keep their fit. R resets the image / model.
-  Esc closes the output pop-up (and the phones' tray).
+  Esc closes the output pop-up (and the phones' tray). Not with Ctrl, Meta or Alt, nor in a DOM input or textarea.
   Physical keys edit text through `ta` as before.
 - Tablets: the same layout in landscape and portrait. Quest's 2D browser before entering VR: the controller pointer acts as a mouse.
 

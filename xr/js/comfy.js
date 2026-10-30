@@ -28,6 +28,7 @@ function errorMessage(body, fallback) {
 export class ComfyClient extends EventTarget {
 	clientId = uuid();
 	#retry = 0;
+	#opened = false;
 	#previewUrl = null;
 	#lastDone = null;
 	#queued = new Set();
@@ -43,6 +44,8 @@ export class ComfyClient extends EventTarget {
 		ws.onopen = () => {
 			this.#retry = 0;
 			ws.send(JSON.stringify({ type: "feature_flags", data: { supports_preview_metadata: true } }));
+			if (this.#opened) this.#emit("reconnected");
+			this.#opened = true;
 		};
 		ws.onmessage = (e) => {
 			if (typeof e.data === "string") this.#onMessage(JSON.parse(e.data));
@@ -84,10 +87,12 @@ export class ComfyClient extends EventTarget {
 		}
 	}
 
-	// the server sends both "executing" (node null) and "execution_success" at the end of a prompt
+	// the server sends both "executing" (node null) and "execution_success" at the end of a prompt; "executing" also follows an
+	// error or an interruption
 	#done(prompt_id) {
 		if (prompt_id === this.#lastDone) return;
 		this.#lastDone = prompt_id;
+		this.#queued.delete(prompt_id);
 		this.#emit("done", { prompt_id });
 	}
 
