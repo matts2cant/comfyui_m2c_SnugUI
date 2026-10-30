@@ -38,7 +38,7 @@ class Fold extends ui.Widget {
 	}
 }
 
-export function createBottomPanel() {
+export function createPromptPanel() {
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "prompt", widthM: 1.8, heightM: 0.52 });
 	group.add(panel.mesh);

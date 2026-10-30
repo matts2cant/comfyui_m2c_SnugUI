@@ -1,4 +1,4 @@
-// LoRA side panel: LoRA stack of the selected LoRA Manager node (tabs when there are several) plus a
+// LoRA panel: LoRA stack of the selected LoRA Manager node (tabs when there are several) plus a
 // library browser backed by LoRA Manager's HTTP API (/api/lm/loras/list).
 import * as THREE from "three";
 import * as ui from "../ui.js";
@@ -63,7 +63,7 @@ class Check extends ui.Widget {
 	}
 }
 
-export function createRightPanel() {
+export function createLoraPanel() {
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "right", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);

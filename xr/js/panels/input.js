@@ -126,7 +126,7 @@ class GroupSwitch extends Widget {
 	}
 }
 
-export function createLeftPanel({ client }) {
+export function createInputPanel({ client }) {
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);

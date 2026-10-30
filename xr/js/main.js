@@ -7,9 +7,9 @@ import { createDesktop } from "./desktop.js";
 import { ComfyClient } from "./comfy.js";
 import { store } from "./state.js";
 import { createCenterPanel } from "./panels/center.js";
-import { createBottomPanel } from "./panels/bottom.js";
-import { createLeftPanel } from "./panels/left.js";
-import { createRightPanel } from "./panels/right.js";
+import { createPromptPanel } from "./panels/prompt.js";
+import { createInputPanel } from "./panels/input.js";
+import { createLoraPanel } from "./panels/lora.js";
 import { createLightsPanel } from "./panels/lights.js";
 import { createConfigPanel } from "./panels/config.js";
 import { createToolbar } from "./panels/toolbar.js";
@@ -137,13 +137,13 @@ const viewBtn = new ui.Button({ round: true, onClick: switchView });
 const toolbar = createToolbar(ctx, tabs, viewBtn, (text) => windows.toast(text)); // the whole error, from a landscape phone's status
 
 const center = createCenterPanel(ctx, toolbar.panel.width, () => windows.toggleTray());
-const bottom = createBottomPanel();
-const inputs = createLeftPanel(ctx);
-const loras = createRightPanel();
+const prompt = createPromptPanel();
+const inputs = createInputPanel(ctx);
+const loras = createLoraPanel();
 const lights = createLightsPanel(ctx, center.model);
 const config = createConfigPanel(relayout); // the toolbar position moves the Desktop View's deck
 scene.add(lights.room);
-const hosts = { prompt: bottom, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
+const hosts = { prompt, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
 
 const lectern = new THREE.Group();
 lectern.rotation.x = -LECTERN_TILT;
@@ -185,7 +185,7 @@ function layout() {
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take).
 // Phones show one at a time, taking all the room the dock leaves.
-const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
+const MIN = { prompt: [560, prompt.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
 )), center.note, {

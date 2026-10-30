@@ -4,7 +4,7 @@ const isLoraManager = input => input.classType.includes("LoraManager");
 // The first one of each in App-mode order wins; every other input goes to the Input panel.
 const SLOTS = new Map([["_prompt", ["prompt", "STRING"]], ["_negative_prompt", ["negative", "STRING"]], ["_seed", ["seed", "INT"]]]);
 
-// "[Tab] Label" puts the input in the left panel tab "Tab"; the group entries carry the stripped label and `tab`.
+// "[Tab] Label" puts the input in the Input panel's tab "Tab"; the group entries carry the stripped label and `tab`.
 const parseName = name => {
     const m = /^\s*\[([^\]]*\S[^\]]*)\]\s*(\S.*)$/.exec(name);
     return m ? { tab: m[1].trim(), label: m[2].trim() } : { tab: "General", label: name };

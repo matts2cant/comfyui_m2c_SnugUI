@@ -41,10 +41,10 @@ xr/js/state.js           store: snapshot model, values, seeds, loras, buildPromp
 xr/js/rules.js           placement rule table
 xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 xr/js/panels/center.js   image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
-xr/js/panels/bottom.js   prompt panel: workflow name, prompt box, folding negative prompt, seed row
-xr/js/panels/left.js     Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
+xr/js/panels/prompt.js   Prompt panel: workflow name, prompt box, folding negative prompt, seed row
+xr/js/panels/input.js    Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
 xr/js/panels/config.js   Configuration panel: settings of the page's own UI (toolbar position)
-xr/js/panels/right.js    LoRA panel(s) + LoRA Manager API client
+xr/js/panels/lora.js     LoRA panel(s) + LoRA Manager API client
 xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
                          the Desktop View background
 ```
@@ -112,7 +112,7 @@ UNSUPPORTED and read-only (the Input panel shows "edit on desktop"), as is an en
 An object widget whose node serializes it elsewhere (Pixaroma `sizes_ui` -> hidden JSON-string input `SizesState`, injected by the node's
 own graphToPrompt hook) resolves to the string input that parses to an object sharing a key with the widget value: the target gets
 `json: true`, the snapshot value is that parsed object, and `buildPrompt` writes `JSON.stringify(value)` back. Only `PixaromaSizes:sizes_ui`
-gets a dedicated type (`PIXAROMA_SIZES`: left-panel size picker, in the size group); other JSON widgets are UNSUPPORTED text edits.
+gets a dedicated type (`PIXAROMA_SIZES`: the Input panel's size picker, in the size group); other JSON widgets are UNSUPPORTED text edits.
 
 Pixaroma Group Switch (`PixaromaGroupSwitch:group_switch_ui`, a DOM widget with `serialize: false`; the node is in the API prompt with no
 inputs but never runs) mutes or bypasses whole groups through `window.PixaromaPixGroup` (`listGroups`, `getGroupState`, `setGroupSwitch`).
@@ -239,19 +239,19 @@ LoRA write-back must mirror LoRA Manager: `inputs.loras` = list (wrapped as `{__
 `rules.js` — `classify(inputs, loraNodes)`, ordered rules, first match wins:
 1. input on a LoRA Manager node (classType contains "LoraManager") → hidden (handled by the LoRA panel via loraNodes)
 2. the prompt panel takes only these exact App-mode names and types, one of each; if a name appears twice the first in App-mode order
-   wins and the others go to the left panel:
+   wins and the others go to the Input panel:
    - `_prompt` with type STRING → `prompt`
    - `_negative_prompt` with type STRING → `negative`
    - `_seed` with type INT → `seed`
-3. everything else → left, in App-mode order (no re-sorting; left.js renders store.groups.left as given). This includes multiline
+3. everything else → left, in App-mode order (no re-sorting; input.js renders store.groups.left as given). This includes multiline
    STRINGs and seed-like INTs with other names, and a `_prompt` / `_negative_prompt` / `_seed` of the wrong type.
 
 The name is the App-mode label compared after trimming, exactly (case-sensitive). A leading `[Tab]` prefix is NOT stripped for this
-match, so `[Tab] _prompt` is just an input called `_prompt` in the left panel's tab `Tab`. Nothing else decides the placement: not the
+match, so `[Tab] _prompt` is just an input called `_prompt` in the Input panel's tab `Tab`. Nothing else decides the placement: not the
 widget name, the multiline flag, the node title or `control`. Existing workflows need these names set in App mode.
 
 Each input is also copied with its name parsed: a leading `[Tab] Label` (whitespace trimmed, both parts non-empty) gives
-`tab: "Tab"` and the bracket-free `label`; any other name gets `tab: "General"`. The groups hold these copies, so the left panel shows
+`tab: "Tab"` and the bracket-free `label`; any other name gets `tab: "General"`. The groups hold these copies, so the Input panel shows
 stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unchanged).
 
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
@@ -274,13 +274,13 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   message is up) and `cogRect()` (the cog's box in the row, panel px), and calls `screen.onChange()` (main.js `relayout`) once when
   the stage's size or any of these changed. No host reads center's `mesh.visible` or its cog widget.
 Each panel module exports `export function createXPanel(...) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
-main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
+main.js also reads `panel`, the Prompt panel's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
 `closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
 `createToolbar(ctx, tabs, view, onError) -> { group, panel, arrange(dock) }` (main.js's panel buttons and view button, and
 `onError(text)`, phone.js `toast`; `arrange` the phones' layout, below); center is `createCenterPanel(ctx, rowW, onPick)`, rowW the toolbar's
-width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only); the Input panel is `createLeftPanel(ctx)`, the Prompt and LoRA panels take nothing. The panels import three,
+width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only); the Input panel is `createInputPanel(ctx)`, the Prompt and LoRA panels (`createPromptPanel()`, `createLoraPanel()`) take nothing. The panels import three,
 ui.js and state.js (the `store`) themselves; `ctx` only holds the page's objects, `{ scene, renderer, camera, screen, client, xr: {
 isPresenting() }, desktopView() }`, and main.js gives the store its client (`store.client`).
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
@@ -351,7 +351,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Image output tile (placeholder, badge) | `image` | center.js `OutputTile` |
 | Mesh output tile (placeholder, badge) | `box` | center.js `OutputTile` |
 | Output pop-up cog | `settings` | center.js |
-| Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | bottom.js `MODES` |
+| Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -442,7 +442,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - Windows: Prompt, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
   is placed in a DOM window (`main.js` passes `createDesktop` one spec per window, `{ name, title, icon, button, panel, minW, minH(w) }`
   in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size; `minW` / `minH(w)` the smallest
-  its layout takes, the height at content width w (Prompt 560 wide, its height from bottom's `minHeight()`; Gallery 500 x 500, LoRA 560 x
+  its layout takes, the height at content width w (Prompt 560 wide, its height from prompt.js's `minHeight()`; Gallery 500 x 500, LoRA 560 x
   700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`). A snapshot load re-places the
   windows (the prompt panel's entries change its minimum).
   At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
@@ -464,7 +464,7 @@ another Lucide icon's path data under its name and change the name where it is u
   (mousedown, and touch pointerdown, prevented while editing). A finger tap that starts an edit opens the on-screen keyboard
   (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation; on phones the desktop path: `ta` itself is focused, so the
   system keyboard edits it with its own caret, selection and backspace).
-  A re-flow during an edit (a rotation, the phone keyboard) keeps it: a TextField whose panel was rebuilt (left / right `panel.clear()`)
+  A re-flow during an edit (a rotation, the phone keyboard) keeps it: a TextField whose panel was rebuilt (Input / LoRA `panel.clear()`)
   adds its EditBar back when drawn, a Combo its bar and list.
 - Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
   `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
@@ -597,7 +597,7 @@ another Lucide icon's path data under its name and change the name where it is u
   lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
-- bottom (prompt panel, 1800 x 520 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left);
+- prompt (Prompt panel, 1800 x 520 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left);
   the prompt box of `store.groups.prompt`, full width, taking all the extra height; the negative prompt of `.negative`; the seed row.
   Prompt boxes are plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…");
   an empty box shows its name as a muted placeholder, "Prompt…" / "Negative prompt…" (gone as soon as there is text, back when it is
@@ -611,7 +611,7 @@ another Lucide icon's path data under its name and change the name where it is u
   +, then the mode icons `lock` = fixed, `plus` = increment, `shuffle` = randomize, the current one `toggled`. Without a seed the boxes
   take its place. Run status, progress, Cancel and Generate are on the toolbar. `minHeight()`: name + 3 prompt lines (with a box) + the
   negative header + the seed row (unfolding the negative prompt at that height shares the space).
-- left (Input panel, titled "Input"; "No inputs in this workflow" when empty): scrollable list of controls from
+- input (Input panel, titled "Input"; "No inputs in this workflow" when empty): scrollable list of controls from
   store.groups.left: PIXAROMA_GROUP_SWITCH → the label and a Mute / Bypass tag, then one row per group (colour dot, label, switch),
   switched like the node: any; one = turning a group on turns the switch's other groups off; always = the same, and the last group on cannot be turned off; it updates on `"switchGroups"` changes (all
   switches share the group states, `store.groupState(id)` / `setGroupStates({id: state})`). No sync back to the desktop.
@@ -630,7 +630,7 @@ another Lucide icon's path data under its name and change the name where it is u
   tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
   and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` and falls back to the first tab
   when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
-- right (LoRA panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
+- lora (LoRA panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
   the value is a compact TextField like the Slider's: tapping selects it to type a number, "," accepted as decimal separator, stored
   rounded to 2 decimals, not clamped, anything else reverts; clip strength follows while equal), remove ×. Row edits apply to the store's
   current list, matched by name (unique per node): the weight field commits only after a press elsewhere has run (× on another row,

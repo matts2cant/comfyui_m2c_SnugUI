@@ -588,9 +588,9 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	const clampZoom = (s) => Math.max(IMAGE_ZOOM_MIN, Math.min(IMAGE_ZOOM_MAX, s));
 	let start = null;
 
-	function toStage(world, out) {
+	function toStage(world, v) {
 		group.updateWorldMatrix(true, false);
-		return out.setFromMatrixPosition(world).applyMatrix4(inv.copy(group.matrixWorld).invert());
+		return v.setFromMatrixPosition(world).applyMatrix4(inv.copy(group.matrixWorld).invert());
 	}
 
 	// the ray's point on the stage plane (stage frame) in `at`, or null
