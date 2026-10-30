@@ -142,6 +142,8 @@ gives the base, where a group that was on keeps its members' own modes (the desk
 `ui.js`:
 ```js
 export const theme = { bg, panel, surface, surfaceHi, border, fg, muted, accent, danger, pressed, hover, font: "system-ui, sans-serif", radius: 18 }
+                                    // bg, panel, surfaceHi, border, fg, muted, accent, danger: index.html's :root --bg, --panel,
+                                    // --surface-hi, --border, --fg, --muted, --accent, --danger, which its CSS and help.js use too
 export class Panel {                // a canvas-textured plane
   constructor({ name, widthM, heightM, pxPerM = PX_PER_M, bg = theme.panel, radius = theme.radius })   // export PX_PER_M = 1000   // canvas = round(widthM*pxPerM) x
                                     // round(heightM*pxPerM), max 2048; bg null = no slab

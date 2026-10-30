@@ -5,21 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ComfyUI App Mode XR</title>
 <style>
-	html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e13; font: 16px system-ui, sans-serif; color: #e8ecf2; }
+	/* the page's colours, which ui.js's theme (the canvas panels) and help.js take from here too */
+	:root { --bg: #0b0e13; --panel: #161a22; --surface-hi: #303846; --border: #323a49; --fg: #e8ecf2; --muted: #8c96a8; --accent: #4c8dff; --danger: #e5484d; }
+	html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); font: 16px system-ui, sans-serif; color: var(--fg); }
 	canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-	#hint { position: fixed; left: 16px; top: 12px; color: #8c96a8; font-size: 14px; z-index: 10; }
+	#hint { position: fixed; left: 16px; top: 12px; color: var(--muted); font-size: 14px; z-index: 10; }
 	[hidden] { display: none !important; }
 	/* Desktop View windows and the deck: toolbar, output row, output pop-up (desktop.js) */
 	.desk { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
 	.desk, .deck, .phone { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
-	.win { position: absolute; pointer-events: auto; background: #0b0e13; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px #323a49, 0 8px 28px rgba(0, 0, 0, 0.5); }
+	.win { position: absolute; pointer-events: auto; background: var(--bg); border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--border), 0 8px 28px rgba(0, 0, 0, 0.5); }
 	.bar { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 12px; font-weight: 600; font-size: 14px; cursor: move; }
 	.bar span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 	.bar svg { width: 18px; height: 18px; flex: none; }
-	.bar button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8c96a8; cursor: pointer; }
-	.bar button:hover { background: #303846; color: #e8ecf2; }
+	.bar button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+	.bar button:hover { background: var(--surface-hi); color: var(--fg); }
 	.note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-	.grip { position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 55%, #8c96a8 55%, #8c96a8 62%, transparent 62%, transparent 72%, #8c96a8 72%, #8c96a8 79%, transparent 79%); }
+	.grip { position: absolute; right: 0; bottom: 0; width: 22px; height: 22px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 55%, var(--muted) 55%, var(--muted) 62%, transparent 62%, transparent 72%, var(--muted) 72%, var(--muted) 79%, transparent 79%); }
 	.deck { position: fixed; z-index: 6; display: flex; pointer-events: none; } /* placed by desktop.js renderDeck, its gap DECK_GAP */
 	.deck canvas { pointer-events: auto; flex: none; }
 	.deck .popup { position: absolute; }
@@ -28,12 +30,12 @@
 	.phone > * { position: absolute; pointer-events: auto; }
 	.phone .strip, .phone .pick, .phone .popup, .phone .toast { z-index: 1; } /* over the open panel */
 	/* the tray: its border (the margin) is the padding around the scrolling tiles; phone.js sets it and the radius */
-	.phone .strip { display: flex; box-sizing: border-box; overflow: auto hidden; scrollbar-width: none; background: #161a22; border: solid #161a22; box-shadow: 0 0 0 1px #323a49; }
+	.phone .strip { display: flex; box-sizing: border-box; overflow: auto hidden; scrollbar-width: none; background: var(--panel); border: solid var(--panel); box-shadow: 0 0 0 1px var(--border); }
 	.phone .strip canvas { flex: none; touch-action: pan-x; }
 	.phone .strip.v { flex-direction: column; overflow: hidden auto; }
 	.phone .strip.v canvas { touch-action: pan-y; }
-	.phone .pad { background: #161a22; }
-	.phone .toast { transform: translate(-50%, -100%); width: max-content; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; background: #161a22; box-shadow: 0 0 0 1px #323a49; color: #e5484d; font-size: 14px; overflow-wrap: anywhere; pointer-events: none; }
+	.phone .pad { background: var(--panel); }
+	.phone .toast { transform: translate(-50%, -100%); width: max-content; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--border); color: var(--danger); font-size: 14px; overflow-wrap: anywhere; pointer-events: none; }
 	@media (pointer: coarse) {
 		.bar { height: 44px; }
 		.grip { width: 40px; height: 40px; background-size: 22px 22px; background-position: right bottom; background-repeat: no-repeat; }

@@ -21,9 +21,11 @@ export function setRenderer(renderer) {
 
 export const PX_PER_M = 1000; // a Panel's canvas px per meter of its world size, unless it sets pxPerM
 
+// the colours the page's CSS uses too come from index.html's :root
+const css = getComputedStyle(document.documentElement), color = (name) => css.getPropertyValue("--" + name).trim();
 export const theme = {
-	bg: "#0b0e13", panel: "#161a22", surface: "#242a35", surfaceHi: "#303846", border: "#323a49",
-	fg: "#e8ecf2", muted: "#8c96a8", accent: "#4c8dff", danger: "#e5484d",
+	bg: color("bg"), panel: color("panel"), surface: "#242a35", surfaceHi: color("surface-hi"), border: color("border"),
+	fg: color("fg"), muted: color("muted"), accent: color("accent"), danger: color("danger"),
 	pressed: "rgba(0,0,0,0.28)", hover: "rgba(255,255,255,0.1)", // tints over a control
 	font: "system-ui, sans-serif", radius: 18,
 };
