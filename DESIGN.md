@@ -61,7 +61,8 @@ xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM envi
 - `POST /appmode-xr/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
   `<ComfyUI user directory>/appmode_xr/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("appmode_xr_snapshot", {"id": id})`
   (no sid → all sockets). Returns `{"id": id}`.
-- `GET /appmode-xr/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present.
+- `GET /appmode-xr/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present (an unreadable file is
+  ignored with a `logging` warning).
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).
 
 ## Snapshot schema (built by `../web/appmode_xr.js`)

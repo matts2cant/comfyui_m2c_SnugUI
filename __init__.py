@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -20,7 +21,7 @@ if SNAPSHOT_FILE.is_file():
     try:
         snapshot = json.loads(SNAPSHOT_FILE.read_text(encoding="utf-8"))
     except ValueError:
-        print(f"[appmode-xr] ignoring unreadable {SNAPSHOT_FILE}")
+        logging.warning("AppMode XR: ignoring unreadable %s", SNAPSHOT_FILE)
 
 routes = PromptServer.instance.routes
 
