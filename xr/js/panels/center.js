@@ -290,7 +290,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 		row.invalidate();
 	}
 
-	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere, phone.js with
+	// stays open while picking options and follows the selected output; pointers.js closes it on a press elsewhere, phone.js with
 	// the phones' tray
 	function showPopup(on) {
 		shows.popup = cog.toggled = on;

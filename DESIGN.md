@@ -25,7 +25,10 @@ __init__.py              server: routes + snapshot store (NODE_CLASS_MAPPINGS={}
 xr/index.html            VR page shell
 xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
-xr/js/main.js            bootstrap, renderer, scene, views (Desktop View, VR session, VR-like view), input, layout, recenter
+xr/js/main.js            bootstrap and the VR host: renderer, scene, views (Desktop View, VR session, VR-like view), the panels, their
+                         layout on the lectern (layout, relayout), setView, recenter, toggleUI, page keys, the frame loop
+xr/js/pointers.js        pointer input on the 3D view: XR controllers and hands (rays, cursor dots, B), the mouse and fingers (pinch),
+                         the wheel, the VR-like view's look around; createPointers(...) -> { update(dt), releaseAll(), resetLook() }
 xr/js/desktop.js         Desktop View host: windows (the panels' canvases in DOM windows), the deck (toolbar, output row, output pop-up),
                          persistence, the note; decides the layout (Desktop View or phone) and hands the panels to phone.js on phones
 xr/js/phone.js           phone host: one panel at a time, the dock (its grid, the tab bar, the toolbar's boxes), the output button and tray, the toast
@@ -195,7 +198,7 @@ desktop) is the reliable way to break a line.
 TextField edit UX: the first tap enters edit mode with the caret at the tap (no keyboard yet); taps move the caret, dragging selects
 (down anchors, move extends), a second tap within 400 ms selects the word. While editing, an `EditBar` overlays the panel below the field
 (above when there is no room or `barAbove`): Keyboard, New line (icon, multiline fields only), Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard,
-Del, Done. A Combo's dropdown goes below its bar (above the field when it does not fit). main.js commits when a press lands away from every
+Del, Done. A Combo's dropdown goes below its bar (above the field when it does not fit). pointers.js commits when a press lands away from every
 TextField and EditBar (on release). Only one edit at a time.
 
 `comfy.js`:
@@ -320,7 +323,7 @@ with no active output). The width follows the icon row (at least `MIN_ICONS` 6 b
 - View button: `rectangle-goggles` in the Desktop View (enters the VR view: requestSession inside its click handler where
   `isSessionSupported('immersive-vr')`, else the VR-like view), `monitor` in the VR view (back to the Desktop View: in an XR session it
   ends the session, `session.end()`, the session end does the rest; in the VR-like view it switches directly). A click that switches
-  the view leaves no hover behind on the shared toolbar (main.js `pointerUp`).
+  the view leaves no hover behind on the shared toolbar (pointers.js `pointerUp`).
 - Status (bold, one line, first form that fits, then ellipsized): "Ready" (muted, empty bars, 0:00) before any run; "Queued" (+ " · N
   ahead" when prompts from here wait and other prompts are before them: queue remaining minus the prompts queued from here) until the
   run starts executing, timer 0:00; running (fg): the node's title (prompt `_meta.title`, else its class type) "· step v / max" (when it
@@ -373,7 +376,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - VR only (`immersive-vr`, no AR / passthrough). optionalFeatures: ['local-floor', 'hand-tracking', 'layers']. The scene has a room
   (floor grid + gradient sphere, from lights.js) in VR and in the VR-like view. No tone mapping (renderer default).
 - `renderer.xr.setFramebufferScaleFactor(1.5)`, `setFoveation(0)`, antialias on.
-- Input: for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
+- Input (pointers.js, which main.js creates once the panels and the windows exist): for each XR input source (controllers and hands via targetRaySpace), draw a thin ray + cursor dot; raycast panel meshes;
   convert uv → canvas px → `panel.pointer(...)`. select start/end = down/up. Thumbstick Y → `panel.scroll`. Squeeze (grip) on the
   3D model or the image grabs it (below); a left squeeze elsewhere → recenter(), a right one does nothing. Request 'hand-tracking' so
   hands appear as input sources (pinch = select). three's hand input sources only give select for a pinch; a squeeze from a hand
@@ -384,13 +387,13 @@ another Lucide icon's path data under its name and change the name where it is u
   the desktop → `toggleUI()`: commits an open text edit, closes the output pop-up, drops every pointer's hover / press / pan
   (`releasePointer`), flips `uiShown` and re-runs `relayout()` (in the Desktop View it hides the windows and the deck), whose
   `layout()` hides the lectern (output row, toolbar, the open panel, any edit toolbar on them). The stage (and its empty / loading
-  message), the image or 3D model, the room and the rays stay. Hidden panels are not raycast (main.js only collects visible panel
+  message), the image or 3D model, the room and the rays stay. Hidden panels are not raycast (pointers.js only collects visible panel
   meshes), so the image / model take every ray. Showing again restores the same open panel; panels keep their own state (scroll,
   tab). Hands have no B button.
 - Output pop-up: closes on a press anywhere but on it and on the output row (VR: `pointerDown` with the panel hit, or nothing; Desktop
   View and phones: a capturing window `pointerdown` whose target is not the pop-up's or the row's canvas), on its cog, on Esc, on H, on a view
   switch, with the phones' tray and on a change of phone layout. A press on a tile keeps it open (it follows the new output).
-- Mouse and touch on the 3D view (no XR session, main.js): mouse click = pointer events, wheel = scroll on the hovered panel, R =
+- Mouse and touch on the 3D view (no XR session, pointers.js; the keys are main.js's): mouse click = pointer events, wheel = scroll on the hovered panel, R =
   recenter (the Desktop View: resets the image / model view), H = hide UI, Esc = close the output pop-up (and the phones' tray). A drag off the image, the model and the panels looks
   around (yaw / pitch) in the VR-like view only. Each finger is a pointer of its own (`fingers`, keyed by pointerId, dropped on
   release). A second finger while another holds the image or the model pinches it: both slide it in one plane (`slide`, so the
@@ -398,7 +401,7 @@ another Lucide icon's path data under its name and change the name where it is u
   becomes a slide in the plane facing the camera at its press depth (the turn grab keeps `view` and `dist` for that), and the
   finger left after a pinch on the model turns it again. A third finger does nothing.
 - 3D model (center's `model`): the model is "hit" when the ray reaches its box (`model.hit(ray)` -> distance) before any panel
-  (main.js `modelHit`). A press on it turns it: while held, the
+  (pointers.js `viewHit`). A press on it turns it: while held, the
   change of the ray's yaw / pitch in the ui frame times 3 turns it (yaw around the vertical, then pitch, clamped to ±90°). Thumbstick Y
   (XR) or the wheel (desktop) over the model zooms it (0.25x..4x). The cursor dot also lands on the model's box.
   Grab (`model.grab(id, worldMatrix)` / `drag` each frame / `release`): one squeezing controller carries the model rigidly
@@ -410,7 +413,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - Image (center's `image`, same interface as `model`: `hit` / `zoom(k, ray)` / `grab` / `drag` / `release` / `reset`; `model.zoom`
   ignores the ray): pans and zooms in the stage plane, never turns or changes depth. The image meshes (and the hole mesh) sit in a
   `view` group whose position (z = 0) and uniform scale are the pan and zoom (0.25x..16x, no other clamping: it may grow past the
-  screen frame and behind the panels). main.js `viewHit` returns whichever of model / image the ray reaches before any panel (the
+  screen frame and behind the panels). pointers.js `viewHit` returns whichever of model / image the ray reaches before any panel (the
   model's rule), so panels in front of a grown image keep their rays and clicks; the cursor dot lands on the image.
   A press (trigger, pinch, mouse) on it pans: a grab whose pose is the ray's point on the image plane (`slide`, the same path as
   the desktop model slide), so the grabbed point stays under the ray. Thumbstick Y (XR) / wheel (desktop) over it zooms about the
@@ -425,7 +428,8 @@ another Lucide icon's path data under its name and change the name where it is u
   view. Both stereo eyes are in `view`, so they share the transform. HD: the quad layer (quad.js) takes width / height / transform from
   holeMesh's world matrix each frame (`applyPose` when it changed), so it follows the pan and zoom, and the hole mesh is in
   `view` with the image.
-- Each frame: `Panel.updateAll()`, panels' `update(dt)`; in the Desktop View `fitCamera()`.
+- Each frame: in the Desktop View `fitCamera()`; the pointers' `update(dt)` (the VR-like view's look, the panel meshes to raycast, the
+  controllers); center's `update(dt)`; `Panel.updateAll()`.
 - Snapshot: on start `client.getSnapshot()` → `store.load()`; if none, show "Send a workflow from ComfyUI (Open in VR / Alt+V)"
   in the center. On client "snapshot" event → fetch + `store.load()` (image history is kept).
 
@@ -678,6 +682,8 @@ another Lucide icon's path data under its name and change the name where it is u
 - localStorage only through prefs.js (`pref(key)`, `prefJSON(key)` -> string / parsed value or null, `setPref(key, value)`): storage that
   throws (disabled, some private windows) reads as empty and drops writes, so the page works without it. Callers keep their key
   names and their own validation.
+- main.js builds in order: renderer and scene, ctx, the panels, the windows (createDesktop), then `screen.onChange = relayout`
+  (a no-op until then: center reports its first state while it is created), the snapshot, the pointers, `setView`.
 - `window.__xr = ctx` for debugging (the page's objects; the modules are the page's own instances through
   `await import("/appmode-xr/static/js/ui.js")`, `state.js`...). main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
