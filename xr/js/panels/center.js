@@ -256,7 +256,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const history = loadHistory().map((e) => ({ ...e, url: client.viewUrl(e) }));
 	// per output: { nodeId (null = any node), title, kind, current (entry on show), fresh (results not shown yet) }
 	let outputs = [], out = null, tiles = [];
-	let tile = TILE, maxW = rowW; // phones: a fixed tile size and no width limit (desktop.js scrolls the row)
+	let tile = TILE, maxW = rowW, vertical = false; // phones: a fixed tile size and no length limit (desktop.js scrolls the row), a column in landscape
 	let shown = null;          // HTMLImageElement on the mesh / layer
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
@@ -312,22 +312,25 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	}
 
 	// the tiles (only when App mode configures two outputs or more), shrunk so the row stays within maxW, then the cog when any
-	// output's kind has settings (disabled while the selected one has none, so the row keeps its shape); the row panel takes their size
+	// output's kind has settings (disabled while the selected one has none, so the row keeps its shape); the row panel takes their
+	// size. vertical: top to bottom, the cog at the foot.
 	function placeRow() {
 		const n = tiles.length, settings = outputs.some((o) => kindControls[o.kind]().length > 0);
 		const s = n && Math.min(tile, Math.floor((maxW - (settings ? COG : -TILE_GAP)) / n) - TILE_GAP);
-		const w = n * (s + TILE_GAP) + (settings ? COG : -TILE_GAP), h = Math.max(s, settings ? COG : 0);
-		tiles.forEach((t, i) => Object.assign(t, { x: i * (s + TILE_GAP), y: h - s, w: s, h: s }));
+		const long = n * (s + TILE_GAP) + (settings ? COG : -TILE_GAP), short = Math.max(s, settings ? COG : 0);
+		const [w, h] = vertical ? [short, long] : [long, short];
+		tiles.forEach((t, i) => Object.assign(t, vertical ? { x: w - s, y: i * (s + TILE_GAP) } : { x: i * (s + TILE_GAP), y: h - s }, { w: s, h: s }));
 		Object.assign(cog, { visible: settings, disabled: !kindControls[out.kind]().length, x: w - COG, y: h - COG });
 		row.mesh.visible = n > 0 || settings;
 		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / 1000, h / 1000);
 	}
 
-	// phones: tiles of `size` px however many there are; null: back to TILE within rowW
-	function rowTile(size) {
-		if ((size ?? TILE) === tile) return;
+	// phones: tiles of `size` px however many there are, in a column when vertical; null: back to a row of TILE within rowW
+	function rowTile(size, v = false) {
+		if ((size ?? TILE) === tile && v === vertical) return;
 		tile = size ?? TILE;
 		maxW = size ? Infinity : rowW;
+		vertical = v;
 		refresh();
 	}
 

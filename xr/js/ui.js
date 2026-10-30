@@ -186,7 +186,7 @@ export class Button extends Widget {
 		ctx.fillStyle = ctx.strokeStyle = theme.fg;
 		ctx.font = font(this.size, true);
 		ctx.textBaseline = "middle";
-		const s = Math.round(h * 0.55);
+		const s = Math.round((this.round ? Math.min(w, h) : h) * 0.55); // a tall pill's icon fits its width
 		if (this.icon) drawIcon(ctx, this.icon, this.text ? 18 : (w - s) / 2, (h - s) / 2, s);
 		if (this.icon && this.text) {
 			ctx.textAlign = "left";

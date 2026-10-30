@@ -268,8 +268,9 @@ main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height
 `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(ctx, onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
-`createToolbar(ctx, tabs, view) -> { group, panel, tabs, phone(mode) }` (main.js's panel buttons and view button; `tabs` the phones'
-tab bar panel); center is `createCenterPanel(ctx, rowW)`, rowW the toolbar's width, which also returns `rowTile(size)`) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
+`createToolbar(ctx, tabs, view, onError) -> { group, panel, tabs, phone(mode) }` (main.js's panel buttons and view button, and
+`onError(text)`, desktop.js `toast`; `tabs` the phones' tab bar panel); center is `createCenterPanel(ctx, rowW)`, rowW the toolbar's
+width, which also returns `rowTile(size, vertical)`) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toolbar and icons
@@ -281,9 +282,12 @@ Light, Input, Configuration (main.js `PANELS`), a separator, the view button; th
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
 - Phones (`phone(mode)`, desktop.js): the panel buttons (80 px, `PB`) move to the `tabs` panel (radius 0, `BAR` 112 px thick), laid
   out along its longer side (a tab bar, or a rail when taller than wide); the view button and separator hide; the toolbar re-flows to
-  the width it is given (`setPx`), margins `PM` 16: portrait (radius 0, 208 px tall) the status tier over Cancel (80 px) and a Generate
-  as wide as the rest; landscape (112 px tall) one row: the status tier, Cancel, Generate (`PGEN_W` 164 px, 30 px text, so "Done in
-  m:ss" fits in a 340 px column). `phone(null)` puts the buttons back; desktop.js then calls `setPx()` (world size, desk layout).
+  the box it is given (`setPx`), radius 0, margins `PM` 16: portrait (208 px tall) the status tier over Cancel (80 px) and a Generate
+  as wide as the rest; landscape (`RUN` 96 px wide, full height) the run column, top to bottom: one status word (Ready, Queued,
+  Running, Done, Interrupted, Error in red, Inactive for "No active output"; 28 px, shrunk to the column's width), the timer, the node
+  and total bars side by side, vertical, filling bottom-up over the rest of the height, Cancel (80 px), then Generate as an 80 × 160
+  play pill (`play` icon, no text; a round button's icon follows its shorter side). A tap on "Error" or its timer calls
+  `onError(message)`. `phone(null)` puts the buttons back; desktop.js then calls `setPx()` (world size, desk layout).
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
   and closes the other, pressing the open one closes it; the open one is main.js `open`, "prompt" at page load and at the start of every
   XR session, not persisted); in the Desktop View they toggle the windows (desktop.js lights them from the windows' open state).
@@ -415,7 +419,7 @@ another Lucide icon's path data under its name and change the name where it is u
   in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size; `minW` / `minH(w)` the smallest
   its layout takes, the height at content width w (Prompt 560 wide, its height from bottom's `minHeight()`; Gallery 500 x 500, LoRA 560 x
   700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`); `fit`: Prompt and
-  Configuration, as tall as their content on phones). A snapshot load re-places the windows (the prompt panel's entries change its minimum).
+  Configuration, as tall as their content on portrait phones). A snapshot load re-places the windows (the prompt panel's entries change its minimum).
   At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
   shrink until the longest fits, and an edit toolbar wider than its panel drops Keyboard and the arrows.
   `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onResize` (stage size, output
@@ -476,20 +480,22 @@ another Lucide icon's path data under its name and change the name where it is u
   the insets (`viewport-fit=cover`); its children are placed absolutely in CSS px. Panels are drawn at `PHONE` 0.6 CSS px per panel
   px and re-flow to their box (`put`: `setPx(w / PHONE, h / PHONE, PHONE * devicePixelRatio)`). No window chrome. Gaps `DECK_GAP` 8.
 - One panel at a time, `sheet` (Prompt at page load, not persisted): its toolbar button toggles it, the open one is lit.
-- Output row: `rowTile(PHONE_TILE)` = 80 px tiles (48 CSS px) with no width limit (center `placeRow`; tiles under `SMALL_TILE` 120
-  px draw no badge and no title), in `.strip`, a sideways-scrolling box (the row canvas `touch-action: pan-x`, so a swipe scrolls and
-  cancels the press; right-aligned while it fits, the cog last). Pop-up: its right edge over the cog's on screen (clamped inside the
-  window, scaled down when the window is narrower than it), `DECK_GAP` above the strip in portrait, under it in landscape (the strip
-  is at the top); re-placed on strip scroll.
+- Output row: `rowTile(PHONE_TILE, landscape)` = 80 px tiles (48 CSS px) with no length limit (center `placeRow`; tiles under
+  `SMALL_TILE` 120 px draw no badge and no title), the cog last, in `.strip`: portrait a row in a sideways-scrolling box (the canvas
+  `touch-action: pan-x`, so a swipe scrolls and cancels the press; right-aligned while it fits), landscape a column (`.strip.v`,
+  scrolling vertically, `pan-y`, bottom-aligned while it fits). Pop-up, re-placed on strip scroll: portrait, its right edge over the
+  cog's on screen (clamped inside the window, scaled down when the window is narrower than it), `DECK_GAP` above the strip; landscape,
+  `DECK_GAP` left of the strip over the image (scaled down to fit there), its bottom edge on the cog's (clamped inside the window).
 - Portrait, from the top: the image (`stage`, the rest), the strip, the panel, the dock pinned to the bottom, full width: toolbar
   over the tab bar, a `.pad` in the panel colour under it over the bottom inset. Panel height: `fit` ones `minH(w)` (at most the
   room), the others the room minus `PEEK` 120 px of image and the strip (at least half the room). Keyboard up (an edit open and
   the visual viewport ending above the window): the dock hides, the panel's bottom sits on `visualViewport.offsetTop + height`, a
   tall panel takes all the room up to the top, the strip only shows if it still fits.
-- Landscape: the image at the left (its box never changes with the panel), then a `COLUMN` 340 px wide: the strip at the top, the
-  panel (`fit` ones as tall as their content), the toolbar at the bottom; the tab rail along the right edge, the `.pad` over the right
-  inset. No panel: the column keeps its width. Keyboard up: the panel takes the whole width from the top to the keyboard; everything
-  else hides until it closes.
+- Landscape, from the left: the image (`stage`, the rest), the strip, the panel (`COLUMN` 340 px wide, full height inside the safe area,
+  `DECK_GAP` margins), the dock against the right edge, full height: the toolbar's run column then the tab rail, a `.pad` in the panel
+  colour under both, over the right inset and the top / bottom ones. No panel: the image takes its width. Keyboard up: the panel takes
+  the whole width from the top to the keyboard; everything else hides until it closes. Error toast (desktop.js `toast(text)`): the
+  whole message in a `.toast` centered at the foot of the image (red text, no pointer events) for `TOAST_MS` 4 s.
 - Touch on the image: the Desktop View's (one finger pans / turns, two pinch-zoom and move).
 
 ### Panels (behavior)

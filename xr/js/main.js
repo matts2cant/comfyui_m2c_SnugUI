@@ -132,7 +132,7 @@ const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onC
 	layout();
 } }));
 const viewBtn = new ui.Button({ round: true, onClick: switchView });
-const toolbar = createToolbar(ctx, tabs, viewBtn);
+const toolbar = createToolbar(ctx, tabs, viewBtn, (text) => windows.toast(text)); // the whole error, from a landscape phone's status
 
 const center = createCenterPanel(ctx, toolbar.panel.width);
 const bottom = createBottomPanel(ctx);
@@ -181,7 +181,7 @@ function layout() {
 }
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take).
-// Phones show one at a time: Prompt and Configuration as tall as their content (fit), the others as tall as there is room.
+// Phones show one at a time: in portrait Prompt and Configuration as tall as their content (fit), the others as tall as there is room.
 const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1], fit: name === "prompt" || name === "config" }

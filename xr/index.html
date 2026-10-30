@@ -28,7 +28,10 @@
 	.phone > * { position: absolute; pointer-events: auto; }
 	.phone .strip { display: flex; overflow: auto hidden; scrollbar-width: none; }
 	.phone .strip canvas { flex: none; margin-left: auto; touch-action: pan-x; }
+	.phone .strip.v { flex-direction: column; overflow: hidden auto; }
+	.phone .strip.v canvas { margin: auto 0 0; touch-action: pan-y; }
 	.phone .pad { background: #161a22; }
+	.phone .toast { transform: translate(-50%, -100%); width: max-content; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; background: #161a22; box-shadow: 0 0 0 1px #323a49; color: #e5484d; font-size: 14px; overflow-wrap: anywhere; pointer-events: none; }
 	@media (pointer: coarse) {
 		.bar { height: 44px; }
 		.grip { width: 40px; height: 40px; background-size: 22px 22px; background-position: right bottom; background-repeat: no-repeat; }
