@@ -2,8 +2,13 @@
 // and the cog), its output pop-up, the phones' output button and the gallery panel. The stage takes the aspect of what it shows
 // at the screen diagonal; the hosts (main.js, desktop.js, phone.js) place everything from `shows` and call screen.onChange() when it changes. Results are kept per App-mode output. The image pans and zooms in the stage
 // plane (`image`).
+import * as THREE from "three";
+import * as ui from "../ui.js";
+import { store } from "../state.js";
 import { createModelView } from "../model.js";
 import { pref, prefJSON, setPref } from "../prefs.js";
+
+const { theme } = ui;
 
 export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, toolbar.js)
 const TILE = 200, SMALL_TILE = 120, RING = 4;
@@ -76,8 +81,7 @@ function resultFiles({ images = [], result, "3d": saved } = {}) {
 }
 
 // rowW: the output row's widest, the toolbar's width (panel px); onPick(): a tap on the phones' output button
-export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }, rowW, onPick) {
-	const { theme } = ui;
+export function createCenterPanel({ client, renderer, xr, screen, desktopView }, rowW, onPick) {
 	const group = new THREE.Group();
 
 	// ---- widgets ----

@@ -108,8 +108,9 @@ const GAP_SCREEN = 0.012, GAP = 0.006, POPUP_Z = 0.02;
 // size of the screen, filled in by the center panel whenever the displayed aspect changes; onChange(): the screen's size or what
 // center shows around it (center.shows) changed
 const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: ui.PX_PER_M / PANEL_SCALE, w: 0, h: 0, onChange() {} };
+// the page's objects, for the panels that need them (they import three, ui.js and state.js themselves)
 const ctx = {
-	THREE, store, ui, scene, renderer, camera, screen,
+	scene, renderer, camera, screen,
 	client: new ComfyClient(),
 	xr: { isPresenting: () => renderer.xr.isPresenting },
 	desktopView: () => deskView,
@@ -136,11 +137,11 @@ const viewBtn = new ui.Button({ round: true, onClick: switchView });
 const toolbar = createToolbar(ctx, tabs, viewBtn, (text) => windows.toast(text)); // the whole error, from a landscape phone's status
 
 const center = createCenterPanel(ctx, toolbar.panel.width, () => windows.toggleTray());
-const bottom = createBottomPanel(ctx);
+const bottom = createBottomPanel();
 const inputs = createLeftPanel(ctx);
-const loras = createRightPanel(ctx);
+const loras = createRightPanel();
 const lights = createLightsPanel(ctx, center.model);
-const config = createConfigPanel(ctx, relayout); // the toolbar position moves the Desktop View's deck
+const config = createConfigPanel(relayout); // the toolbar position moves the Desktop View's deck
 scene.add(lights.room);
 const hosts = { prompt: bottom, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
 
@@ -242,7 +243,7 @@ async function loadSnapshot() {
 		console.warn("snapshot load failed", e);
 	}
 }
-store.client = ctx.client;
+store.client = ctx.client; // the store queues through the page's client
 store.addEventListener("load", relayout); // the prompt window's minimum follows the prompt panel's entries
 // the output pop-up closes on a press anywhere but on it and on the output row (whose cog toggles it)
 const keepsPopup = (panel) => panel === center.popup || panel === center.row;

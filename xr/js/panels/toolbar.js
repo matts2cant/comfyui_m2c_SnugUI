@@ -4,6 +4,10 @@
 // MIN_ICONS buttons. Phones (phone.js calls arrange(dock)): the panel buttons leave for phone.js's tab bar, the view button
 // hides and the toolbar draws the status, Cancel and Generate into the boxes the dock gives it at its size: the status over Cancel
 // and Generate (portrait), or the run column (landscape, `vertical`): status, timer, bars, Cancel, then Generate as a tall play pill.
+import * as THREE from "three";
+import * as ui from "../ui.js";
+import { store } from "../state.js";
+
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
 const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12;
 export const TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR; // the status tier: status line, node and total bars
@@ -13,8 +17,18 @@ const clock = (ms) => {
 	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export function createToolbar({ THREE, store, client, ui }, tabs, view, onError) {
-	const { theme } = ui;
+const { theme } = ui;
+
+// the line between the panel buttons and the view button
+class Sep extends ui.Widget {
+	hitTest() { return null; }
+	draw(ctx) {
+		ctx.fillStyle = theme.border;
+		ctx.fillRect(0, 0, 2, this.h);
+	}
+}
+
+export function createToolbar({ client }, tabs, view, onError) {
 
 	// status left, timer right, then node progress (thin) over total progress; reads the run state below at draw time. Landscape
 	// phones: the status word (shrunk to the column) over the timer, then the bars side by side filling upward; a tap on "Error"
@@ -56,14 +70,6 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 				ctx.fill();
 				ctx.globalAlpha = 1;
 			});
-		}
-	}
-
-	class Sep extends ui.Widget {
-		hitTest() { return null; }
-		draw(ctx) {
-			ctx.fillStyle = theme.border;
-			ctx.fillRect(0, 0, 2, this.h);
 		}
 	}
 

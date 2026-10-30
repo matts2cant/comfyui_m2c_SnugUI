@@ -1,5 +1,7 @@
 // Input panel: the workflow's inputs, controls for store.groups.left, all edited in place: sliders and text fields take typed values, COMBO / IMAGE inputs drop down a filtered option list.
-import { SWITCH_W, Widget, drawSwitch, drawTint, ellipsize, font, inRect, theme } from "../ui.js";
+import * as THREE from "three";
+import { Button, Combo, Label, Panel, ScrollView, Slider, SWITCH_W, TextField, Toggle, Widget, drawSwitch, drawTint, ellipsize, font, inRect, stackY, theme } from "../ui.js";
+import { store } from "../state.js";
 import { pref, setPref } from "../prefs.js";
 
 // Pixaroma "Sizes" state, same math as the node's core.mjs: the stored [a, b] pair is oriented (landscape = wider,
@@ -124,8 +126,7 @@ class GroupSwitch extends Widget {
 	}
 }
 
-export function createLeftPanel({ THREE, store, client, ui }) {
-	const { Panel, Label, Button, Toggle, Slider, Combo, TextField, ScrollView, stackY } = ui;
+export function createLeftPanel({ client }) {
 	const group = new THREE.Group();
 	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);

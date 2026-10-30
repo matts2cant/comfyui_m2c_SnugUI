@@ -3,6 +3,7 @@
 // gradient sky plus one emissive panel per light, built once per preset), the room's gradient and the Desktop View's flat
 // background (the gradient's horizon), whatever the output on show. Panels and images use unlit, non tone mapped materials, so none of this changes them.
 import * as THREE from "three";
+import * as ui from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
 const PRESET_KEY = "appmode-xr.lighting";
@@ -90,7 +91,7 @@ function buildEnvironment(pmrem, { sky, env: [side, gain], key, fill, rim }) {
 	return texture;
 }
 
-export function createLightsPanel({ ui, scene, renderer }, model) {
+export function createLightsPanel({ scene, renderer }, model) {
 	const panel = new ui.Panel({ name: "lights", widthM: 0.85, heightM: 1.15 });
 	const group = new THREE.Group();
 	group.add(panel.mesh);

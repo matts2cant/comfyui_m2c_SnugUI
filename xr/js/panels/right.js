@@ -1,5 +1,9 @@
 // LoRA side panel: LoRA stack of the selected LoRA Manager node (tabs when there are several) plus a
 // library browser backed by LoRA Manager's HTTP API (/api/lm/loras/list).
+import * as THREE from "three";
+import * as ui from "../ui.js";
+import { store } from "../state.js";
+
 const NO_PREVIEW = "/loras_static/images/no-preview.png";
 const STEP = 0.05;
 const M = 24;
@@ -32,8 +36,34 @@ function newLora(item) {
 	return { name: item.file_name, strength, clipStrength: Number(tips.clipStrength ?? tips.clip_strength ?? strength), active: true };
 }
 
-export function createRightPanel({ THREE, store, ui }) {
-	const { Label, Button, TextField, List, ImageGrid, ScrollView } = ui;
+const { Label, Button, TextField, List, ImageGrid, ScrollView } = ui;
+
+// a stack row's active checkbox
+class Check extends ui.Widget {
+	draw(ctx) {
+		const s = 38, x = (this.w - s) / 2, y = (this.h - s) / 2;
+		ui.tint(ctx, this, 0, 0, this.w, this.h, 12);
+		ctx.beginPath();
+		ctx.roundRect(x, y, s, s, 8);
+		ctx.fillStyle = this.checked ? ui.theme.accent : ui.theme.surface;
+		ctx.fill();
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = this.checked ? ui.theme.accent : ui.theme.border;
+		ctx.stroke();
+		if (!this.checked) return;
+		ctx.beginPath();
+		ctx.moveTo(x + 9, y + 20);
+		ctx.lineTo(x + 16, y + 27);
+		ctx.lineTo(x + 29, y + 11);
+		ctx.strokeStyle = "#fff";
+		ctx.lineWidth = 5;
+		ctx.lineCap = "round";
+		ctx.lineJoin = "round";
+		ctx.stroke();
+	}
+}
+
+export function createRightPanel() {
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "right", widthM: 0.85, heightM: 1.15 });
 	group.add(panel.mesh);
@@ -58,30 +88,6 @@ export function createRightPanel({ THREE, store, ui }) {
 	const prev = new Button({ text: "‹ Prev", x: M, w: 180, h: 60, onClick: () => goto(page - 1) });
 	const next = new Button({ text: "Next ›", w: 180, h: 60, onClick: () => goto(page + 1) });
 	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, h: 60 });
-
-	class Check extends ui.Widget {
-		draw(ctx) {
-			const s = 38, x = (this.w - s) / 2, y = (this.h - s) / 2;
-			ui.tint(ctx, this, 0, 0, this.w, this.h, 12);
-			ctx.beginPath();
-			ctx.roundRect(x, y, s, s, 8);
-			ctx.fillStyle = this.checked ? ui.theme.accent : ui.theme.surface;
-			ctx.fill();
-			ctx.lineWidth = 3;
-			ctx.strokeStyle = this.checked ? ui.theme.accent : ui.theme.border;
-			ctx.stroke();
-			if (!this.checked) return;
-			ctx.beginPath();
-			ctx.moveTo(x + 9, y + 20);
-			ctx.lineTo(x + 16, y + 27);
-			ctx.lineTo(x + 29, y + 11);
-			ctx.strokeStyle = "#fff";
-			ctx.lineWidth = 5;
-			ctx.lineCap = "round";
-			ctx.lineJoin = "round";
-			ctx.stroke();
-		}
-	}
 
 	function buildRows(node, W) {
 		const list = store.loras(node.nodeId);

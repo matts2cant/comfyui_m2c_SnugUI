@@ -273,14 +273,16 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   `shows = { row, popup, note }` (the row has something: several outputs, or a single one with settings; the pop-up is open; a
   message is up) and `cogRect()` (the cog's box in the row, panel px), and calls `screen.onChange()` (main.js `relayout`) once when
   the stage's size or any of these changed. No host reads center's `mesh.visible` or its cog widget.
-Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
+Each panel module exports `export function createXPanel(...) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
 main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
 `closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
-adds `room` to the scene; the Configuration panel is `createConfigPanel(ctx, onChange) -> { group, panel, minHeight(), toolbarAt() }`
+adds `room` to the scene; the Configuration panel is `createConfigPanel(onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
 `createToolbar(ctx, tabs, view, onError) -> { group, panel, arrange(dock) }` (main.js's panel buttons and view button, and
 `onError(text)`, phone.js `toast`; `arrange` the phones' layout, below); center is `createCenterPanel(ctx, rowW, onPick)`, rowW the toolbar's
-width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
+width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only); the Input panel is `createLeftPanel(ctx)`, the Prompt and LoRA panels take nothing. The panels import three,
+ui.js and state.js (the `store`) themselves; `ctx` only holds the page's objects, `{ scene, renderer, camera, screen, client, xr: {
+isPresenting() }, desktopView() }`, and main.js gives the store its client (`store.client`).
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toolbar and icons
@@ -673,7 +675,8 @@ another Lucide icon's path data under its name and change the name where it is u
 - localStorage only through prefs.js (`pref(key)`, `prefJSON(key)` -> string / parsed value or null, `setPref(key, value)`): storage that
   throws (disabled, some private windows) reads as empty and drops writes, so the page works without it. Callers keep their key
   names and their own validation.
-- `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
+- `window.__xr = ctx` for debugging (the page's objects; the modules are the page's own instances through
+  `await import("/appmode-xr/static/js/ui.js")`, `state.js`...). main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).
 - Desktop snapshot POST goes to `/api/appmode-xr/snapshot` (ComfyUI mirrors routes under /api).

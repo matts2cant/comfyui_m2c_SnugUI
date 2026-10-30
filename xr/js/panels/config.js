@@ -1,5 +1,7 @@
 // Configuration panel: settings of this page's own UI, kept in localStorage. Toolbar position: where the Desktop View's deck
 // (toolbar, output row, output pop-up) is pinned; the VR lectern ignores it.
+import * as THREE from "three";
+import * as ui from "../ui.js";
 import { pref, setPref } from "../prefs.js";
 
 const TOOLBAR_KEY = "appmode-xr.toolbar";
@@ -8,7 +10,7 @@ const POSITIONS = ["top-left", "top-center", "top-right", "bottom-left", "bottom
 const M = 24, GAP = 8, BTN_H = 72, GRID_Y = 140, H = GRID_Y + 2 * BTN_H + GAP + M;
 
 // onChange() after the toolbar position changed; toolbarAt() -> "<top|bottom>-<left|center|right>"
-export function createConfigPanel({ THREE, ui }, onChange) {
+export function createConfigPanel(onChange) {
 	const panel = new ui.Panel({ name: "config", widthM: 0.85, heightM: H / ui.PX_PER_M });
 	const group = new THREE.Group();
 	group.add(panel.mesh);

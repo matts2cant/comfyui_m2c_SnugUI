@@ -1,43 +1,47 @@
 // Prompt panel: the workflow name, the prompt box (it takes all the extra height), the negative prompt folded under a one-row
 // header, then the seed controls on a row of their own at the bottom. Missing entries leave no empty box.
+import * as THREE from "three";
+import * as ui from "../ui.js";
+import { store } from "../state.js";
 import { pref, setPref } from "../prefs.js";
 
 const MODES = [["fixed", "lock"], ["increment", "plus"], ["randomize", "shuffle"]];
 const M = 20, GAP = 12, TOP = 60, ROW_H = 64, BTN_W = 60, FOLD_H = 52, NEG_H = 140, MIN_BOX = 140, SEED_W = 680;
 const NEGATIVE_KEY = "appmode-xr.negative";
 
-export function createBottomPanel({ THREE, store, ui }) {
-	const { theme } = ui;
+const { theme } = ui;
+
+// the negative prompt's header: a chevron, "Negative" and, folded, the start of its text
+class Fold extends ui.Widget {
+	constructor(o) { super({ open: false, preview: "", ...o }); }
+	draw(ctx) {
+		const { w, h } = this;
+		ui.tint(ctx, this, 0, 0, w, h, theme.radius * 0.7);
+		ctx.save();
+		ctx.translate(24, h / 2);
+		if (this.open) ctx.rotate(Math.PI / 2);
+		ctx.beginPath();
+		ctx.moveTo(-5, -9);
+		ctx.lineTo(8, 0);
+		ctx.lineTo(-5, 9);
+		ctx.restore();
+		ctx.fillStyle = theme.fg;
+		ctx.fill();
+		ctx.font = ui.font(26, true);
+		ctx.textBaseline = "middle";
+		ctx.fillText("Negative", 48, h / 2 + 1);
+		if (this.open || !this.preview) return;
+		const x = 48 + ctx.measureText("Negative").width + 20;
+		ctx.font = ui.font(24);
+		ctx.fillStyle = theme.muted;
+		ctx.fillText(ui.ellipsize(ctx, this.preview, w - x - 16), x, h / 2 + 1);
+	}
+}
+
+export function createBottomPanel() {
 	const group = new THREE.Group();
 	const panel = new ui.Panel({ name: "prompt", widthM: 1.8, heightM: 0.52 });
 	group.add(panel.mesh);
-
-	// the negative prompt's header: a chevron, "Negative" and, folded, the start of its text
-	class Fold extends ui.Widget {
-		constructor(o) { super({ open: false, preview: "", ...o }); }
-		draw(ctx) {
-			const { w, h } = this;
-			ui.tint(ctx, this, 0, 0, w, h, theme.radius * 0.7);
-			ctx.save();
-			ctx.translate(24, h / 2);
-			if (this.open) ctx.rotate(Math.PI / 2);
-			ctx.beginPath();
-			ctx.moveTo(-5, -9);
-			ctx.lineTo(8, 0);
-			ctx.lineTo(-5, 9);
-			ctx.restore();
-			ctx.fillStyle = theme.fg;
-			ctx.fill();
-			ctx.font = ui.font(26, true);
-			ctx.textBaseline = "middle";
-			ctx.fillText("Negative", 48, h / 2 + 1);
-			if (this.open || !this.preview) return;
-			const x = 48 + ctx.measureText("Negative").width + 20;
-			ctx.font = ui.font(24);
-			ctx.fillStyle = theme.muted;
-			ctx.fillText(ui.ellipsize(ctx, this.preview, w - x - 16), x, h / 2 + 1);
-		}
-	}
 
 	const name = panel.add(new ui.Label({ text: "", size: 28, bold: true, x: 24, y: 10, h: 42 }));
 	const fold = new Fold({ h: FOLD_H, onClick: () => {
