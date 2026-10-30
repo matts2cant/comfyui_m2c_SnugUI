@@ -1,5 +1,6 @@
 // Input panel: the workflow's inputs, controls for store.groups.left, all edited in place: sliders and text fields take typed values, COMBO / IMAGE inputs drop down a filtered option list.
 import { Widget, theme } from "../ui.js";
+import { pref, setPref } from "../prefs.js";
 
 // Pixaroma "Sizes" state, same math as the node's core.mjs: the stored [a, b] pair is oriented (landscape = wider,
 // portrait = taller), snapped, clamped to 64..16384; w/h in the state are what the node outputs.
@@ -314,8 +315,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			else view.setChildren([new Label({ text: "No inputs in this workflow", size: 28, color: theme.muted, x: 12, y: 12, w: W - 60 })]);
 		} else {
 			view = panel.add(new ScrollView({ x: 12, y: 156, w: W - 24, h: H - 168 }));
-			let saved = null;
-			try { saved = localStorage.getItem(tabKey()); } catch {}
+			const saved = pref(tabKey());
 			const select = (name) => {
 				buttons.forEach((b, i) => { b.toggled = tabs[i] === name; });
 				showTab(name);
@@ -324,7 +324,7 @@ export function createLeftPanel({ THREE, store, client, ui }) {
 			const buttons = tabs.map((name, i) => panel.add(new Button({
 				text: name, size: 28, x: 12 + i * (bw + GAP), y: 84, w: bw, h: 60,
 				onClick: () => {
-					try { localStorage.setItem(tabKey(), name); } catch {}
+					setPref(tabKey(), name);
 					select(name);
 				},
 			})));

@@ -30,6 +30,7 @@ xr/js/desktop.js         Desktop View host: windows (the panels' canvases in DOM
                          persistence, the note; decides the layout (Desktop View or phone) and hands the panels to phone.js on phones
 xr/js/phone.js           phone host: one panel at a time, the dock (its grid, the tab bar, the toolbar's boxes), the output button and tray, the toast
 xr/js/dom.js             what both DOM hosts share: adopt, el, clamp, sizePanel, keepEdit, bindPanel (pointer input, edit keeping)
+xr/js/prefs.js           the page's settings in localStorage: pref, prefJSON, setPref (storage that throws reads as empty, writes are dropped)
 xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
 xr/js/icons.js           Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
 xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
@@ -471,7 +472,7 @@ another Lucide icon's path data under its name and change the name where it is u
   of the setting re-renders it at once (main.js `relayout`); windows keep their geometry. The same pointer binding and edit-keeping
   as the windows. Hidden in the VR view and by H (its panels go back to their world size). The VR lectern ignores the setting.
 - Persistence: localStorage `appmode-xr.desktop` = `{ <name>: { x, y, w, h, open, z } }` (CSS px, w / h = the window's size
-  with its title bar; try/catch, the page works without it; the zoom version's `appmode-xr.windows` is ignored; geometry stored
+  with its title bar; prefs.js, the page works without it; the zoom version's `appmode-xr.windows` is ignored; geometry stored
   under `config` when that window held the workflow's inputs is not migrated: the Configuration window takes it), saved after a move,
   resize, open, close or raise; a resize stores the size as shown. Shown geometry is clamped: at least the window's minimum, at
   most the browser window, the position pushed inside it, without changing what is stored (rotating a tablet back restores it).
@@ -559,7 +560,7 @@ another Lucide icon's path data under its name and change the name where it is u
   with neither the row is hidden. The tiles shrink so the row stays within
   the toolbar's width (`rowW`); the row panel is resized to its content (`placeRow`), centered over the toolbar in VR and aligned
   with it on the deck's side in the Desktop View; on phones it is the tray (see Phones).
-  Selection is manual only and kept in localStorage `appmode-xr.output.<workflowName>` (try/catch, falls back to the first active
+  Selection is manual only and kept in localStorage `appmode-xr.output.<workflowName>` (falls back to the first active
   output; an inactive saved one is not restored). With no outputs one catch-all output takes every node.
   Active output (`store.outputActive`): in the snapshot prompt (not muted / bypassed on the desktop) and not in `store.removedNodes()`.
   On a `"switchGroups"` change, if the selected output went inactive the first active one is selected (screen, gallery and pop-up
@@ -598,7 +599,7 @@ another Lucide icon's path data under its name and change the name where it is u
   emptied, also while editing); tap edits in place (live onInput) and store.set the whole text.
   Negative prompt: a header row (`Fold`: a chevron, "Negative" and, folded, the start of its text in muted, ellipsized) that folds
   and unfolds it on a tap; unfolded, its box (140 px, at most half the space the two boxes share) sits under the header and the
-  prompt box shrinks. Folded by default; the state is kept in localStorage `appmode-xr.negative` (`open` / `closed`, try/catch).
+  prompt box shrinks. Folded by default; the state is kept in localStorage `appmode-xr.negative` (`open` / `closed`).
   Missing entries leave no empty box: only the negative one (not in the owner's spec) is a plain box, alone, full height, with no
   header; neither leaves the space empty.
   Seed row (64 px, at the bottom, `SEED_W` 680 px wide at most, left-aligned) for `store.groups.seed` if any: "Seed", −, value field,
@@ -622,7 +623,7 @@ another Lucide icon's path data under its name and change the name where it is u
   original value's type on commit; state.js writes such a value into the prompt only after it was edited. Inputs without targets are read-only.
   Tabs: the left inputs are grouped by `tab` in order of first appearance (App-mode order kept inside each tab). With one tab there is no
   tab row, just the list. Otherwise a row of `Button`s (active one `toggled`) sits under the title; switching re-stacks that tab's controls
-  and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` (try/catch) and falls back to the first tab
+  and resets the scroll. The selected tab is kept in localStorage `appmode-xr.tab.<workflowName>` and falls back to the first tab
   when missing. Duplicate labels get the `nodeTitle ›` prefix only within the same tab.
 - right (LoRA panel): one section per loraNode (tabs if more than one). Stack list: name, active toggle, strength −/value/+ (step 0.05;
   the value is a compact TextField like the Slider's: tapping selects it to type a number, "," accepted as decimal separator, stored
@@ -640,7 +641,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 3 columns in VR; the Desktop View's
   window re-flows it), each the preset's sky gradient (`skyCanvas`, the colours `paintSky` gives the room) with the preset name as
   its label, drawn like the LoRA library tiles; the current one outlined (`selected`, as the gallery outlines the shown entry). Applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
-  Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting` (try/catch).
+  Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `appmode-xr.lighting`.
   Each preset (table in lights.js) gives key / fill / rim `[color, intensity, x, y, z]` (x y z towards the light in the stage frame,
   +z towards the viewer), the hemisphere `[sky, ground, intensity]`, a 3-stop sky gradient (top, horizon, bottom) and `env`
   `[panel side, radiance gain]`. The room's sphere is painted with the preset gradient and `scene.environment` is the preset's PMREM:
@@ -653,7 +654,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - config (Configuration panel, 0.85 m wide, as tall as its content): settings of the page's own UI, not of the workflow. Title, then
   "Toolbar position": a 3 x 2 grid of buttons laid out like the screen (top row Top left / Top center / Top right, bottom row Bottom
   left / Bottom center / Bottom right), the current one `toggled`; the grid re-flows to the panel's width. Kept in localStorage
-  `appmode-xr.toolbar` (try/catch, default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
+  `appmode-xr.toolbar` (default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
 
 ## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
@@ -661,6 +662,9 @@ another Lucide icon's path data under its name and change the name where it is u
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
   `drag:false`/`bigStep`, Panel `bg:null` / `radius`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`, `ellipsize(ctx, text, maxW)`,
   `drawIcon(ctx, name, x, y, s)` (stroked in the current strokeStyle), `drawCover(ctx, img, x, y, s)`.
+- localStorage only through prefs.js (`pref(key)`, `prefJSON(key)` -> string / parsed value or null, `setPref(key, value)`): storage that
+  throws (disabled, some private windows) reads as empty and drops writes, so the page works without it. Callers keep their key
+  names and their own validation.
 - `window.__xr = ctx` for debugging. main calls `keyboard.commit()` on XR session start/end.
 - comfy.js: client sends feature_flags supports_preview_metadata (previews carry prompt_id).
 - state.js: `setSeedMode` also accepts "decrement". LoRA names are written as stored (no basename rewrite).

@@ -1,5 +1,7 @@
 // Configuration panel: settings of this page's own UI, kept in localStorage. Toolbar position: where the Desktop View's deck
 // (toolbar, output row, output pop-up) is pinned; the VR lectern ignores it.
+import { pref, setPref } from "../prefs.js";
+
 const TOOLBAR_KEY = "appmode-xr.toolbar";
 // the grid as on the screen: top row, then bottom row
 const POSITIONS = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
@@ -26,10 +28,7 @@ export function createConfigPanel({ THREE, ui }, onChange) {
 	};
 	panel.onResize();
 
-	let toolbar = "bottom-right";
-	try {
-		toolbar = POSITIONS.find((at) => at === localStorage.getItem(TOOLBAR_KEY)) ?? toolbar;
-	} catch {}
+	let toolbar = POSITIONS.find((at) => at === pref(TOOLBAR_KEY)) ?? "bottom-right";
 
 	function show() {
 		buttons.forEach((b, i) => { b.toggled = POSITIONS[i] === toolbar; });
@@ -38,9 +37,7 @@ export function createConfigPanel({ THREE, ui }, onChange) {
 
 	function select(at) {
 		toolbar = at;
-		try {
-			localStorage.setItem(TOOLBAR_KEY, at);
-		} catch {}
+		setPref(TOOLBAR_KEY, at);
 		show();
 		onChange();
 	}

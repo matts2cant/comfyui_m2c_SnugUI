@@ -11,6 +11,7 @@ import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
 import { adopt, bindPanel, clamp, el, keepEdit, sizePanel } from "./dom.js";
 import { createPhone } from "./phone.js";
+import { prefJSON, setPref } from "./prefs.js";
 
 const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
@@ -38,14 +39,6 @@ function drag(target, down, move, up) {
 	target.addEventListener("pointercancel", end);
 }
 
-function load() {
-	try {
-		return JSON.parse(localStorage.getItem(STORE_KEY)) ?? {};
-	} catch {
-		return {};
-	}
-}
-
 // specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel
 // its content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content
 // width w). Only the first one is open on the first visit (on phones: at page load). note: a panel shown alone at the center of
@@ -56,7 +49,7 @@ function load() {
 // changes go through it.
 export function createDesktop(specs, note, deck, relayout) {
 	const { toolbar, shows, row, popup, rowH, cogRect, at } = deck;
-	const saved = load();
+	const saved = prefJSON(STORE_KEY) ?? {};
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
 	noteBox.append(note.canvas);
@@ -71,11 +64,7 @@ export function createDesktop(specs, note, deck, relayout) {
 	let shown = false, lastNew = null, layout = null; // layout: "portrait" | "landscape" on phones (phone.js), else null
 	let top = Math.max(0, ...Object.values(saved).map((s) => s.z ?? 0));
 
-	const save = () => {
-		try {
-			localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(wins.map((w) => [w.spec.name, w.state]))));
-		} catch {}
-	};
+	const save = () => setPref(STORE_KEY, JSON.stringify(Object.fromEntries(wins.map((w) => [w.spec.name, w.state]))));
 
 	const wins = specs.map((spec, i) => {
 		const box = el("div", "win", root);

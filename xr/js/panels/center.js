@@ -3,6 +3,7 @@
 // at the screen diagonal; the hosts (main.js, desktop.js, phone.js) place everything from `shows` and call screen.onChange() when it changes. Results are kept per App-mode output. The image pans and zooms in the stage
 // plane (`image`).
 import { createModelView } from "../model.js";
+import { pref, prefJSON, setPref } from "../prefs.js";
 
 export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, toolbar.js)
 const TILE = 200, SMALL_TILE = 120, RING = 4;
@@ -53,27 +54,15 @@ function ring(ctx, x, y, s, r, color) {
 }
 
 // temp previews (Preview Image, Preview 3D) do not survive a ComfyUI restart: never persisted
-function loadHistory() {
-	try {
-		return (JSON.parse(localStorage.getItem(HISTORY_KEY)) ?? []).filter((e) => e.type !== "temp");
-	} catch {
-		return [];
-	}
-}
+const loadHistory = () => (prefJSON(HISTORY_KEY) ?? []).filter((e) => e.type !== "temp");
 
 function loadStereo() {
-	try {
-		const mode = localStorage.getItem(STEREO_KEY);
-		return STEREO_MODES.some(([m]) => m === mode) ? mode : "flat";
-	} catch {
-		return "flat";
-	}
+	const mode = pref(STEREO_KEY);
+	return STEREO_MODES.some(([m]) => m === mode) ? mode : "flat";
 }
 
 function saveHistory(history) {
-	try {
-		localStorage.setItem(HISTORY_KEY, JSON.stringify(history.filter((e) => e.type !== "temp").map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
-	} catch {}
+	setPref(HISTORY_KEY, JSON.stringify(history.filter((e) => e.type !== "temp").map(({ filename, subfolder, type, kind, node }) => ({ filename, subfolder, type, kind, node }))));
 }
 
 // images from ui.images; 3D files from ui["3d"] (Save 3D Model, Preview 3D (Advanced)...) or ui.result[0] (Preview 3D: a
@@ -308,14 +297,12 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		tiles = outputs.length < 2 ? [] : outputs.map((o) => row.add(new OutputTile({
 			output: o,
 			onClick: () => {
-				try { localStorage.setItem(outputKey(), o.nodeId); } catch {}
+				setPref(outputKey(), o.nodeId);
 				select(o);
 			},
 		})));
 		row.add(cog);
-		let saved = null;
-		try { saved = localStorage.getItem(outputKey()); } catch {}
-		const o = outputs.find((o) => o.nodeId === saved);
+		const saved = pref(outputKey()), o = outputs.find((o) => o.nodeId === saved);
 		select(o && active(o) ? o : outputs.find(active) ?? outputs[0]);
 	}
 
@@ -467,9 +454,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	function setStereo(mode) {
 		stereo = mode;
 		image.reset();
-		try {
-			localStorage.setItem(STEREO_KEY, mode);
-		} catch {}
+		setPref(STEREO_KEY, mode);
 		if (shown) layoutImage();
 		syncModeBtns();
 		refresh();

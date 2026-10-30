@@ -1,5 +1,7 @@
 // Prompt panel: the workflow name, the prompt box (it takes all the extra height), the negative prompt folded under a one-row
 // header, then the seed controls on a row of their own at the bottom. Missing entries leave no empty box.
+import { pref, setPref } from "../prefs.js";
+
 const MODES = [["fixed", "lock"], ["increment", "plus"], ["randomize", "shuffle"]];
 const M = 20, GAP = 12, TOP = 60, ROW_H = 64, BTN_W = 60, FOLD_H = 52, NEG_H = 140, MIN_BOX = 140, SEED_W = 680;
 const NEGATIVE_KEY = "appmode-xr.negative";
@@ -45,10 +47,10 @@ export function createBottomPanel({ THREE, store, ui }) {
 	const name = panel.add(new ui.Label({ text: "", size: 28, bold: true, x: 24, y: 10, h: 42 }));
 	const fold = new Fold({ h: FOLD_H, onClick: () => {
 		fold.open = !fold.open;
-		try { localStorage.setItem(NEGATIVE_KEY, fold.open ? "open" : "closed"); } catch {}
+		setPref(NEGATIVE_KEY, fold.open ? "open" : "closed");
 		layout();
 	} });
-	try { fold.open = localStorage.getItem(NEGATIVE_KEY) === "open"; } catch {}
+	fold.open = pref(NEGATIVE_KEY) === "open";
 	let prompt = null, negative = null; // [input, TextField]
 	let seedRow = null;
 	let widgets = [];
