@@ -3,7 +3,7 @@
 Personal ComfyUI custom-node package (`comfyui_m2c_SnugUI`): tweak an App-mode workflow and generate from a Meta Quest 3 (Quest Browser, WebXR).
 A "SnugUI" button snapshots the current App-mode workflow; ComfyUI serves a WebXR page at `/snugui`
 with the result image in the middle and, in VR, the inputs on a tilted lectern under it, one panel at a time. No internet or CDN at runtime
-(three.js is vendored in `xr/vendor/`).
+(three.js is vendored in `app/vendor/`).
 
 ## Setup
 

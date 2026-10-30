@@ -14,7 +14,7 @@ WEB_DIRECTORY = "./web"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 
 ROOT = Path(__file__).resolve().parent
-XR_DIR = ROOT / "xr"
+APP_DIR = ROOT / "app"
 SNAPSHOT_FILE = Path(folder_paths.get_user_directory()) / "snugui" / "snapshot.json"
 NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
@@ -36,14 +36,14 @@ def serve(path: Path):
 
 
 @routes.get("/snugui")
-async def xr_index(request):
-    return serve(XR_DIR / "index.html")
+async def app_index(request):
+    return serve(APP_DIR / "index.html")
 
 
 @routes.get("/snugui/static/{path:.*}")
-async def xr_static(request):
-    path = (XR_DIR / request.match_info["path"]).resolve()
-    if not path.is_relative_to(XR_DIR) or not path.is_file():
+async def app_static(request):
+    path = (APP_DIR / request.match_info["path"]).resolve()
+    if not path.is_relative_to(APP_DIR) or not path.is_file():
         return web.Response(status=404)
     return serve(path)
 

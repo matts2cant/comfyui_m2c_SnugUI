@@ -12,14 +12,14 @@ config.
 ```
 __init__.py        package entry and server: the page's routes and the snapshot store; no nodes (empty mappings), WEB_DIRECTORY = "./web"
 web/snugui.js      the ComfyUI frontend extension (ComfyUI loads every .js under web/ into its UI: nothing else goes there)
-xr/                the page: index.html, js/ (plain ES modules, no build step), vendor/ (three.js)
+app/               the page: index.html, js/ (plain ES modules, no build step), vendor/ (three.js)
 ```
 
 ## Docs
 
 - [DESIGN.md](DESIGN.md) is the source-of-truth spec: update it in the same commit as every change.
 - [README.md](README.md) is the user guide: keep it in sync with user-facing behaviour, in the same commit.
-- No CDN or internet at runtime: libraries are vendored in `xr/vendor/`. No dependency on other custom nodes (LoRA Manager and
+- No CDN or internet at runtime: libraries are vendored in `app/vendor/`. No dependency on other custom nodes (LoRA Manager and
   the Pixaroma Group Switch are used when present).
 
 ## Testing

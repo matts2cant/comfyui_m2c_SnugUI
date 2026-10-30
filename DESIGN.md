@@ -8,7 +8,7 @@ Desktop View) or a Meta Quest 3 (standalone Quest Browser, WebXR).
 - Its own custom-node package, `custom_nodes/comfyui_m2c_SnugUI/` (no nodes, no dependency on other custom nodes). Only create/modify
   files inside it. Never touch ComfyUI core, other custom nodes,
   the venv (no pip installs), Comfy Desktop config, or `%APPDATA%`.
-- No CDN / internet at runtime. Libraries are vendored in `xr/vendor/`.
+- No CDN / internet at runtime. Libraries are vendored in `app/vendor/`.
 - Plain ES modules, no build step, no npm deps at runtime. Modern JS (Quest Browser = recent Chromium).
 - Match a hand-written style: small direct code, sparse useful comments, no defensive boilerplate.
 - Only `web/snugui.js` may hold frontend extension code (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
@@ -25,42 +25,42 @@ Desktop View) or a Meta Quest 3 (standalone Quest Browser, WebXR).
 __init__.py              package entry and server: routes + snapshot store; empty NODE_CLASS_MAPPINGS / NODE_DISPLAY_NAME_MAPPINGS,
                          WEB_DIRECTORY = "./web"
 web/snugui.js            desktop extension: button, Alt+S, snapshot builder
-xr/index.html            page shell
-xr/vendor/               three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
+app/index.html           page shell
+app/vendor/              three.module.js — vendored three.js r170; GLTFLoader.js — its examples/jsm GLTFLoader (esm.sh build of
                          three@0.170.0 with BufferGeometryUtils inlined, copied from ComfyUI-Pixaroma, imports rewritten to "three"); both under three.LICENSE (MIT)
-xr/js/main.js            bootstrap and the VR host: renderer, scene, views (Desktop View, VR session, VR-like view), the panels, their
+app/js/main.js           bootstrap and the VR host: renderer, scene, views (Desktop View, VR session, VR-like view), the panels, their
                          layout on the lectern (layout, relayout), setView, recenter, toggleUI, page keys, the frame loop
-xr/js/pointers.js        pointer input on the 3D view: XR controllers and hands (rays, cursor dots, B), the mouse and fingers (pinch),
+app/js/pointers.js       pointer input on the 3D view: XR controllers and hands (rays, cursor dots, B), the mouse and fingers (pinch),
                          the wheel, the VR-like view's look around; createPointers(...) -> { update(dt), releaseAll(), resetLook() }
-xr/js/desktop.js         Desktop View host: windows (the panels' canvases in DOM windows), the deck (toolbar, output row, output pop-up),
+app/js/desktop.js        Desktop View host: windows (the panels' canvases in DOM windows), the deck (toolbar, output row, output pop-up),
                          persistence, the note; decides the layout (Desktop View or phone) and hands the panels to phone.js on phones
-xr/js/phone.js           phone host: one panel at a time, the dock (its grid, the tab bar, the toolbar's boxes), the output button and tray, the toast
-xr/js/dom.js             what both DOM hosts share: adopt, el, clamp, sizePanel, keepEdit, bindPanel (pointer input, edit keeping)
-xr/js/prefs.js           the page's settings in localStorage: pref, prefJSON, setPref (storage that throws reads as empty, writes are dropped)
-xr/js/history.js         the results history (center's): entries, add, drop, missing() (the HEAD check), its localStorage; resultFiles, isMissing
-xr/js/quad.js            the image's XR quad layer (HD): createQuadLayer(ctx, holeMesh) -> { update(shown, enabled), supported() }
-xr/js/ui.js              canvas-texture UI toolkit (Panel + widgets)
-xr/js/icons.js           Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
-xr/js/model.js           3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
-xr/js/keyboard.js        text-edit model + Quest system keyboard bridge (editText)
-xr/js/help.js            insecure-context help screen (DOM)
-xr/js/comfy.js           ComfyClient: ws, queue, interrupt, previews, snapshot fetch
-xr/js/state.js           store: snapshot model, values, seeds, loras, buildPrompt, generate
-xr/js/rules.js           placement rule table
-xr/js/panels/toolbar.js  toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
-xr/js/panels/center.js   image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
+app/js/phone.js          phone host: one panel at a time, the dock (its grid, the tab bar, the toolbar's boxes), the output button and tray, the toast
+app/js/dom.js            what both DOM hosts share: adopt, el, clamp, sizePanel, keepEdit, bindPanel (pointer input, edit keeping)
+app/js/prefs.js          the page's settings in localStorage: pref, prefJSON, setPref (storage that throws reads as empty, writes are dropped)
+app/js/history.js        the results history (center's): entries, add, drop, missing() (the HEAD check), its localStorage; resultFiles, isMissing
+app/js/quad.js           the image's XR quad layer (HD): createQuadLayer(ctx, holeMesh) -> { update(shown, enabled), supported() }
+app/js/ui.js             canvas-texture UI toolkit (Panel + widgets)
+app/js/icons.js          Lucide icons (ISC licence in its header): path data (`paths`) and Path2D (`icons`), keyed by Lucide name
+app/js/model.js          3D model on the stage: GLB/glTF loading, fit + placement, lights, turn / zoom / grab, disposal
+app/js/keyboard.js       text-edit model + Quest system keyboard bridge (editText)
+app/js/help.js           insecure-context help screen (DOM)
+app/js/comfy.js          ComfyClient: ws, queue, interrupt, previews, snapshot fetch
+app/js/state.js          store: snapshot model, values, seeds, loras, buildPrompt, generate
+app/js/rules.js          placement rule table
+app/js/panels/toolbar.js toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
+app/js/panels/center.js  image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
                          (the results in history.js, the HD layer in quad.js)
-xr/js/panels/prompt.js   Prompt panel: workflow name, prompt box, folding negative prompt, seed row
-xr/js/panels/input.js    Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
-xr/js/panels/config.js   Configuration panel: settings of the page's own UI (toolbar position)
-xr/js/panels/lora.js     LoRA panel(s) + LoRA Manager API client
-xr/js/panels/lights.js   Light panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
+app/js/panels/prompt.js  Prompt panel: workflow name, prompt box, folding negative prompt, seed row
+app/js/panels/input.js   Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
+app/js/panels/config.js  Configuration panel: settings of the page's own UI (toolbar position)
+app/js/panels/lora.js    LoRA panel(s) + LoRA Manager API client
+app/js/panels/lights.js  Light panel: presets for the model's lights, PMREM environments, the room (grid + gradient sphere),
                          the Desktop View background
 ```
 
 ## Server (`__init__.py`)
-- `GET /snugui` → `xr/index.html` (Cache-Control: no-cache, no-store, must-revalidate). `GET /snugui/static/{path}` → files
-  under `xr/` (the same Cache-Control, correct JS MIME `text/javascript`, path containment enforced).
+- `GET /snugui` → `app/index.html` (Cache-Control: no-cache, no-store, must-revalidate). `GET /snugui/static/{path}` → files
+  under `app/` (the same Cache-Control, correct JS MIME `text/javascript`, path containment enforced).
 - `POST /snugui/snapshot` body = Snapshot JSON (object). Server adds `id` (uuid4 hex) and `created` (ms), writes
   `<ComfyUI user directory>/snugui/snapshot.json` (a sandbox with its own `--user-directory` never touches the real one), keeps it in memory, broadcasts `PromptServer.instance.send_sync("snugui_snapshot", {"id": id})`
   (no sid → all sockets). Returns `{"id": id}`.
