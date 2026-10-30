@@ -23,13 +23,15 @@
 	.deck { position: fixed; z-index: 6; display: flex; gap: 8px; pointer-events: none; } /* placed by desktop.js renderDeck */
 	.deck canvas { pointer-events: auto; flex: none; }
 	.deck .popup { position: absolute; }
-	/* phones (desktop.js renderPhone): the panels around the image, placed inside the safe area read from the padding */
+	/* phones (desktop.js renderPhone): the open panel over the image, the dock and the tray, placed inside the safe area read from the padding */
 	.phone { position: fixed; inset: 0; z-index: 6; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 	.phone > * { position: absolute; pointer-events: auto; }
-	.phone .strip { display: flex; overflow: auto hidden; scrollbar-width: none; }
-	.phone .strip canvas { flex: none; margin-left: auto; touch-action: pan-x; }
+	.phone .strip, .phone .pick, .phone .popup, .phone .toast { z-index: 1; } /* over the open panel */
+	/* the tray: its border (the margin, set by desktop.js) is the padding around the scrolling tiles; radius = the tiles' + the margin */
+	.phone .strip { display: flex; box-sizing: border-box; overflow: auto hidden; scrollbar-width: none; background: #161a22; border: solid #161a22; border-radius: 24px; box-shadow: 0 0 0 1px #323a49; }
+	.phone .strip canvas { flex: none; touch-action: pan-x; }
 	.phone .strip.v { flex-direction: column; overflow: hidden auto; }
-	.phone .strip.v canvas { margin: auto 0 0; touch-action: pan-y; }
+	.phone .strip.v canvas { touch-action: pan-y; }
 	.phone .pad { background: #161a22; }
 	.phone .toast { transform: translate(-50%, -100%); width: max-content; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; background: #161a22; box-shadow: 0 0 0 1px #323a49; color: #e5484d; font-size: 14px; overflow-wrap: anywhere; pointer-events: none; }
 	@media (pointer: coarse) {

@@ -181,13 +181,13 @@ function layout() {
 }
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take).
-// Phones show one at a time: in portrait Prompt and Configuration as tall as their content (fit), the others as tall as there is room.
+// Phones show one at a time, taking all the room the dock leaves.
 const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
-	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1], fit: name === "prompt" || name === "config" }
+	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
 )), center.note, {
-	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, row: center.row, popup: center.popup, cog: center.cog, rowH: center.rowH,
-	rowTile: center.rowTile, at: config.toolbarAt,
+	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, row: center.row, popup: center.popup, cog: center.cog, pick: center.pick,
+	rowH: center.rowH, rowTile: center.rowTile, closeTray: center.closeTray, at: config.toolbarAt,
 });
 
 function relayout() {
@@ -533,7 +533,10 @@ el.addEventListener("wheel", (e) => {
 addEventListener("keydown", (e) => {
 	if (e.key === "r") recenter();
 	else if (e.key === "h") toggleUI();
-	else if (e.key === "Escape") center.closePopup();
+	else if (e.key === "Escape") {
+		center.closePopup();
+		center.closeTray();
+	}
 });
 addEventListener("resize", () => {
 	camera.aspect = innerWidth / innerHeight;

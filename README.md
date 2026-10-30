@@ -51,16 +51,19 @@ back inside a smaller window). The first time only Prompt is open.
 ## Phones
 
 On a phone (a window narrower than 600 px, or a landscape one shorter than 500 px) the page uses a phone layout instead of
-windows. Portrait: the image at the top, the output tiles under it (swipe them sideways when they do not fit; the cog's pop-up
-opens just above them), one panel at a time, then a dock with the run status, Cancel and Generate (lined up over the first tab and the other five) and a tab bar of the six panels
-(tap one to open it, tap it again to close it). Prompt and Configuration are as tall as their content; the others go almost to
-the top. Landscape: the image at the left, then the tiles in a column (swipe them up and down; the cog's pop-up opens to its
-left), the open panel, and a dock along the right edge: a run column (one-word status, timer, upright progress bars, Cancel, a
-play button for Generate; tap a red "Error" to read the whole message) and the tabs, on the same rows: Cancel level with the
-fourth tab, Generate with the last two. With no panel open the image grows. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the
-open panel moves above it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag
-the image to zoom and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button
-do not apply on phones; a wider window brings the Desktop View back with its windows as you left them.
+windows. Portrait: the image above a dock with the run status, Cancel and Generate (lined up over the first tab and the other
+five) and a tab bar of the six panels (tap one to open it, tap it again to close it). Landscape: the image at the left and a dock
+along the right edge: a run column (one-word status, timer, upright progress bars, Cancel, a play button for Generate; tap a red
+"Error" to read the whole message) and the tabs, on the same rows: Cancel level with the fourth tab, Generate with the last two.
+An open panel takes all the room left by the dock, edge to edge, over the image; closing it brings the image back.
+With several outputs (or a single image output, for its settings) the dock gets an output button showing the selected output (portrait: over the first tab, Cancel moves over
+the second; landscape: level with the third tab), with a dot when another output has new results. Tap it to open the output tiles
+in a small tray just above (portrait) or left of (landscape) the dock: tap a tile to switch outputs (the tray stays open; swipe
+it when the tiles do not fit), or the cog for the output's settings. Tap the button again, anywhere else, a tab, or press Esc to
+close it. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the open panel moves above
+it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag the image to zoom
+and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button do not apply on
+phones; a wider window brings the Desktop View back with its windows as you left them.
 
 ## Input tabs
 
@@ -110,7 +113,8 @@ turned back on. Output tiles of switched-off outputs are dimmed; if every output
 
 If App mode marks several output nodes, a row of square tiles above the toolbar (each output's latest result, its type and title)
 picks which one the screen shows (remembered per workflow). A dot marks an output with new results; the view never switches on its
-own. The Gallery follows the selected output. A workflow with a single output in App mode has no tiles.
+own. The Gallery follows the selected output. A workflow with a single output in App mode has no tiles. On phones the tiles are
+in a tray opened from the dock's output button (see Phones).
 The cog at the end of the row opens a small pop-up with the selected output's display settings (images: Flat / 3D R/L / 3D L/R and HD;
 3D outputs have none yet, so the cog is greyed out while one is selected). It stays open while you pick, follows the selected tile, and closes on a press anywhere else, on the
 cog or on Esc.
