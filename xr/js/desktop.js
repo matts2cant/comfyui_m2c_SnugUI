@@ -101,13 +101,14 @@ function load() {
 // specs: [{ name, title, icon, button, panel, minW, minH(w) }]: button is the toolbar's, lit while the window is open; panel
 // its content, at its VR size on first opening; minW / minH(w) the smallest its layout takes in panel px (minH at the content
 // width w). Only the first one is open on the first visit (on phones: at page load). note: a panel shown alone at the center of
-// the image while note.mesh.visible (the stage's message). deck: { toolbar, tabs, phone, row, popup, cog, pick, rowH, rowTile,
-// closeTray, at } panels (and the row's cog widget); row.mesh.visible / popup.mesh.visible / pick.mesh.visible say whether they
-// are shown; rowH: the row's tallest (panel px); at() -> "<top|bottom>-<left|center|right>", where the deck is pinned; for
-// phones, the toolbar's tab bar (tabs) and layouts (phone(mode, slot)), the output button (pick), the row's tile size and
-// direction (rowTile(size, vertical)) and closeTray() (the row is the tray). relayout: main.js's layout pass, which calls update();
-// the browser window's and the phones' own changes go through it.
-export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, row, popup, cog, pick, rowH, rowTile, closeTray, at }, relayout) {
+// the image while shows.note (the stage's message). deck: { toolbar, tabs, phone, shows, row, popup, pick, rowH, rowTile, cogRect,
+// closePopup, ringPick, at }: the toolbar, row and pop-up panels; shows: center's { row, popup, note }, what has something to
+// show; rowH: the row's tallest (panel px); cogRect(): the cog's box in the row (panel px); at() ->
+// "<top|bottom>-<left|center|right>", where the deck is pinned; for phones, the toolbar's tab bar (tabs) and layouts
+// (phone(mode, slot)), the output button (pick, ringed by ringPick(on) while the tray is open), the row's tile size and direction
+// (rowTile(size, vertical)). relayout: main.js's layout pass, which calls update(); the browser window's and the phones' own
+// changes go through it.
+export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, shows, row, popup, pick, rowH, rowTile, cogRect, closePopup, ringPick, at }, relayout) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -124,6 +125,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	for (const p of [toolbar, tabs, row, popup, pick]) bindPanel(p, isPhone);
 	// the tray closes on a press anywhere but on it, its pop-up and the output button
 	addEventListener("pointerdown", (e) => { if (![strip, popup.canvas, pick.canvas].some((n) => n.contains(e.target))) closeTray(); }, true);
+	let tray = false; // phones: the output row open as the tray
 	// keep the edit's focused textarea (or the on-screen keyboard) while pressing the windows, the deck and the phone layout
 	for (const layer of [root, deck, phone]) {
 		layer.addEventListener("mousedown", (e) => { if (keyboard.isEditing()) e.preventDefault(); });
@@ -187,7 +189,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		keyboard.commit();
 		// phones: one panel at a time, a tap on the open one closes it (and the tray)
 		if (layout) {
-			closeTray();
+			setTray(false);
 			sheet = sheet === win.spec.name ? null : win.spec.name;
 			return relayout();
 		}
@@ -248,8 +250,8 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (layout) return;
 		adopt(deck, row.canvas, toolbar.canvas, popup.canvas);
 		toolbar.canvas.hidden = false;
-		row.canvas.hidden = !row.mesh.visible;
-		popup.canvas.hidden = !popup.mesh.visible;
+		row.canvas.hidden = !shows.row;
+		popup.canvas.hidden = !shows.popup;
 		for (const p of [toolbar, row, popup]) if (deck.hidden || p.canvas.hidden) p.setPx();
 		if (deck.hidden) return;
 		const [edge, side] = at().split("-"), far = edge === "top" ? "bottom" : "top";
@@ -264,7 +266,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 			Object.assign(p.canvas.style, { width: p.width * SCALE + "px", height: p.height * SCALE + "px" });
 			p.setPx(p.width, p.height, SCALE * devicePixelRatio * k);
 		}
-		const cogX = (toolbar.width - row.width) * align + cog.x;
+		const cog = cogRect(), cogX = (toolbar.width - row.width) * align + cog.x;
 		Object.assign(popup.canvas.style, {
 			left: (side === "left" ? cogX : cogX + cog.w - popup.width) * SCALE + "px",
 			[edge]: (toolbar.height + row.height) * SCALE + 2 * DECK_GAP + "px", [far]: "",
@@ -302,7 +304,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (spec) adopt(phone, spec.panel.canvas);
 		let sheetBox = null, stripBox = null, toolbarBox = null, tabsBox = null, padBox = null;
 		if (layout === "portrait") {
-			const w = W - l - r, y = kb ? end : H - b - th - bar, rh = row.mesh.visible ? row.height * PHONE + 2 * gap : 0;
+			const w = W - l - r, y = kb ? end : H - b - th - bar, rh = tray && shows.row ? row.height * PHONE + 2 * gap : 0;
 			if (spec) sheetBox = [l, top, w, y - top];
 			if (!kb) {
 				toolbarBox = [l, y, w, th];
@@ -312,7 +314,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 			}
 			stage = { x: l, y: top, w, h: Math.max(1, y - top) };
 		} else {
-			const h = H - t - b, x = W - r - th - bar, rw = row.mesh.visible ? row.width * PHONE + 2 * gap : 0;
+			const h = H - t - b, x = W - r - th - bar, rw = tray && shows.row ? row.width * PHONE + 2 * gap : 0;
 			toolbarBox = [x, t, th, h];
 			tabsBox = [x + th, t, bar, h];
 			padBox = [x, 0, W - x, H]; // under the dock, over the insets
@@ -331,7 +333,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		put(toolbar, toolbarBox);
 		put(tabs, tabsBox);
 		const { x, y, s } = bars.slot;
-		put(pick, pick.mesh.visible && toolbarBox && [toolbarBox[0] + x * PHONE, toolbarBox[1] + y * PHONE, s * PHONE, s * PHONE]);
+		put(pick, shows.row && toolbarBox && [toolbarBox[0] + x * PHONE, toolbarBox[1] + y * PHONE, s * PHONE, s * PHONE]);
 		pad.hidden = !padBox;
 		if (padBox) boxStyle(pad, padBox);
 		Object.assign(toast.style, { left: stage.x + stage.w / 2 + "px", top: stage.y + stage.h - gap + "px", maxWidth: stage.w - 4 * gap + "px" });
@@ -348,9 +350,9 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	// Portrait: its right edge over the cog's (inside the window, scaled down when narrower), just over the tray. Landscape: left
 	// of the tray (scaled down when narrower), its bottom edge on the cog's (inside the window).
 	function placePopup() {
-		popup.canvas.hidden = !layout || strip.hidden || !popup.mesh.visible;
+		popup.canvas.hidden = !layout || strip.hidden || !shows.popup;
 		if (popup.canvas.hidden) return popup.setPx();
-		const s = strip.getBoundingClientRect(), c = row.canvas.getBoundingClientRect(), v = layout === "landscape";
+		const s = strip.getBoundingClientRect(), c = row.canvas.getBoundingClientRect(), v = layout === "landscape", cog = cogRect();
 		const k = Math.min(PHONE, ((v ? s.left : innerWidth) - 2 * gap) / popup.width), w = popup.width * k, h = popup.height * k;
 		boxStyle(popup.canvas, v ? [s.left - gap - w, clamp(c.top + (cog.y + cog.h) * PHONE - h, gap, innerHeight - gap - h), w, h]
 			: [clamp(c.left + (cog.x + cog.w) * PHONE - w, gap, innerWidth - gap - w), s.top - gap - h, w, h]);
@@ -358,9 +360,24 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	}
 	strip.addEventListener("scroll", placePopup);
 
+	// Phones: the tray opens and closes from the output button; it also closes on a press elsewhere, Esc (main.js), a tab, and a
+	// change of layout (rotation, leaving the phones), always with the pop-up. setTray only sets the state: closeTray / toggleTray
+	// also re-place everything (relayout), update() places it in its own pass.
+	function setTray(on) {
+		tray = on;
+		ringPick(on);
+		if (!on) closePopup();
+	}
+
+	function closeTray() {
+		if (!tray) return;
+		setTray(false);
+		relayout();
+	}
+
 	// centered on the image (the whole window but on phones), scaled down to fit it
 	function renderNote() {
-		noteBox.hidden = !shown || !note.mesh.visible;
+		noteBox.hidden = !shown || !shows.note;
 		if (noteBox.hidden) return;
 		const s = stage ?? { x: 0, y: 0, w: innerWidth, h: innerHeight }, k = Math.min(SCALE, (s.w - 2 * EDGE) / note.width);
 		note.setPx(note.width, note.height, k * devicePixelRatio);
@@ -379,9 +396,10 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (changed) {
 			layout = mode;
 			rowTile(mode && PB, mode === "landscape");
+			setTray(false);
 			strip.classList.toggle("v", mode === "landscape");
 		}
-		bars = toolbarPhone(mode, pick.mesh.visible);
+		bars = toolbarPhone(mode, shows.row);
 		gap = bars.margin * PHONE;
 		if (changed && !mode) toolbar.setPx();
 		renderDeck();
@@ -394,7 +412,11 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 	// the phone keyboard comes and goes with the visual viewport
 	for (const type of ["resize", "scroll"]) visualViewport.addEventListener(type, () => { if (layout) relayout(); });
 	return {
-		update, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)),
+		update, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)), closeTray,
+		toggleTray: () => {
+			setTray(!tray);
+			relayout();
+		},
 		// a message at the foot of the image for TOAST_MS (phones)
 		toast: (text) => {
 			toast.textContent = text;

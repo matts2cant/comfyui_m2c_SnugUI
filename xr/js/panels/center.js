@@ -1,6 +1,6 @@
 // Center panel: image (mesh or XR quad layer) or 3D model on a stage centered on the group origin, plus the output row (tiles
 // and the cog), its output pop-up, the phones' output button and the gallery panel. The stage takes the aspect of what it shows
-// at the screen diagonal; main.js places everything. Results are kept per App-mode output. The image pans and zooms in the stage
+// at the screen diagonal; the hosts (main.js, desktop.js) place everything from `shows` and call screen.onChange() when it changes. Results are kept per App-mode output. The image pans and zooms in the stage
 // plane (`image`).
 import { createModelView } from "../model.js";
 
@@ -86,8 +86,8 @@ function resultFiles({ images = [], result, "3d": saved } = {}) {
 	return [...images.filter((f) => IMAGE_EXT.test(f.filename)).map(pick("image")), ...models.filter((f) => MODEL_EXT.test(f.filename)).map(pick("3d"))];
 }
 
-// rowW: the output row's widest, the toolbar's width (panel px)
-export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }, rowW) {
+// rowW: the output row's widest, the toolbar's width (panel px); onPick(): a tap on the phones' output button
+export function createCenterPanel({ THREE, store, client, ui, renderer, xr, screen, desktopView }, rowW, onPick) {
 	const { theme } = ui;
 	const group = new THREE.Group();
 
@@ -205,12 +205,10 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	// ---- panels ----
 	const stage = new ui.Panel({ name: "center-stage", widthM: 1, heightM: 1, pxPerM: screen.pxPerM }); // sized by fitStage
 	const row = new ui.Panel({ name: "output-row", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null }); // sized by placeRow
-	// the output pop-up (cog): the selected output's name over its kind's controls; popup.mesh.visible = open
+	// the output pop-up (cog): the selected output's name over its kind's controls
 	const popup = new ui.Panel({ name: "output-popup", widthM: 0.58, heightM: 0.164, radius: 32 });
-	popup.mesh.visible = false;
 	const galleryPanel = new ui.Panel({ name: "gallery", widthM: 0.85, heightM: 1.15 });
-	// the stage's message in the Desktop View, which shows it centered in a panel just around its text (the stage is VR only);
-	// note.mesh.visible: a message is up
+	// the stage's message in the Desktop View, which shows it centered in a panel just around its text (the stage is VR only)
 	const note = new ui.Panel({ name: "center-note", widthM: 1, heightM: 0.1 });
 	group.add(stage.mesh);
 
@@ -231,11 +229,11 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	const hdBtn = new ui.Button({ text: "HD", size: 30, x: 464, y: 68, w: 96, h: 76, onClick: () => { hd = !hd; } });
 	// the pop-up's controls per output kind; none hides the cog
 	const kindControls = { image: () => [...modeBtns, hdBtn], "3d": () => [] };
-	const cog = new ui.Button({ icon: "settings", round: true, w: COG, h: COG, onClick: () => showPopup(!popup.mesh.visible) });
-	// phones: the dock's output button (desktop.js), the selected output's tile; a tap opens the row as a tray, ringed while open.
-	// pick.mesh.visible: shown (whenever the row has something: several outputs, or a single one with settings)
+	const cog = new ui.Button({ icon: "settings", round: true, w: COG, h: COG, onClick: () => showPopup(!shows.popup) });
+	// phones: the dock's output button (desktop.js, while the row has something), the selected output's tile; desktop.js opens the
+	// row as a tray on a tap (onPick) and rings it while open (ringPick)
 	const pick = new ui.Panel({ name: "output-pick", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null });
-	const pickTile = pick.add(new OutputTile({ w: COG, h: COG, onClick: () => showTray(!tray) }));
+	const pickTile = pick.add(new OutputTile({ w: COG, h: COG, onClick: () => onPick() }));
 	pick.onResize = () => { pickTile.w = pickTile.h = pick.width; };
 
 	const model = createModelView();
@@ -263,12 +261,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	// per output: { nodeId (null = any node), title, kind, current (entry on show), fresh (results not shown yet) }
 	let outputs = [], out = null, tiles = [];
 	let tile = TILE, maxW = rowW, vertical = false; // phones: a fixed tile size and no length limit (desktop.js scrolls the row), a column in landscape
-	let tray = null;           // phones: the row shown (opened from the output button); null elsewhere, where it always shows
+	// what the hosts show around the stage: the output row (it has something: several outputs, or a single one with settings), the
+	// pop-up (open), the note (a message is up)
+	const shows = { row: false, popup: false, note: false };
 	let shown = null;          // HTMLImageElement on the mesh / layer
 	let shownEntry = null;     // history entry of `shown`, null for a preview
 	let shownTex = null;
 	let modelOn = false, stage3d = false, notice = "", modelToken = 0;
-	let placed = null;         // the panels shown around the stage (output row, pop-up, note): main.js places them
+	let placed = null;         // the stage's size and what the hosts show around it, as last reported
 	let previewing = false;
 	let previewEpoch = 0;      // bumped when a run ends, so a preview still loading is dropped
 	let singleOn = false;
@@ -329,33 +329,24 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		const [w, h] = vertical ? [short, long] : [long, short];
 		tiles.forEach((t, i) => Object.assign(t, vertical ? { x: w - s, y: i * (s + TILE_GAP) } : { x: i * (s + TILE_GAP), y: h - s }, { w: s, h: s }));
 		Object.assign(cog, { visible: settings, disabled: !kindControls[out.kind]().length, x: w - COG, y: h - COG });
-		row.mesh.visible = (n > 0 || settings) && tray !== false;
-		pick.mesh.visible = (n > 0 || settings) && tray !== null;
-		if (row.mesh.visible && (w !== row.width || h !== row.height)) row.resize(w / ui.PX_PER_M, h / ui.PX_PER_M);
+		shows.row = n > 0 || settings;
+		if (shows.row && (w !== row.width || h !== row.height)) row.resize(w / ui.PX_PER_M, h / ui.PX_PER_M);
 	}
 
-	// phones: tiles of `size` px however many there are, in a column when vertical, the tray and the pop-up closed; null: back to
-	// a row of TILE within rowW
+	// phones: tiles of `size` px however many there are, in a column when vertical; null: back to a row of TILE within rowW. Layout
+	// only, called by desktop.js during its layout pass, which places the row from its new size.
 	function rowTile(size, v = false) {
-		if ((size ?? TILE) === tile && v === vertical) return;
 		tile = size ?? TILE;
 		maxW = size ? Infinity : rowW;
 		vertical = v;
-		tray = size ? false : null;
-		popup.mesh.visible = cog.toggled = false;
-		refresh();
+		placeRow();
+		row.invalidate();
 	}
 
-	// phones: stays open while picking tiles; the pop-up closes with it. main.js and desktop.js close it (closeTray).
-	function showTray(on) {
-		tray = on;
-		if (!on) popup.mesh.visible = cog.toggled = false;
-		refresh();
-	}
-
-	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere
+	// stays open while picking options and follows the selected output; main.js closes it on a press elsewhere, desktop.js with
+	// the phones' tray
 	function showPopup(on) {
-		popup.mesh.visible = cog.toggled = on;
+		shows.popup = cog.toggled = on;
 		refresh();
 	}
 
@@ -369,7 +360,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		popupTitle.setText(o.title || "Output");
 		popup.clear();
 		for (const c of [popupTitle, ...controls]) popup.add(c);
-		if (!controls.length) popup.mesh.visible = cog.toggled = false;
+		if (!controls.length) shows.popup = cog.toggled = false;
 		const { current } = o;
 		if (current && current !== (current.kind === "3d" ? model.entry : shownEntry)) return showEntry(current);
 		notice = "";
@@ -385,7 +376,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		stage3d = modelOn || out.kind === "3d";
 		singleOn = !modelOn && !!shown;
 		model.group.visible = modelOn && model.entry === current;
-		note.mesh.visible = !singleOn && !model.group.visible;
+		shows.note = !singleOn && !model.group.visible;
 		gallery.selected = current;
 		gallery.items = history.filter((e) => ownerOf(e) === out);
 		galleryTitle.setText(outputs.length > 1 ? `Gallery · ${out.title}` : "Gallery");
@@ -402,14 +393,14 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			t.toggled = outputs[i] === out;
 			t.fresh = outputs[i].fresh;
 		});
-		Object.assign(pickTile, { output: out, toggled: !!tray, fresh: outputs.some((o) => o.fresh) });
+		Object.assign(pickTile, { output: out, fresh: outputs.some((o) => o.fresh) });
 		for (const p of [stage, galleryPanel, row, popup, pick]) p.invalidate();
 		fitStage();
-		// the panels main.js places around the stage changed: the output row, the pop-up, the output button or the note
-		const p = [row.mesh.visible, row.width, row.height, popup.mesh.visible, pick.mesh.visible, note.mesh.visible && noteText.text].join();
+		// the stage or what the hosts place around it changed: the output row, the pop-up or the note
+		const p = [screen.w, screen.h, shows.row, row.width, row.height, shows.popup, shows.note && noteText.text].join();
 		if (p !== placed) {
 			placed = p;
-			screen.onResize();
+			screen.onChange();
 		}
 	}
 
@@ -432,7 +423,6 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 		model.setStage(w, h);
 		screen.w = w;
 		screen.h = h;
-		screen.onResize();
 	}
 
 	function setShown(img, entry) {
@@ -798,7 +788,7 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 			imageMesh.visible = singleOn;
 		}
 		updateEyes();
-		stage.mesh.visible = note.mesh.visible && !desktopView();
+		stage.mesh.visible = shows.note && !desktopView();
 		const hdUsable = hdSupported && !isSplit() && !stage3d;
 		if (hdBtn.toggled !== hd || hdBtn.disabled === hdUsable) {
 			hdBtn.toggled = hd;
@@ -810,7 +800,12 @@ export function createCenterPanel({ THREE, store, client, ui, renderer, xr, scre
 	syncModeBtns();
 	loadOutputs();
 	pruneMissing([...history]);
-	const closePopup = () => { if (popup.mesh.visible) showPopup(false); };
-	const closeTray = () => { if (tray) showTray(false); };
-	return { group, update, model, image, row, rowH: TILE, rowTile, cog, popup, closePopup, pick, closeTray, gallery: galleryPanel, note };
+	const closePopup = () => { if (shows.popup) showPopup(false); };
+	// the cog's box in the row (panel px), where the pop-up is placed
+	const cogRect = () => ({ x: cog.x, y: cog.y, w: cog.w, h: cog.h });
+	const ringPick = (on) => {
+		pickTile.toggled = on;
+		pick.invalidate();
+	};
+	return { group, update, model, image, shows, row, rowH: TILE, rowTile, cogRect, popup, closePopup, pick, ringPick, gallery: galleryPanel, note };
 }

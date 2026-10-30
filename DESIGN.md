@@ -251,27 +251,30 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
 ### Scene layout (meters, relative to the `ui` group, which recenter() places at head position + yaw, y = head height)
 - Screen: on the vertical plane z = -0.5 (`SCREEN_DISTANCE`, eye at the origin), 32" diagonal at the aspect of what it shows (image;
   half width per eye in stereo; 16:9 when empty), centered at eye level; it resizes only when that aspect changes (center.js ->
-  `screen.onResize`). A 3D output keeps the last size.
+  `screen.onChange`). A 3D output keeps the last size.
 - Lectern (a group in main.js): its top edge centered under the screen, `GAP_SCREEN` 0.012 below the screen's bottom edge on the screen
   plane, tilted `LECTERN_TILT` 45° back about that edge (rotation.x = -45°: the surface faces up and toward the eyes, the near edge comes
   down toward the viewer). Laid out in its own plane, from its top edge down the slope, all centered, `GAP` 0.006 m apart:
-  - the output row (center's `row`), only while `row.mesh.visible`;
+  - the output row (center's `row`), only while `center.shows.row` (main.js sets its group's visibility);
   - the toolbar; it only moves when the output row comes or goes (up to the lectern's top edge without a row);
   - the one open panel of Prompt (1.8 x 0.52), Gallery, LoRA, Light, Input (0.85 x 1.15 each), Configuration (0.85 wide, as tall as
     its content), unfolding toward the viewer.
 - Output pop-up: upright (not tilted) in front of the screen's bottom edge, its bottom edge on it, its right edge over the cog's right
   edge, `POPUP_Z` 0.02 toward the viewer (no z-fighting with the screen).
 - Every panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the open
-  panel's visibility (center calls `screen.onResize()` when the stage changes size or when the output row, the pop-up or the note
-  change: center sets `row.mesh.visible`, `popup.mesh.visible` and `note.mesh.visible`, layout and the Desktop View read them).
+  panel's, the row's and the pop-up's visibility. Panels own their content and report what they need to show as plain values;
+  the hosts (main.js for VR, desktop.js for the Desktop View and phones) own placement and every host-specific mode. center reports
+  `shows = { row, popup, note }` (the row has something: several outputs, or a single one with settings; the pop-up is open; a
+  message is up) and `cogRect()` (the cog's box in the row, panel px), and calls `screen.onChange()` (main.js `relayout`) once when
+  the stage's size or any of these changed. No host reads center's `mesh.visible` or its cog widget.
 Each panel module exports `export function createXPanel(ctx) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
-main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height), center's `row` / `cog` / `popup` / `closePopup()` /
-`pick` / `closeTray()` / `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
+main.js also reads `panel`, bottom's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
+`closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` and `model`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(ctx, onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
 `createToolbar(ctx, tabs, view, onError) -> { group, panel, tabs, phone(mode, slot) }` (main.js's panel buttons and view button, and
-`onError(text)`, desktop.js `toast`; `tabs` the phones' tab bar panel); center is `createCenterPanel(ctx, rowW)`, rowW the toolbar's
-width, which also returns `rowTile(size, vertical)`) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
+`onError(text)`, desktop.js `toast`; `tabs` the phones' tab bar panel); center is `createCenterPanel(ctx, rowW, onPick)`, rowW the toolbar's
+width, onPick() a tap on the phones' output button (desktop.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only) where `ctx = { THREE, store, client, ui, scene, renderer, camera, screen, xr: { isPresenting() }, desktopView() }`.
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
 
 ### Toolbar and icons
@@ -349,8 +352,8 @@ another Lucide icon's path data under its name and change the name where it is u
   VR-like view directly (the dev / test entry). `setView(desk)` releases every pointer, shows the room (VR) or the flat background
   (Desktop View), resets the look, closes the output pop-up, resets the fov (70°) and the hint (VR-like view only), then
   `relayout()`: `layout()` and the windows (with the deck). `relayout()` is the one layout pass: desktop.js's own triggers (window
-  resize, the visual viewport, a phone tab) call it too, and a change reported while it runs (center's `screen.onResize`, e.g. when
-  a phone layout gives the output row new tiles) runs another pass after it instead of nesting one.
+  resize, the visual viewport, a phone tab) call it too, and a change reported while it runs (center's `screen.onChange`, e.g. when
+  a phone layout change closes the output pop-up) runs another pass after it instead of nesting one.
 - On load: if `!window.isSecureContext || !navigator.xr` on Quest Browser (UA `OculusBrowser`), or with `?help`, show the help.js
   overlay explaining how to enable WebXR: `chrome://flags` → "Insecure origins treated as secure" → add `http://<location.host>`
   (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN. Dismissible. Tablets and desktops
@@ -423,7 +426,7 @@ another Lucide icon's path data under its name and change the name where it is u
   loading, missing file, load error: every text of center's `empty` label) is not shown on the 16:9 stage frame, which center
   hides in the Desktop View (`ctx.desktopView()`, each frame in `update()`), but in center's `note` panel: the same text, its
   width measured, 40 / 20 px padding, shown by desktop.js alone at the image box's center (scaled down to fit it; no chrome, clicks pass through) while
-  `note.mesh.visible` (the message is up). A changed text re-places it through `screen.onResize`. `scene.background` is lights.js's
+  `shows.note` (the message is up). A changed text re-places it through `screen.onChange`. `scene.background` is lights.js's
   `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
   hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
   about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
@@ -435,7 +438,7 @@ another Lucide icon's path data under its name and change the name where it is u
   windows (the prompt panel's entries change its minimum).
   At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
   shrink until the longest fits, and an edit toolbar wider than its panel drops Keyboard and the arrows.
-  `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onResize` (stage size, output
+  `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onChange` (stage size, output
   row, pop-up or note change) re-places the windows and the deck too. Stored window sizes (the Prompt window held the output band before) are not migrated.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
   pointers, as is a 44 px bar). Width and height are free; every window draws its panel at one fixed `SCALE` (0.45 CSS px per
@@ -456,9 +459,9 @@ another Lucide icon's path data under its name and change the name where it is u
   adds its EditBar back when drawn, a Combo its bar and list.
 - Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
   `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
-  The output row (while `row.mesh.visible`) sits `DECK_GAP` 8 px over the toolbar (desktop.js sets it as the deck's flex `gap`) at the bottom, under it at the top (the deck
+  The output row (while `shows.row`) sits `DECK_GAP` 8 px over the toolbar (desktop.js sets it as the deck's flex `gap`) at the bottom, under it at the top (the deck
   mirrors vertically, flex `column-reverse`), aligned with the toolbar on the deck's side (left / center / right); both are
-  chrome-less canvases at `SCALE`. The output pop-up (while `popup.mesh.visible`) is absolutely placed `DECK_GAP` beyond the row
+  chrome-less canvases at `SCALE`. The output pop-up (while `shows.popup`) is absolutely placed `DECK_GAP` beyond the row
   (above it at the bottom, under it at the top), its right edge over the cog's (its left edge on the cog's for left positions).
   Narrower than the toolbar plus 16 px margins, the whole deck is scaled down about its pinned point (`transform: scale(k)`, with
   `translateX(-50%)` when centered; `transform-origin` = the position; drawn at `SCALE * devicePixelRatio * k`; no re-flow). A change
@@ -503,13 +506,14 @@ another Lucide icon's path data under its name and change the name where it is u
   hosts it and back to `theme.radius` otherwise), over the image, which is not resized for it; every panel, Prompt and Configuration
   too, fills that room. Closing it shows the image again.
 - Output button (center's `pick`, a panel with one `OutputTile`, the selected output's: its latest result or its kind's icon, dimmed
-  when inactive, the dot while another output has results not shown yet, the selection `ring` while the tray is open): whenever the
-  row has something (`pick.mesh.visible`: several outputs, or a single one with settings, whose tray holds the cog alone; otherwise
-  the dock keeps its plain layout and there is no tray). desktop.js passes
-  `pick.mesh.visible` to the toolbar's `phone(mode, slot)` on every `update()` and puts the button over the toolbar's free square
+  when inactive, the dot while another output has results not shown yet, the selection `ring` while the tray is open, set by
+  desktop.js through `ringPick(on)`; a tap calls center's `onPick`, desktop.js `toggleTray`): whenever the row has something
+  (`shows.row`: several outputs, or a single one with settings, whose tray holds the cog alone; otherwise the dock keeps its plain
+  layout and there is no tray). desktop.js passes
+  `shows.row` to the toolbar's `phone(mode, slot)` on every `update()` and puts the button over the toolbar's free square
   (`slot`), at its size (`PB` 80 px, 48 CSS px, like the tiles).
-- Tray: tapping the button opens the output row (center's `tray`: on phones `row.mesh.visible` only while it is open; null off phones,
-  where the row shows as before) in `.strip`, a box in the panel colour with a 1 px border colour ring and 24 px corners (desktop.js sets
+- Tray: tapping the button opens the output row (desktop.js `tray`, the phone host's state; off phones the row shows whenever
+  `shows.row`) in `.strip`, a box in the panel colour with a 1 px border colour ring and 24 px corners (desktop.js sets
   them: the tiles' `TILE_R` plus `TILE_GAP`, the padding, at `PHONE`), its border the margin wide in the panel colour (desktop.js sets the width to `gap`), so the
   tiles scroll inside the padding. `rowTile(button, landscape)` = tiles of the toolbar's button size `PB` 80 px (`TILE_GAP` 16 = `PM`
   apart, the cog `COG` 80 = `PB` too) with no length limit (center `placeRow`; tiles under `SMALL_TILE` 120 px draw no badge and no title),
@@ -517,9 +521,10 @@ another Lucide icon's path data under its name and change the name where it is u
   area), as tall as the tiles plus the padding, scrolling sideways (the canvas `touch-action: pan-x`, so a swipe scrolls and cancels
   the press). Landscape: a column (`.strip.v`) `gap` left of the dock, top and bottom `gap` from the window's, scrolling vertically
   (`pan-y`). It sits over the image or the open panel (the Gallery follows the selected output). A tile switches the output and keeps
-  the tray open. It closes (center `closeTray()`, which also closes the pop-up) on the button again, on a press anywhere but on the
-  tray, its pop-up and the button (desktop.js, a capturing window `pointerdown`), on Esc (main.js), when a tab opens or closes a panel
-  (desktop.js `toggle`), and on a change of layout (rotation, leaving the phone layout: `rowTile` resets it). It always starts closed.
+  the tray open. It closes (desktop.js `setTray(false)`, which also closes the pop-up through center's `closePopup()`) on the button again,
+  on a press anywhere but on the tray, its pop-up and the button (desktop.js, a capturing window `pointerdown`), on Esc (main.js calls
+  `closeTray()`), when a tab opens or closes a panel (desktop.js `toggle`), and on a change of layout (rotation, leaving the phone
+  layout: `update()`). It always starts closed.
   Pop-up, re-placed on tray scroll: portrait, its right edge over the cog's on screen (clamped inside the window, scaled down when the
   window is narrower than it), `gap` above the tray; landscape, `gap` left of the tray (scaled down to fit there), its bottom edge on
   the cog's (clamped inside the window).
@@ -555,7 +560,7 @@ another Lucide icon's path data under its name and change the name where it is u
   On a `"switchGroups"` change, if the selected output went inactive the first active one is selected (screen, gallery and pop-up
   follow; no switching back when it returns). With none active the selection and the screen stay as they are, Generate is disabled and
   the toolbar's status says "No active output". Inactive outputs keep their history, current entry and dot.
-  Output pop-up (center's `popup`, 580 x 164 px card, radius 32, no title bar; open = `popup.mesh.visible`, the cog `toggled` while
+  Output pop-up (center's `popup`, 580 x 164 px card, radius 32, no title bar; open = `shows.popup`, the cog `toggled` while
   open): the selected output's name, then the controls of its kind, `kindControls[kind]()`. Image: Flat / 3D R/L / 3D L/R (side-by-side
   image, one half per eye on XR layers 1/2, persisted in `appmode-xr.stereo`; previews stay flat), HD (disabled in stereo, on the
   desktop and while a 3D result is on show). Mesh: none yet (the cog is disabled). Picking an option keeps it open; nothing about it is remembered

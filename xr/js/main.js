@@ -105,8 +105,9 @@ const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
 const PANEL_SCALE = 0.35, LECTERN_TILT = Math.PI / 4;
 const GAP_SCREEN = 0.012, GAP = 0.006, POPUP_Z = 0.02;
 
-// size of the screen, filled in by the center panel whenever the displayed aspect changes
-const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: ui.PX_PER_M / PANEL_SCALE, w: 0, h: 0, onResize() {} };
+// size of the screen, filled in by the center panel whenever the displayed aspect changes; onChange(): the screen's size or what
+// center shows around it (center.shows) changed
+const screen = { diagonal: SCREEN_DIAGONAL_IN * 0.0254, pxPerM: ui.PX_PER_M / PANEL_SCALE, w: 0, h: 0, onChange() {} };
 const ctx = {
 	THREE, store, ui, scene, renderer, camera, screen,
 	client: new ComfyClient(),
@@ -134,7 +135,7 @@ const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onC
 const viewBtn = new ui.Button({ round: true, onClick: switchView });
 const toolbar = createToolbar(ctx, tabs, viewBtn, (text) => windows.toast(text)); // the whole error, from a landscape phone's status
 
-const center = createCenterPanel(ctx, toolbar.panel.width);
+const center = createCenterPanel(ctx, toolbar.panel.width, () => windows.toggleTray());
 const bottom = createBottomPanel(ctx);
 const inputs = createLeftPanel(ctx);
 const loras = createRightPanel(ctx);
@@ -161,7 +162,8 @@ function layout() {
 	lectern.position.set(0, -h / 2 - GAP_SCREEN, -SCREEN_DISTANCE);
 	lectern.visible = uiShown && !deskView;
 	const at = (group, panel, top) => group.position.set(0, -top - size(panel)[1] / 2, 0);
-	const rowH = center.row.mesh.visible ? size(center.row)[1] + GAP : 0, panelTop = rowH + size(toolbar.panel)[1] + GAP;
+	const rowH = center.shows.row ? size(center.row)[1] + GAP : 0, panelTop = rowH + size(toolbar.panel)[1] + GAP;
+	rowGroup.visible = center.shows.row;
 	at(rowGroup, center.row, 0);
 	at(toolbar.group, toolbar.panel, rowH);
 	for (const [name] of PANELS) {
@@ -175,8 +177,8 @@ function layout() {
 	toolbar.panel.invalidate();
 
 	// the pop-up's bottom edge on the screen's, its right edge over the cog's, a little toward the viewer
-	const { row, cog, popup } = center, [pw, ph] = size(popup);
-	popupGroup.visible = uiShown && !deskView;
+	const { row, popup } = center, cog = center.cogRect(), [pw, ph] = size(popup);
+	popupGroup.visible = uiShown && !deskView && center.shows.popup;
 	popupGroup.position.set(((cog.x + cog.w) / row.width - 0.5) * size(row)[0] - pw / 2, -h / 2 + ph / 2, -SCREEN_DISTANCE + POPUP_Z);
 }
 
@@ -186,12 +188,12 @@ const MIN = { prompt: [560, bottom.minHeight], gallery: [500, () => 500], lora: 
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
 )), center.note, {
-	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, row: center.row, popup: center.popup, cog: center.cog, pick: center.pick,
-	rowH: center.rowH, rowTile: center.rowTile, closeTray: center.closeTray, at: config.toolbarAt,
+	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, shows: center.shows, row: center.row, popup: center.popup, pick: center.pick,
+	rowH: center.rowH, rowTile: center.rowTile, cogRect: center.cogRect, closePopup: center.closePopup, ringPick: center.ringPick, at: config.toolbarAt,
 }, relayout);
 
-// One pass at a time: a change reported during a pass (center's screen.onResize, e.g. when a phone layout gives the output row
-// new tiles) runs another pass after it instead of nesting.
+// One pass at a time: a change reported during a pass (center's screen.onChange, e.g. when a phone layout change closes the output
+// pop-up) runs another pass after it instead of nesting.
 let laying = false, again = false;
 function relayout() {
 	if (laying) {
@@ -229,7 +231,7 @@ function fitCamera() {
 	camera.setViewOffset(r.w, r.h, -r.x, -r.y, innerWidth, innerHeight);
 }
 
-screen.onResize = relayout;
+screen.onChange = relayout;
 
 // ---- snapshot ----
 async function loadSnapshot() {
@@ -547,7 +549,7 @@ addEventListener("keydown", (e) => {
 	else if (e.key === "h") toggleUI();
 	else if (e.key === "Escape") {
 		center.closePopup();
-		center.closeTray();
+		windows.closeTray();
 	}
 });
 addEventListener("resize", () => {
