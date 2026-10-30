@@ -188,11 +188,23 @@ const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 )), center.note, {
 	toolbar: toolbar.panel, tabs: toolbar.tabs, phone: toolbar.phone, row: center.row, popup: center.popup, cog: center.cog, pick: center.pick,
 	rowH: center.rowH, rowTile: center.rowTile, closeTray: center.closeTray, at: config.toolbarAt,
-});
+}, relayout);
 
+// One pass at a time: a change reported during a pass (center's screen.onResize, e.g. when a phone layout gives the output row
+// new tiles) runs another pass after it instead of nesting.
+let laying = false, again = false;
 function relayout() {
-	layout();
-	windows.update(deskView && uiShown);
+	if (laying) {
+		again = true;
+		return;
+	}
+	laying = true;
+	do {
+		again = false;
+		layout();
+		windows.update(deskView && uiShown);
+	} while (again);
+	laying = false;
 }
 
 function setView(desk) {

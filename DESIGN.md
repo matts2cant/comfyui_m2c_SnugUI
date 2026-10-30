@@ -295,7 +295,7 @@ with no active output). The width follows the icon row (at least `MIN_ICONS` 6 b
   for a button of the caller's (desktop.js puts center's output button there): portrait, the slot over the first tab, Cancel over
   the second, Generate from the third tab's left edge to the last one's right edge; landscape, the status on rows 1–2 (its bars end
   at the bottom of row 2), the slot on row 3, Cancel and Generate as before. The toolbar knows nothing about outputs. A tap on
-  "Error" or its timer calls `onError(message)`. `phone(mode, slot)` returns `{ size, bar, margin, button, slot }` (panel px; `slot`
+  "Error" or its timer calls `onError(message)`. `phone(mode, slot)` returns `{ size, bar, margin, slot }` (panel px; `slot`
   is `{ x, y, s }`, the free square, kept up to date as the toolbar re-flows). `phone(null)` puts the buttons back; desktop.js then
   calls `setPx()` (world size, desk layout).
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
@@ -347,7 +347,9 @@ another Lucide icon's path data under its name and change the name where it is u
   look. The toolbar's view button enters it and goes back, as does the end of an XR session. `?view=vr` opens the
   VR-like view directly (the dev / test entry). `setView(desk)` releases every pointer, shows the room (VR) or the flat background
   (Desktop View), resets the look, closes the output pop-up, resets the fov (70°) and the hint (VR-like view only), then
-  `relayout()`: `layout()` and the windows (with the deck).
+  `relayout()`: `layout()` and the windows (with the deck). `relayout()` is the one layout pass: desktop.js's own triggers (window
+  resize, the visual viewport, a phone tab) call it too, and a change reported while it runs (center's `screen.onResize`, e.g. when
+  a phone layout gives the output row new tiles) runs another pass after it instead of nesting one.
 - On load: if `!window.isSecureContext || !navigator.xr` on Quest Browser (UA `OculusBrowser`), or with `?help`, show the help.js
   overlay explaining how to enable WebXR: `chrome://flags` → "Insecure origins treated as secure" → add `http://<location.host>`
   (prefilled, copyable) → Enabled → Relaunch; plus reminder that ComfyUI must listen on the LAN. Dismissible. Tablets and desktops
@@ -482,7 +484,8 @@ another Lucide icon's path data under its name and change the name where it is u
 
 ### Phones (desktop.js `renderPhone`, main.js)
 - When: narrower than 600 CSS px = portrait; wider than tall and shorter than 500 px = landscape; else the Desktop View. Re-evaluated
-  in `update()` (window resize, rotation, relayout) and on `visualViewport` resize / scroll; switching keeps the open panel, its
+  in `update()` (window resize, rotation, relayout) and on `visualViewport` resize / scroll; the output row takes its phone tiles
+  (`rowTile`) before the toolbar its layout, which keeps the slot free while the row has something; switching keeps the open panel, its
   scroll, the selected output and an open edit. Hidden (H) or in VR the layout is off (toolbar, row and panels back to VR geometry).
   Windows are hidden and their stored geometry untouched (it comes back on a wide window). The toolbar position setting and the
   view button do not apply.

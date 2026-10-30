@@ -8,6 +8,7 @@
 import * as ui from "./ui.js";
 import * as keyboard from "./keyboard.js";
 import { paths } from "./icons.js";
+import { PB } from "./panels/toolbar.js";
 
 const STORE_KEY = "appmode-xr.desktop";
 const SCALE = 0.45; // CSS px per panel px, in every window
@@ -100,8 +101,9 @@ function load() {
 // closeTray, at } panels (and the row's cog widget); row.mesh.visible / popup.mesh.visible / pick.mesh.visible say whether they
 // are shown; rowH: the row's tallest (panel px); at() -> "<top|bottom>-<left|center|right>", where the deck is pinned; for
 // phones, the toolbar's tab bar (tabs) and layouts (phone(mode, slot)), the output button (pick), the row's tile size and
-// direction (rowTile(size, vertical)) and closeTray() (the row is the tray).
-export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, row, popup, cog, pick, rowH, rowTile, closeTray, at }) {
+// direction (rowTile(size, vertical)) and closeTray() (the row is the tray). relayout: main.js's layout pass, which calls update();
+// the browser window's and the phones' own changes go through it.
+export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone, row, popup, cog, pick, rowH, rowTile, closeTray, at }, relayout) {
 	const saved = load();
 	const root = el("div", "desk", document.body);
 	const noteBox = el("div", "note", root);
@@ -181,7 +183,7 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 		if (layout) {
 			closeTray();
 			sheet = sheet === win.spec.name ? null : win.spec.name;
-			return update(shown);
+			return relayout();
 		}
 		win.state.open = !win.state.open;
 		if (win.state.open) raise(win);
@@ -362,28 +364,29 @@ export function createDesktop(specs, note, { toolbar, tabs, phone: toolbarPhone,
 
 	// on: the Desktop View with its windows shown (not hidden by H); also re-places them when their content changed. The deck
 	// goes first: the windows' first placement is measured from it. Phones: narrower than 600 px (portrait), or wider than tall
-	// and shorter than 500 px (landscape); the toolbar and the output row switch layouts with them, the toolbar keeping its slot
-	// free while the output button shows.
+	// and shorter than 500 px (landscape); the output row and the toolbar switch layouts with them, in that order: the toolbar
+	// keeps its slot free while the output button shows, which the row's layout decides.
 	function update(on) {
 		shown = on;
 		const mode = on && (innerWidth < 600 ? "portrait" : innerWidth > innerHeight && innerHeight < 500 ? "landscape" : null) || null;
-		bars = toolbarPhone(mode, pick.mesh.visible);
-		gap = bars.margin * PHONE;
-		if (mode !== layout) {
+		const changed = mode !== layout;
+		if (changed) {
 			layout = mode;
-			if (!mode) toolbar.setPx();
-			rowTile(mode && bars.button, mode === "landscape");
+			rowTile(mode && PB, mode === "landscape");
 			strip.classList.toggle("v", mode === "landscape");
 		}
+		bars = toolbarPhone(mode, pick.mesh.visible);
+		gap = bars.margin * PHONE;
+		if (changed && !mode) toolbar.setPx();
 		renderDeck();
 		for (const win of wins) render(win);
 		renderPhone();
 		renderNote();
 	}
 
-	addEventListener("resize", () => update(shown));
+	addEventListener("resize", relayout);
 	// the phone keyboard comes and goes with the visual viewport
-	for (const type of ["resize", "scroll"]) visualViewport.addEventListener(type, () => { if (layout) update(shown); });
+	for (const type of ["resize", "scroll"]) visualViewport.addEventListener(type, () => { if (layout) relayout(); });
 	return {
 		update, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)),
 		// a message at the foot of the image for TOAST_MS (phones)

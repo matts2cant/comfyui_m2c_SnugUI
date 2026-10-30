@@ -7,7 +7,8 @@
 // the run row / column free for a button of the caller's (desktop.js puts the output button there).
 const M = 32, B = 100, GAP = 16, SEP = 18, FLEX = 40, GEN_W = 260, MIN_ICONS = 6, RADIUS = 56;
 const STATUS_H = 44, NODE_BAR = 8, TOTAL_BAR = 12, TIER_H = STATUS_H + 10 + NODE_BAR + 6 + TOTAL_BAR;
-const PM = 16, PB = 80, BAR = PB + 2 * PM; // phones: margin, button, tab bar thickness (and the landscape run column's width)
+export const PB = 80; // phones: the dock's button size (desktop.js gives it to the output row's tiles too)
+const PM = 16, BAR = PB + 2 * PM; // phones: margin, tab bar thickness (and the landscape run column's width)
 
 const clock = (ms) => {
 	const s = Math.floor(ms / 1000);
@@ -132,8 +133,8 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 	};
 
 	// mode: "portrait" | "landscape" (phones) | null (desk / VR, back at its world size through setPx()); withSlot: keep the slot
-	// free. Returns the toolbar's thickness across the dock (portrait: height, landscape: width), the tab bar's, the margin, the
-	// button size (panel px) and the slot ({ x, y, s }, panel px, kept up to date as the toolbar re-flows).
+	// free. Returns the toolbar's thickness across the dock (portrait: height, landscape: width), the tab bar's, the margin (panel
+	// px) and the slot ({ x, y, s }, panel px, kept up to date as the toolbar re-flows).
 	function phone(m, withSlot = false) {
 		mode = m;
 		slotted = withSlot;
@@ -145,7 +146,7 @@ export function createToolbar({ THREE, store, client, ui }, tabs, view, onError)
 		}
 		if (m) bar.onResize();
 		layout();
-		return { size: m === "portrait" ? 3 * PM + TIER_H + PB : BAR, bar: BAR, margin: PM, button: PB, slot };
+		return { size: m === "portrait" ? 3 * PM + TIER_H + PB : BAR, bar: BAR, margin: PM, slot };
 	}
 
 	// run status: the run being executed (since its first node) and the node ids of every prompt queued from here (its node count)
