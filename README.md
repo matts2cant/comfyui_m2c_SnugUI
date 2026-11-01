@@ -130,6 +130,9 @@ In the editor every field is a row of chips:
 - Tap a chip to edit its text, move it, save it as a part, delete it or append a subject's id.
 - "+ Person" adds a subject; "▾" next to it adds an empty animal or object, or a saved preset. A subject's "⋯" renames its id (the
   texts naming it follow), saves it as a preset or deletes it. "+ field" adds a field of your own.
+- The dice after a field's `+` (only on fields with saved parts) replaces its chips with one random part, placeholders filled at
+  random. The dice on a subject or on Camera fills only its empty fields that have parts. "▾" also offers "Random preset" for the
+  types that have presets.
 - Headers fold their section; a folded one shows a preview of its content.
 
 JSON from other tools opens as it is (nested groups, lists, numbers), without the schema's empty rows.

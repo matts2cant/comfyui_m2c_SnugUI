@@ -428,6 +428,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Save / Load a prompt | `save` / `folder-open` (the second not in the frontend's set) | prompt.js `Tool` |
 | Saved prompts' tree: folder, JSON prompt, text prompt | `folder` / `file-code` / `file-text` (the last not in the frontend's set) | prompt.js sheets, library.js |
 | Library: a part or fragment file, a group; back | `file-text`, `folder`; `arrow-left` | library.js |
+| Dice (a random part, a random preset) | `dices` (not in the frontend's set; path data from Lucide) | jsoneditor.js |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -871,7 +872,7 @@ parts/
   `[\w-]+(\.[\w-]+)*`). A `{name}` placeholder in library text (a part, a preset's string values, a saved prompt) is a slot that takes one of its
   values; braces in a fragment's values stay literal (no nesting); a placeholder naming no fragment stays literal text (its part
   is flagged in the picker: warning tint and border). Text the user types is never resolved, its braces stay literal.
-  Resolution happens when a library text is placed (jsonprompt.js `segments`, `fill`, `strings` / `withStrings` for a preset's
+  Resolution happens when a library text is placed (jsonprompt.js `segments`, `fill`, `fillRandom`, `strings` / `withStrings` for a preset's
   strings): the chip or subject then holds plain text.
 - Saved prompt: one file per prompt, a JSON mode one as `.json` (the generated JSON), a Text mode one as `.txt`; only saved prompts
   use folders (parts and fragments keep `# Group` lines, presets one file per type).
@@ -885,21 +886,25 @@ Editor (`createEditor({ panel, sheet, schema, onChange(text), onError(text) })` 
 `show()`, `hide()` and `load()` close the sheet; `resolve(sheet, title, texts, label, onDone)` and `resolveSaved(sheet, path,
 onDone(text, json))` fill slots in any panel's sheet):
 ```
-▾ Scene        (a smuggler waiting in a cantina) [+]
+▾ Scene        (a smuggler waiting in a cantina) [+][dice]
 ▾ Subjects                                 [+ Person][▾]
-   ▾ han · person                                  [⋯]
-       appearance  (short dark hair) (stubble) [+]
-       pose        (leaning on a crate) [+]
+   ▾ han · person                            [dice][⋯]
+       appearance  (short dark hair) (stubble) [+][dice]
+       pose        (leaning on a crate) [+][dice]
        [+ field]
-▸ Lighting   (golden hour rim light) [+]
-▸ Camera
+▸ Lighting   (golden hour rim light) [+][dice]
+▸ Camera                                       [dice]
 [+ field]
 ```
 - One scrolling column in a box framed like the text box. Sections and cards fold (`ui.Header`; folded, a muted preview of their
   texts, the subjects' ids for `Subjects`); a top-level chip field folds to one line of ellipsized chips (tap its label). Fold state
   is the editor's, not saved. Rows at least 1000 panel px wide put the labels in a column (lined up across nesting), narrower ones
   flow the chips after the label; top-level labels are capitalized, `_` shows as a space. Chips wrap to the next line, a chip longer
-  than the row wraps its text (`ui.wrapLines` with `ui.measure`); every line keeps room for `+`.
+  than the row wraps its text (`ui.wrapLines` with `ui.measure`); every line keeps room for `+` (and the dice).
+- Dice (`dices`; the editor rebuilds its rows on every library "change", so they follow the library): after `+` on a chip field
+  whose field key has parts (none without), it replaces the field's chips with one random part, its slots filled at random
+  (`fmt.fillRandom`). On a subject card's header (left of `⋯`) and a group's (`camera`), when one of its chip fields (its groups'
+  too, not cards) has parts: one random part in each EMPTY such field, the others kept. None on the whole prompt or `Subjects`.
 - Sheets (picker, slot sheet, chip sheet, save as part, subject menu, preset name, add a subject, new field): a card (at most 1100 px wide) with a
   title and a close button over the whole Prompt panel, dimmed; its content scrolls; a tap outside the card closes it (committing an
   open edit). A text field's edit bar goes above it, so it never hides the sheet's buttons; a field in a row of buttons takes the room
@@ -917,8 +922,9 @@ onDone(text, json))` fill slots in any panel's sheet):
 - Chip sheet (tap a chip): its text already editing (live), move left / right, save as part, delete, "→ subject" (appends the id).
   Emptying the text deletes the chip. Save as part asks for a group (existing, "Ungrouped" or a new one typed).
 - Subject menu `⋯`: rename the id (an invalid or taken id is refused with a message), save as preset (a name, the id by default),
-  delete. `+ Person` adds an empty subject of the schema's first type; `▾` lists an empty subject of each type and their presets
-  (one with slots opens the slot sheet over all its strings).
+  delete. `+ Person` adds an empty subject of the schema's first type; `▾` lists an empty subject of each type, "Random preset"
+  (`dices` icon; only for a type with presets: one of them at random, its slots filled at random) and their presets (one with slots
+  opens the slot sheet over all its strings).
   `+ field`: a key (refused when the object has it, or `id` / `type` in a subject), then an empty chip field at its end.
 
 ## Implementation notes
