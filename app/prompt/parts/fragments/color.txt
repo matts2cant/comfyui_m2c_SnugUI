@@ -1,0 +1,16 @@
+# Plain
+white
+black
+grey
+navy
+# Bright
+red
+yellow
+emerald green
+cobalt blue
+orange
+# Soft
+pastel pink
+sage green
+beige
+lavender

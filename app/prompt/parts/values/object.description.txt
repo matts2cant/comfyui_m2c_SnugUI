@@ -4,3 +4,4 @@ a vintage film camera
 a bouquet of wildflowers
 a wooden crate
 a brass lantern
+a {color} {material} vase

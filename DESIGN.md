@@ -76,8 +76,8 @@ app/js/panels/lights.js  Light panel: presets for the model's lights, PMREM envi
   `get_folder_paths("snugui_parts")[0]`, so a `snugui_parts:` line in the user's extra_model_paths YAML (loaded before custom
   nodes) wins. At every start each file of `app/prompt/parts/` missing from it is copied in (folders created); an existing file is
   never overwritten or changed, so a deleted starter file comes back on the next start.
-- `GET /snugui/parts` → `{ values: { "<field key>": text }, presets: { "<type>": { "<name>": subject } } }` from `values/*.txt` and
-  `presets/*.json` (an unreadable preset file is skipped with a `logging` warning).
+- `GET /snugui/parts` → `{ values: { "<field key>": text }, fragments: { "<name>": text }, presets: { "<type>": { "<name>": subject } } }`
+  from `values/*.txt`, `fragments/*.txt` and `presets/*.json` (an unreadable preset file is skipped with a `logging` warning).
 - `POST /snugui/parts/{kind}/{name}` writes one file: `values/<name>.txt` (the body is the file text) or `presets/<name>.json` (the
   body a JSON object, written indented). 400 for another kind, a name not matching `[\w-]+(\.[\w-]+)*` or resolving outside the
   folder (the static route's `resolve().is_relative_to()` guard), or a preset body that is not an object.
@@ -766,13 +766,14 @@ Prompt panel:
 - The editor writes the generated JSON with `store.set(prompt key, text)` after every edit. prompt.js `refresh()` (every store
   `change`) only copies values and repaints; the editor keeps its own model and an open sheet. `layout()` (load, resize, fold,
   mode switch) gives the editor its rect, which re-places an open sheet.
-- Library client: `GET /snugui/parts` once at panel creation into `{ values, presets }`; each library edit writes its one file
+- Library client: `GET /snugui/parts` once at panel creation into `{ values, fragments, presets }`; each library edit writes its one file
   (`onLibrary(kind, name)` → `POST /snugui/parts/{kind}/{name}`).
 
 Library (the parts folder, Server above):
 ```
 parts/
   values/<field key>.txt      lighting.txt, person.pose.txt, camera.angle.txt, person.tattoo.txt
+  fragments/<name>.txt        color.txt, fabric.txt: the values a {name} placeholder takes
   presets/<type>.json         person.json: { "Han Solo": { "id": "han", "type": "person", … } }
 ```
 - Field key: the field's path with the subject's type in place of `subjects[i]` (`lighting`, `camera.angle`, `person.pose`). Person
@@ -781,8 +782,16 @@ parts/
   ungrouped parts are written first, an empty group is dropped (a part starting with `#` would read back as a group: not guarded).
 - Preset: a whole subject saved under a name (the same name overwrites); adding one gives it the preset's id when free, else
   `<type>_<n>`. Placed parts are copies: editing the library never changes a prompt.
+- Fragment: a named value list, `fragments/<name>.txt`, in the value file format (names: the field keys' characters,
+  `[\w-]+(\.[\w-]+)*`). A `{name}` placeholder in library text (a part, a preset's string values) is a slot that takes one of its
+  values; braces in a fragment's values stay literal (no nesting); a placeholder naming no fragment stays literal text (its part
+  is flagged in the picker: warning tint and border). Text the user types is never resolved, its braces stay literal.
+  Resolution happens when a library text is placed (jsonprompt.js `segments`, `fill`, `strings` / `withStrings` for a preset's
+  strings): the chip or subject then holds plain text.
 - Starter set (`app/prompt/parts/`): a value file for every chip field of the schema (10–20 parts for the common ones, 5–15 for the
-  rarer), `presets/person.json` (Hiker, Barista, Painter), empty `animal.json` / `object.json`.
+  rarer, a few with placeholders: `{color} t-shirt`, `a quiet street at {time_of_day}`), fragments `color`, `fabric`,
+  `hair_color`, `material`, `time_of_day` (9–14 values), `presets/person.json` (Hiker, Barista, Painter; Hiker with placeholders),
+  empty `animal.json` / `object.json`.
 
 Editor (`createEditor({ panel, schema, library, onChange(text), onLibrary(kind, name) })` -> `{ layout(rect), show(), hide(),
 load(model), closeSheet() }`; hidden until `show()`, `hide()` closes the sheet):
@@ -802,18 +811,24 @@ load(model), closeSheet() }`; hidden until `show()`, `hide()` closes the sheet):
   is the editor's, not saved. Rows at least 1000 panel px wide put the labels in a column (lined up across nesting), narrower ones
   flow the chips after the label; top-level labels are capitalized, `_` shows as a space. Chips wrap to the next line, a chip longer
   than the row wraps its text (`ui.wrapLines` with `ui.measure`); every line keeps room for `+`.
-- Sheets (picker, chip sheet, save as part, subject menu, preset name, add a subject, new field): a card (at most 1100 px wide) with a
+- Sheets (picker, slot sheet, chip sheet, save as part, subject menu, preset name, add a subject, new field): a card (at most 1100 px wide) with a
   title and a close button over the whole Prompt panel, dimmed; its content scrolls; a tap outside the card closes it (committing an
   open edit). A text field's edit bar goes above it, so it never hides the sheet's buttons; a field in a row of buttons takes the room
   they leave.
 - Picker (`+`): first the free-text line, already editing, "Add without saving…" (commit adds the chip) and "Add & save" beside it
   (disabled while empty: adds the chip, then the save-as-part sheet); then the search line (substring filter), "→ subject" (the
   prompt's subject ids, tap to add one as a chip), the field's parts by group (tap to add; rename in place; delete, a second tap on
-  "Delete" confirms). Adding anything closes it.
+  "Delete" confirms; a part naming a missing fragment is flagged). Adding anything closes it; a part with slots opens the slot sheet.
+- Slot sheet (a picked part with slots, a preset with slots; `resolve(title, texts, label, onDone)`): the texts with their slots
+  (`SlotText`: word-wrapped, each slot a box holding its value or `{name}`, the current one outlined in the accent colour, a tap
+  makes it current), then a free line "Other value…" (commit fills the current slot) with Random (a random value for it), "Random
+  all" (every slot) and the accent `label` ("Add chip", "Add subject"; disabled until every slot is filled), then the current
+  slot's fragment values by group (a tap fills it and moves to the next empty slot). Without slots it is skipped.
 - Chip sheet (tap a chip): its text already editing (live), move left / right, save as part, delete, "→ subject" (appends the id).
   Emptying the text deletes the chip. Save as part asks for a group (existing, "Ungrouped" or a new one typed).
 - Subject menu `⋯`: rename the id (an invalid or taken id is refused with a message), save as preset (a name, the id by default),
-  delete. `+ Person` adds an empty subject of the schema's first type; `▾` lists an empty subject of each type and their presets.
+  delete. `+ Person` adds an empty subject of the schema's first type; `▾` lists an empty subject of each type and their presets
+  (one with slots opens the slot sheet over all its strings).
   `+ field`: a key (refused when the object has it, or `id` / `type` in a subject), then an empty chip field at its end.
 
 ## Implementation notes
