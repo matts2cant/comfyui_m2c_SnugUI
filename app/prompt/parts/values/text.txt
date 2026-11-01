@@ -1,0 +1,9 @@
+# Signs
+a shop sign reading "OPEN"
+a neon sign reading "Late Night"
+a chalkboard menu with handwritten prices
+# Titles
+a bold title at the top reading "Summer"
+a small caption at the bottom
+# None
+no text, no watermark

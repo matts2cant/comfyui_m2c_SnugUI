@@ -1,0 +1,12 @@
+# Pets
+tabby cat
+golden retriever
+border collie
+rabbit
+parrot
+# Wild
+red fox
+barn owl
+deer
+hedgehog
+horse

@@ -128,7 +128,7 @@ class GroupSwitch extends Widget {
 
 export function createInputPanel({ client }) {
 	const group = new THREE.Group();
-	const panel = new Panel({ name: "left", widthM: 0.85, heightM: 1.15 });
+	const panel = new Panel({ name: "left", widthM: 1.8, heightM: 1.15 });
 	group.add(panel.mesh);
 	const title = new Label({ text: "Input", size: 40, bold: true, x: 24, y: 24 });
 

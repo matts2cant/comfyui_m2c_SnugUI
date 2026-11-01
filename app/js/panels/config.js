@@ -11,7 +11,7 @@ const M = 24, GAP = 8, BTN_H = 72, GRID_Y = 140, H = GRID_Y + 2 * BTN_H + GAP + 
 
 // onChange() after the toolbar position changed; toolbarAt() -> "<top|bottom>-<left|center|right>"
 export function createConfigPanel(onChange) {
-	const panel = new ui.Panel({ name: "config", widthM: 0.85, heightM: H / ui.PX_PER_M });
+	const panel = new ui.Panel({ name: "config", widthM: 1.8, heightM: 1.15 });
 	const group = new THREE.Group();
 	group.add(panel.mesh);
 	const title = panel.add(new ui.Label({ text: "Configuration", size: 40, bold: true, x: M, y: M }));

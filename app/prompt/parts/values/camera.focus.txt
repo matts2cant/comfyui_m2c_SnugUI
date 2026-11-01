@@ -1,0 +1,13 @@
+# Shallow
+shallow depth of field
+f/1.4, creamy bokeh
+focus on the eyes
+background softly blurred
+# Deep
+deep focus, everything sharp
+f/11, sharp landscape
+# Effects
+rack focus to the background
+soft focus glow
+motion blur on the background
+tack sharp subject

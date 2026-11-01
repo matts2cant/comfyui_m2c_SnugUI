@@ -1,0 +1,19 @@
+{
+  "prompt": {
+    "scene": "chips",
+    "subjects": "subjects",
+    "background": "chips",
+    "style": "chips",
+    "lighting": "chips",
+    "composition": "chips",
+    "mood": "chips",
+    "color_palette": "chips",
+    "text": "chips",
+    "camera": { "shot": "chips", "angle": "chips", "lens": "chips", "focus": "chips" }
+  },
+  "subjects": {
+    "person": { "gender": "chips", "age": "chips", "appearance": "chips", "clothing": "chips", "pose": "chips", "expression": "chips", "action": "chips", "position": "chips" },
+    "animal": { "species": "chips", "appearance": "chips", "pose": "chips", "action": "chips", "position": "chips" },
+    "object": { "description": "chips", "material": "chips", "position": "chips" }
+  }
+}

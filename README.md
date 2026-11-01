@@ -111,6 +111,37 @@ height; the negative prompt is folded under a "▸ Negative" row showing the sta
 Without `_prompt` a lone `_negative_prompt` gets the whole area. Without `_seed` there are no seed controls (otherwise they sit
 on a row of their own at the bottom). Empty boxes show "Prompt…" / "Negative prompt…" as a hint.
 
+## JSON prompts
+
+Models such as FLUX.2, Qwen-Image or Z-Image read structured JSON prompts. The small switch at the right of the workflow name,
+above the prompt box, toggles the box between Text (the plain text box) and JSON (an editor that builds the JSON for you). The
+prompt opens in JSON when its text is a JSON object, in Text otherwise. Switching to JSON turns plain text into the `scene` of a new
+JSON prompt; text that starts with `{` but is not valid JSON stays text and the error shows in red in place of the workflow name.
+Switching back to Text shows the generated JSON, which is also what Generate sends. The negative prompt stays plain text.
+
+In the editor every field is a row of chips:
+
+- `+` after a field opens the picker: type a free text at the top and press Enter to add it as is, or "Add & save" to also keep it
+  in the parts library (it asks for a group). Below are the saved parts of that field by group: tap one to add it, the pencil to
+  rename it, the x then "Delete" to remove it. "→ subject" adds a subject's id, to refer to another subject in a text.
+- Tap a chip to edit its text, move it, save it as a part, delete it or append a subject's id.
+- "+ Person" adds a subject; "▾" next to it adds an empty animal or object, or a saved preset. A subject's "⋯" renames its id (the
+  texts naming it follow), saves it as a preset or deletes it. "+ field" adds a field of your own.
+- Headers fold their section; a folded one shows a preview of its content.
+
+JSON from other tools opens as it is (nested groups, lists, numbers), without the schema's empty rows.
+
+The parts library lives in `models/snugui/parts/` (Comfy Desktop: the `snugui/parts` folder of its models directory), one text file
+per field in `values/` (`person.pose.txt`: one part per line, `# Group` lines start a group) and one JSON file of presets per
+subject type in `presets/`. You can edit the files by hand; reload the page to see the changes. A starter set is copied in at every
+ComfyUI start for the files that are missing; existing files are never overwritten (delete one to get the starter version back). To
+keep the library elsewhere, add a `snugui_parts` line to your `extra_model_paths.yaml` (Comfy Desktop: its extra models config):
+
+```yaml
+snugui:
+  snugui_parts: D:/prompt-parts
+```
+
 ## Run status
 
 The toolbar shows the run status: "Ready", "Queued · 2 ahead", the running node with its steps and the node count

@@ -92,7 +92,7 @@ function buildEnvironment(pmrem, { sky, env: [side, gain], key, fill, rim }) {
 }
 
 export function createLightsPanel({ scene, renderer }, model) {
-	const panel = new ui.Panel({ name: "lights", widthM: 0.85, heightM: 1.15 });
+	const panel = new ui.Panel({ name: "lights", widthM: 1.8, heightM: 1.15 });
 	const group = new THREE.Group();
 	group.add(panel.mesh);
 	const title = panel.add(new ui.Label({ text: "Lighting", size: 34, bold: true, x: 24, y: 14, h: 50 }));

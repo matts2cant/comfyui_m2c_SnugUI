@@ -65,7 +65,7 @@ class Check extends ui.Widget {
 
 export function createLoraPanel() {
 	const group = new THREE.Group();
-	const panel = new ui.Panel({ name: "right", widthM: 0.85, heightM: 1.15 });
+	const panel = new ui.Panel({ name: "right", widthM: 1.8, heightM: 1.15 });
 	group.add(panel.mesh);
 
 	let tab = 0;

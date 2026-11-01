@@ -46,10 +46,15 @@ app/js/help.js           insecure-context help screen (DOM)
 app/js/comfy.js          ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 app/js/state.js          store: snapshot model, values, seeds, loras, buildPrompt, generate
 app/js/rules.js          placement rule table
+app/js/jsonprompt.js     JSON prompts without DOM: prompt text <-> the editor's model, subject ids and renames, part files
+app/js/jsoneditor.js     the JSON prompt editor, a region of the Prompt panel (createEditor), and its sheets
+app/prompt/schema.json   the JSON prompt schema
+app/prompt/parts/        the starter parts library, copied into the parts folder (below)
 app/js/panels/toolbar.js toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 app/js/panels/center.js  image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
                          (the results in history.js, the HD layer in quad.js)
-app/js/panels/prompt.js  Prompt panel: workflow name, prompt box, folding negative prompt, seed row
+app/js/panels/prompt.js  Prompt panel: workflow name, Text / JSON switch, prompt box or JSON editor, folding negative prompt, seed
+                         row; the parts library's client
 app/js/panels/input.js   Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
 app/js/panels/config.js  Configuration panel: settings of the page's own UI (toolbar position)
 app/js/panels/lora.js    LoRA panel(s) + LoRA Manager API client
@@ -65,6 +70,17 @@ app/js/panels/lights.js  Light panel: presets for the model's lights, PMREM envi
   (no sid → all sockets). Returns `{"id": id}`.
 - `GET /snugui/snapshot` → current snapshot JSON or 404 `{"error": "no snapshot"}`. Loaded from disk at import if present (an unreadable file is
   ignored with a `logging` warning).
+- Parts folder (the JSON prompt's library): folder key `snugui_parts`, registered with `folder_paths.add_model_folder_path` (appended,
+  not default) as `<base>/snugui/parts`, `<base>` = the first `download_model_base` path when that key exists (Comfy Desktop sets it
+  in its extra models config, with `is_default`), else `folder_paths.models_dir`. The library is
+  `get_folder_paths("snugui_parts")[0]`, so a `snugui_parts:` line in the user's extra_model_paths YAML (loaded before custom
+  nodes) wins. At every start each file of `app/prompt/parts/` missing from it is copied in (folders created); an existing file is
+  never overwritten or changed, so a deleted starter file comes back on the next start.
+- `GET /snugui/parts` → `{ values: { "<field key>": text }, presets: { "<type>": { "<name>": subject } } }` from `values/*.txt` and
+  `presets/*.json` (an unreadable preset file is skipped with a `logging` warning).
+- `POST /snugui/parts/{kind}/{name}` writes one file: `values/<name>.txt` (the body is the file text) or `presets/<name>.json` (the
+  body a JSON object, written indented). 400 for another kind, a name not matching `[\w-]+(\.[\w-]+)*` or resolving outside the
+  folder (the static route's `resolve().is_relative_to()` guard), or a preset body that is not an object.
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).
 
 ## Snapshot schema (built by `web/snugui.js`)
@@ -184,7 +200,9 @@ TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKe
 Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty} (scrollable, the
   `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; a subclass
   draws its own tiles with `drawTile(ctx, item, i, x, y, s)`, as center's Gallery does),
-ScrollView{children} (vertical scroll container), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
+ScrollView{children} (vertical scroll container), Header{title, preview, open, right, h} (a folding section's row: chevron, bold title
+  and, folded, a muted ellipsized preview; `right` px at its end left to buttons placed over it; the negative prompt's and the JSON
+  editor's), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
 List/ImageGrid thumbnails (`url`) load through a module-level cache of the 100 used last; `setItems` drops the widget's images of
 the items gone.
 ```
@@ -288,8 +306,7 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   down toward the viewer). Laid out in its own plane, from its top edge down the slope, all centered, `GAP` 0.006 m apart:
   - the output row (center's `row`), only while `center.shows.row` (main.js sets its group's visibility);
   - the toolbar; it only moves when the output row comes or goes (up to the lectern's top edge without a row);
-  - the one open panel of Prompt (1.8 x 0.52), Gallery, LoRA, Light, Input (0.85 x 1.15 each), Configuration (0.85 wide, as tall as
-    its content), unfolding toward the viewer.
+  - the one open panel of Prompt, Gallery, LoRA, Light, Input, Configuration (1.8 x 1.15 each), unfolding toward the viewer.
 - Output pop-up: upright (not tilted) in front of the screen's bottom edge, its bottom edge on it, its right edge over the cog's right
   edge, `POPUP_Z` 0.02 toward the viewer (no z-fighting with the screen).
 - Every panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the open
@@ -377,6 +394,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Mesh output tile (placeholder, badge) | `box` | center.js `OutputTile` |
 | Output pop-up cog | `settings` | center.js |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
+| Prompt mode: Text / JSON | `text-initial` / `code` (not in the frontend's set; path data from Lucide) | prompt.js `ModeSwitch` |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -469,7 +487,8 @@ another Lucide icon's path data under its name and change the name where it is u
   about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
 - Windows: Prompt, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
   is placed in a DOM window (`main.js` passes `createDesktop` one spec per window, `{ name, title, icon, button, panel, minW, minH(w) }`
-  in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size; `minW` / `minH(w)` the smallest
+  in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size (1800 x 1150 for every
+  window); `minW` / `minH(w)` the smallest
   its layout takes, the height at content width w (Prompt 560 wide, its height from prompt.js's `minHeight()`; Gallery 500 x 500, LoRA 560 x
   700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`). A snapshot load re-places the
   windows (the prompt panel's entries change its minimum).
@@ -625,12 +644,14 @@ another Lucide icon's path data under its name and change the name where it is u
   lighting preset (`model.light(preset)`), light only it (the UI is unlit). The directional lights aim at the group (stage center), so
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
-- prompt (Prompt panel, 1800 x 520 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left);
-  the prompt box of `store.groups.prompt`, full width, taking all the extra height; the negative prompt of `.negative`; the seed row.
+- prompt (Prompt panel, 1800 x 1150 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left)
+  with the Text / JSON switch at the right end of its row (over the prompt box's right edge; only with a prompt box); the prompt
+  box of `store.groups.prompt`, full width, taking all the extra height, or the JSON editor in its place (JSON prompt, below); the
+  negative prompt of `.negative`; the seed row.
   Prompt boxes are plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…");
   an empty box shows its name as a muted placeholder, "Prompt…" / "Negative prompt…" (gone as soon as there is text, back when it is
   emptied, also while editing); tap edits in place (live onInput) and store.set the whole text.
-  Negative prompt: a header row (`Fold`: a chevron, "Negative" and, folded, the start of its text in muted, ellipsized) that folds
+  Negative prompt: a header row (`ui.Header`: a chevron, "Negative" and, folded, the start of its text in muted, ellipsized) that folds
   and unfolds it on a tap; unfolded, its box (140 px, at most half the space the two boxes share) sits under the header and the
   prompt box shrinks. Folded by default; the state is kept in localStorage `snugui.negative` (`open` / `closed`).
   Missing entries leave no empty box: only the negative one (not in the owner's spec) is a plain box, alone, full height, with no
@@ -684,16 +705,118 @@ another Lucide icon's path data under its name and change the name where it is u
   `background` (the horizon colour), the Desktop View's `scene.background`. Only the model's
   MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
   At most 3 directional lights, no shadows.
-- config (Configuration panel, 0.85 m wide, as tall as its content): settings of the page's own UI, not of the workflow. Title, then
+- config (Configuration panel, 1.8 x 1.15 m in VR; its window's minimum height is its content's): settings of the page's own UI, not of the workflow. Title, then
   "Toolbar position": a 3 x 2 grid of buttons laid out like the screen (top row Top left / Top center / Top right, bottom row Bottom
   left / Bottom center / Bottom right), the current one `toggled`; the grid re-flows to the panel's width. Kept in localStorage
   `snugui.toolbar` (default `bottom-right`). It places the Desktop View's deck only; shown and editable in VR too.
+
+### JSON prompt (jsonprompt.js, jsoneditor.js, prompt.js)
+A structured editor for JSON prompts (FLUX.2, Qwen-Image, Z-Image, Krea2, HiDream… read them) with a library of reusable parts, in
+the Prompt panel of every view. No drag-and-drop, no hover-only affordance: everything works with a tap or a VR pointer.
+
+Format: one schema of our own, sent as is to every model. The prompt text is the only state (no sidecar).
+```json
+{
+  "scene": "a smuggler waiting in a cantina",
+  "subjects": [
+    { "id": "han", "type": "person", "appearance": ["short dark hair", "stubble"], "pose": "leaning on a crate, arms crossed",
+      "action": "watching leia across the room" },
+    { "id": "leia", "type": "person", "expression": "amused smirk" }
+  ],
+  "lighting": "warm practical lights, smoky haze",
+  "camera": { "shot": "medium shot", "lens": "35mm" }
+}
+```
+- Pretty-printed (`JSON.stringify(v, null, 2)`); empty strings, arrays and objects are dropped, a subject is always kept. A field
+  holds chips: one chip is a string, two or more an array of strings (read back the same way). Keys in schema order, custom keys
+  after them in the order they were added; JSON read from text keeps its own key order.
+- Schema (`app/prompt/schema.json`, changed in the repo): `{ "prompt": spec, "subjects": { "<type>": spec } }`, a spec mapping each
+  key, in order, to `"chips"`, `"subjects"` or a nested spec (a group). Top level: `scene`, `subjects`, `background`, `style`,
+  `lighting`, `composition`, `mood`, `color_palette`, `text` (text in the image), `camera` (`shot`, `angle`, `lens`, `focus`).
+  Subject types: `person` (`gender`, `age`, `appearance`, `clothing`, `pose`, `expression`, `action`, `position`), `animal`
+  (`species`, `appearance`, `pose`, `action`, `position`), `object` (`description`, `material`, `position`). Any object takes custom
+  chip fields (a key typed by the user).
+- Subjects: `id` and `type` first. Ids are lowercase letters, digits and `_`, unique in the prompt; new subjects (and subjects read
+  without one) get `<type>_<n>`, the lowest free n. A subject is referred to by its bare id in any text; renaming replaces the old id
+  as a whole word (`\b`) in every string; deleting flags (warning tint) the chips still naming it until the prompt is reloaded or a
+  subject takes that id again.
+- JSON the schema does not know: the schema applies to an empty object or one with at least one schema key of the schema's shape;
+  its missing fields then show as empty rows, each after the schema key before it. Any other object opens without loss,
+  generically: a nested object is a folding group, an array of strings chips, an array of objects cards `#1`, `#2`… (`⋯` only
+  deletes), a number / boolean / null a chip in the accent colour written back with its JSON type while its text still parses as
+  one, any other array one chip holding its JSON. A generic field's key drops the array index (`objects.description`).
+
+Prompt panel:
+- The switch (`ModeSwitch`, 2 x 56 x 44 px): a bordered pair of small muted icons, `text-initial` (Text) and `code` (JSON), the current
+  one on a `surface` fill with its icon in `fg`. Text mode: the TextField as before. JSON mode: the editor takes the prompt box's
+  rect; the negative prompt (plain text) and the seed row are unchanged.
+- Every snapshot load decides the mode: JSON when the `_prompt` text parses as a JSON object (starts with `{`), else Text, and closes
+  any sheet. The switch overrides it until the next load; nothing is remembered. A press on it first commits an open text edit.
+- Text → JSON: the text is read (a JSON object as above; plain text becomes a new prompt with the text as `scene`; empty, a new prompt
+  showing every top-level schema section as an empty row) and the generated JSON is stored. Text starting with `{` that does not
+  parse refuses the switch and shows "Not valid JSON: …" in `theme.danger` in place of the workflow name until the next prompt edit
+  or mode switch (the same place shows a library load or save error). JSON → Text: the box shows the stored JSON (the generated
+  JSON after an edit).
+- The editor writes the generated JSON with `store.set(prompt key, text)` after every edit. prompt.js `refresh()` (every store
+  `change`) only copies values and repaints; the editor keeps its own model and an open sheet. `layout()` (load, resize, fold,
+  mode switch) gives the editor its rect, which re-places an open sheet.
+- Library client: `GET /snugui/parts` once at panel creation into `{ values, presets }`; each library edit writes its one file
+  (`onLibrary(kind, name)` → `POST /snugui/parts/{kind}/{name}`).
+
+Library (the parts folder, Server above):
+```
+parts/
+  values/<field key>.txt      lighting.txt, person.pose.txt, camera.angle.txt, person.tattoo.txt
+  presets/<type>.json         person.json: { "Han Solo": { "id": "han", "type": "person", … } }
+```
+- Field key: the field's path with the subject's type in place of `subjects[i]` (`lighting`, `camera.angle`, `person.pose`). Person
+  `pose` and animal `pose` are separate libraries. A custom field's file is created the first time a part is saved to it.
+- Value file: one part per line, `# Group` opens a group, blank lines ignored; the text is its label. Saving collapses whitespace;
+  ungrouped parts are written first, an empty group is dropped (a part starting with `#` would read back as a group: not guarded).
+- Preset: a whole subject saved under a name (the same name overwrites); adding one gives it the preset's id when free, else
+  `<type>_<n>`. Placed parts are copies: editing the library never changes a prompt.
+- Starter set (`app/prompt/parts/`): a value file for every chip field of the schema (10–20 parts for the common ones, 5–15 for the
+  rarer), `presets/person.json` (Hiker, Barista, Painter), empty `animal.json` / `object.json`.
+
+Editor (`createEditor({ panel, schema, library, onChange(text), onLibrary(kind, name) })` -> `{ layout(rect), show(), hide(),
+load(model), closeSheet() }`; hidden until `show()`, `hide()` closes the sheet):
+```
+▾ Scene        (a smuggler waiting in a cantina) [+]
+▾ Subjects                                 [+ Person][▾]
+   ▾ han · person                                  [⋯]
+       appearance  (short dark hair) (stubble) [+]
+       pose        (leaning on a crate) [+]
+       [+ field]
+▸ Lighting   (golden hour rim light) [+]
+▸ Camera
+[+ field]
+```
+- One scrolling column in a box framed like the text box. Sections and cards fold (`ui.Header`; folded, a muted preview of their
+  texts, the subjects' ids for `Subjects`); a top-level chip field folds to one line of ellipsized chips (tap its label). Fold state
+  is the editor's, not saved. Rows at least 1000 panel px wide put the labels in a column (lined up across nesting), narrower ones
+  flow the chips after the label; top-level labels are capitalized, `_` shows as a space. Chips wrap to the next line, a chip longer
+  than the row wraps its text (`ui.wrapLines` with `ui.measure`); every line keeps room for `+`.
+- Sheets (picker, chip sheet, save as part, subject menu, preset name, add a subject, new field): a card (at most 1100 px wide) with a
+  title and a close button over the whole Prompt panel, dimmed; its content scrolls; a tap outside the card closes it (committing an
+  open edit). A text field's edit bar goes above it, so it never hides the sheet's buttons; a field in a row of buttons takes the room
+  they leave.
+- Picker (`+`): first the free-text line, already editing, "Add without saving…" (commit adds the chip) and "Add & save" beside it
+  (disabled while empty: adds the chip, then the save-as-part sheet); then the search line (substring filter), "→ subject" (the
+  prompt's subject ids, tap to add one as a chip), the field's parts by group (tap to add; rename in place; delete, a second tap on
+  "Delete" confirms). Adding anything closes it.
+- Chip sheet (tap a chip): its text already editing (live), move left / right, save as part, delete, "→ subject" (appends the id).
+  Emptying the text deletes the chip. Save as part asks for a group (existing, "Ungrouped" or a new one typed).
+- Subject menu `⋯`: rename the id (an invalid or taken id is refused with a message), save as preset (a name, the id by default),
+  delete. `+ Person` adds an empty subject of the schema's first type; `▾` lists an empty subject of each type and their presets.
+  `+ field`: a key (refused when the object has it, or `id` / `type` in a subject), then an empty chip field at its end.
 
 ## Implementation notes
 - ui.js: `Widget.draw(ctx)` is called with ctx translated to the widget's top-left → draw in local coords. Wrapping
   Labels compute their own `h` in `relayout()` (stackY calls it after setting w). `stackY` returns next y incl. trailing gap.
   Subclasses set option defaults via `super({...defaults, ...opts})`, not class fields. Extras: Button `disabled`, Slider
   `drag:false`/`bigStep`, Panel `bg:null` / `radius`, `Label.setText`, `List/ImageGrid.setItems`, `setRenderer`, `ellipsize(ctx, text, maxW)`,
+  `wrapLines(ctx, text, maxW)` (word-wrapped `{ text, start }` lines, leading spaces kept), `measure` (a 2D context to measure text
+  outside `draw()`), `drawChevron(ctx, x, y, open)`,
   `drawIcon(ctx, name, x, y, s)` (stroked in the current strokeStyle), `drawCover(ctx, img, x, y, s)`, and the drawing helpers the
   panels' own widgets share: `font(size, bold)`, `tint(ctx, widget, x, y, w, h, r)` (a widget's hover / pressed tint, none when
   disabled) and `drawTint(ctx, pressed, x, y, w, h, r)` (a part's: one of its buttons, rows or tiles), `inRect(p, r)` (a pointer

@@ -1,0 +1,11 @@
+# Horizontal
+on the left
+on the right
+in the center
+# Depth
+in the foreground
+in the middle ground
+in the background
+# Relative
+next to the window
+behind the counter

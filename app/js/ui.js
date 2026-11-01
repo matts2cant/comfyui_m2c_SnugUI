@@ -38,7 +38,7 @@ export const theme = {
 export const font = (size, bold) => `${bold ? "600 " : ""}${size}px ${theme.font}`;
 const lineH = (size) => Math.round(size * 1.3);
 const PAD = 20; // a TextField's text inset from its sides
-const measure = document.createElement("canvas").getContext("2d");
+export const measure = document.createElement("canvas").getContext("2d"); // text measuring outside draw()
 
 export function ellipsize(ctx, text, maxW) {
 	if (ctx.measureText(text).width <= maxW) return text;
@@ -51,13 +51,13 @@ export function ellipsize(ctx, text, maxW) {
 }
 
 // word-wrapped lines with the index of their first character in `text`
-function wrapLines(ctx, text, maxW) {
+export function wrapLines(ctx, text, maxW) {
 	const lines = [];
 	let pos = 0;
 	for (const para of String(text).split("\n")) {
-		let line = "", start = pos;
+		let line = null, start = pos; // null: before the first word, so leading spaces (indented JSON) are kept
 		for (const word of para.split(" ")) {
-			const test = line ? line + " " + word : word;
+			const test = line === null ? word : line + " " + word;
 			if (line && ctx.measureText(test).width > maxW) { lines.push({ text: line, start }); start += line.length + 1; line = word; } else line = test;
 		}
 		lines.push({ text: line, start });
@@ -222,6 +222,42 @@ export function drawIcon(ctx, name, x, y, s) {
 	ctx.lineCap = ctx.lineJoin = "round";
 	ctx.stroke(icons[name]);
 	ctx.restore();
+}
+
+// a folding header's triangle centered at x, y: pointing right, down when open
+export function drawChevron(ctx, x, y, open) {
+	ctx.save();
+	ctx.translate(x, y);
+	if (open) ctx.rotate(Math.PI / 2);
+	ctx.beginPath();
+	ctx.moveTo(-5, -9);
+	ctx.lineTo(8, 0);
+	ctx.lineTo(-5, 9);
+	ctx.restore();
+	ctx.fillStyle = theme.fg;
+	ctx.fill();
+}
+
+// A folding section's header row (the negative prompt, the JSON editor's groups): the chevron, the title and, folded, a muted
+// preview of its content. The `right` px at its end are left to buttons placed over it.
+export class Header extends Widget {
+	constructor(o) { super({ title: "", preview: "", open: false, right: 0, h: 52, ...o }); }
+	draw(ctx) {
+		const { w, h } = this, end = w - this.right - 16;
+		tint(ctx, this, 0, 0, w - this.right, h, theme.radius * 0.7);
+		drawChevron(ctx, 24, h / 2, this.open);
+		ctx.font = font(26, true);
+		ctx.fillStyle = theme.fg;
+		ctx.textAlign = "left";
+		ctx.textBaseline = "middle";
+		const title = ellipsize(ctx, this.title, end - 48);
+		ctx.fillText(title, 48, h / 2 + 1);
+		if (this.open || !this.preview) return;
+		const x = 48 + ctx.measureText(title).width + 20;
+		ctx.font = font(24);
+		ctx.fillStyle = theme.muted;
+		ctx.fillText(ellipsize(ctx, this.preview, end - x), x, h / 2 + 1);
+	}
 }
 
 // icon: an icons.js name, centered alone or left of the text; round: a circle (or pill)

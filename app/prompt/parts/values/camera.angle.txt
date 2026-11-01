@@ -1,0 +1,15 @@
+# Level
+eye level
+slightly above eye level
+slightly below eye level
+# High
+high angle
+bird's-eye view
+top-down flat lay
+# Low
+low angle
+worm's-eye view
+# Other
+dutch angle
+three-quarter view
+profile view

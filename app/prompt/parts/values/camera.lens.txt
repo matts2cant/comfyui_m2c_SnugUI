@@ -1,0 +1,15 @@
+# Wide
+14mm ultra wide
+24mm wide angle
+fisheye lens
+# Normal
+35mm
+50mm
+# Long
+85mm portrait lens
+135mm
+200mm telephoto
+# Special
+macro lens
+tilt-shift lens
+anamorphic lens, oval bokeh

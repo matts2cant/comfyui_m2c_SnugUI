@@ -155,7 +155,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	const row = new ui.Panel({ name: "output-row", widthM: COG / ui.PX_PER_M, heightM: COG / ui.PX_PER_M, bg: null }); // sized by placeRow
 	// the output pop-up (cog): the selected output's name over its kind's controls
 	const popup = new ui.Panel({ name: "output-popup", widthM: 0.58, heightM: 0.164, radius: 32 });
-	const galleryPanel = new ui.Panel({ name: "gallery", widthM: 0.85, heightM: 1.15 });
+	const galleryPanel = new ui.Panel({ name: "gallery", widthM: 1.8, heightM: 1.15 });
 	// the stage's message in the Desktop View, which shows it centered in a panel just around its text (the stage is VR only)
 	const note = new ui.Panel({ name: "center-note", widthM: 1, heightM: 0.1 });
 	group.add(stage.mesh);

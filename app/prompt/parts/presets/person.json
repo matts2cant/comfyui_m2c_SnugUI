@@ -1,0 +1,24 @@
+{
+  "Hiker": {
+    "id": "hiker",
+    "type": "person",
+    "appearance": ["short brown hair", "light stubble"],
+    "clothing": "red rain jacket, hiking boots",
+    "expression": "relaxed smile"
+  },
+  "Barista": {
+    "id": "barista",
+    "type": "person",
+    "appearance": ["curly black hair", "round glasses"],
+    "clothing": "striped shirt, rolled sleeves, apron",
+    "action": "pouring latte art"
+  },
+  "Painter": {
+    "id": "painter",
+    "type": "person",
+    "appearance": ["silver hair in a low bun", "elderly, kind wrinkles"],
+    "clothing": "paint-stained smock",
+    "expression": "thoughtful, looking away",
+    "action": "painting on a canvas"
+  }
+}

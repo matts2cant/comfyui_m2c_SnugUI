@@ -1,0 +1,18 @@
+# Range
+young adult
+in their twenties
+in their thirties
+in their forties
+middle-aged
+in their fifties
+in their sixties
+elderly
+very old
+# Exact
+20 years old
+25 years old
+30 years old
+40 years old
+50 years old
+65 years old
+80 years old
