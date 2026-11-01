@@ -49,14 +49,16 @@ app/js/rules.js          placement rule table
 app/js/jsonprompt.js     JSON prompts without DOM: prompt text <-> the editor's model, subject ids and renames, part files,
                          placeholders, the saved prompts' folders
 app/js/jsoneditor.js     the JSON prompt editor, a region of the Prompt panel (createEditor), and its sheets; the sheet machinery
-                         the Prompt panel's own sheets share (createSheet, stack, button, note, focus, TreeRow)
+                         the Prompt and Library panels share (createSheet, stack, button, note, focus, TreeRow, resolve, resolveSaved)
+app/js/parts.js          the JSON prompt's library client: the library (GET /snugui/parts), reload / sync, edit, mtime, "change" events
 app/prompt/schema.json   the JSON prompt schema
 app/prompt/parts/        the starter parts library, copied into the parts folder (below)
 app/js/panels/toolbar.js toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 app/js/panels/center.js  image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
                          (the results in history.js, the HD layer in quad.js)
 app/js/panels/prompt.js  Prompt panel: workflow name, Save / Load, Text / JSON switch, prompt box or JSON editor, folding negative
-                         prompt, seed row; the parts library's client
+                         prompt, seed row
+app/js/panels/library.js Library panel: the library on disk (saved prompts, presets, parts, fragments), browsed and edited
 app/js/panels/input.js   Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
 app/js/panels/config.js  Configuration panel: settings of the page's own UI (toolbar position)
 app/js/panels/lora.js    LoRA panel(s) + LoRA Manager API client
@@ -79,18 +81,34 @@ app/js/panels/lights.js  Light panel: presets for the model's lights, PMREM envi
   nodes) wins. At every start each file of `app/prompt/parts/` missing from it is copied in (folders created); an existing file is
   never overwritten or changed, so a deleted starter file comes back on the next start.
 - `GET /snugui/parts` → the library, `{ values: { "<field key>": text }, fragments: { "<name>": text }, presets: { "<type>": {
-  "<name>": subject } }, prompts: { "<folder/…/name.ext>": text }, folders: ["<folder/…>"], mtimes: { "prompts/<path>": µs } }`
+  "<name>": subject } }, prompts: { "<folder/…/name.ext>": text }, folders: ["<folder/…>"], mtimes: { "<kind>/<name>": µs } }`
   from `values/*.txt`, `fragments/*.txt`, `presets/*.json` and `prompts/` (every `.json` / `.txt` at any depth whose path matches
   `PROMPT_PATH`, every folder matching `PROMPT_FOLDER`, empty ones too; an unreadable preset or prompt file is skipped with a
-  `logging` warning). `mtimes` are `st_mtime_ns // 1000` (exact in a JS number).
-- `POST /snugui/parts/edit` body `{ kind, name, op, … }` → the library as above after the edit. `kind: "prompts"`, `name` a saved
-  prompt's path (`PROMPT_PATH`: names of words of `\w` and `-` joined by single spaces or dots, `/` between folders, `.json` or
-  `.txt`), `op: "write"` with `text` and `mtime`: without `mtime` it only creates the file (409 `already exists` when it is there),
-  with one it only replaces the file whose mtime is still that one (409 `changed on disk` otherwise); missing folders are created.
-  400 for anything else or a path resolving outside `prompts/`.
-- `POST /snugui/parts/{kind}/{name}` writes one file: `values/<name>.txt` (the body is the file text) or `presets/<name>.json` (the
-  body a JSON object, written indented). 400 for another kind, a name not matching `[\w-]+(\.[\w-]+)*` or resolving outside the
-  folder (the static route's `resolve().is_relative_to()` guard), or a preset body that is not an object.
+  `logging` warning). `mtimes`: every file's `st_mtime_ns // 1000` (exact in a JS number), keyed `values/<key>`,
+  `fragments/<name>`, `presets/<type>`, `prompts/<path>`.
+- `POST /snugui/parts/edit` body `{ kind, name, op, … }`: one edit, applied to the file as it is on disk at that moment (read,
+  change, write in one handler, no await between), answered with the library as above. `name`: a field key, fragment name or
+  subject type (`PARTS_NAME` `[\w-]+(\.[\w-]+)*`) for `values` / `fragments` / `presets`; a saved prompt's path or a folder for
+  `prompts` (`PROMPT_FOLDER`: names of words of `\w` and `-` joined by single spaces or dots, `/` between them; a prompt file also
+  `PROMPT_PATH`, ending in `.json` or `.txt`). The path is resolved and must stay inside its kind's folder and not be it (the static
+  route's `resolve().is_relative_to()` guard): nothing outside the parts folder is ever written, moved or deleted. Any edit may
+  carry `mtime`: it is refused (409 `<name> changed on disk`) unless the file is there with that mtime.
+
+  | kind | op | arguments: what it does |
+  |---|---|---|
+  | values, fragments, prompts | `write` | `text`, `mtime`?: the whole file; without `mtime` only a new file (409 `already exists`) |
+  | values, fragments, prompts | `rename-file` | `to` (a name of the same kind; a prompt file keeps a `PROMPT_PATH`): rename or move a file or a prompts folder (409 when `to` exists or `name` is gone; 400 into itself) |
+  | values, fragments, prompts | `delete-file` | `recursive`?: a file, or a prompts folder (409 `not empty` without `recursive`) |
+  | prompts | `mkdir` | a folder, with its parents (409 when it exists) |
+  | values, fragments | `add` | `group`, `text`: the part after its group's last line; a missing group is added at the end with it |
+  | values, fragments | `add-group` | `group`: a `# group` line at the end, unless it is there |
+  | values, fragments | `rename` / `delete` / `move` | `group`, `text`, `to` (the new text / the group to move it to): the first line of that group that is `text` |
+  | values, fragments | `rename-group` / `delete-group` | `group`, `to`: its `#` line / it and its lines (`""`: the lines before the first group) |
+  | presets | `set` / `rename` / `delete` | `key` (the preset name), `value` (an object) / `to`: add or replace / rename (409 when `to` exists) / delete |
+
+  Lines are edited as they are in the file (other lines, their order and blank lines are kept); a group's lines run from its `#`
+  line to the next one. A part or a group name must be one trimmed line, not starting with `#` (400). A line or group to change
+  that is not there any more is 409 (`… is not there any more`). 400 for an unknown kind, op or bad arguments.
 - Routes registered with `PromptServer.instance.routes` at import time. Security = ComfyUI's own (same origin).
 
 ## Snapshot schema (built by `web/snugui.js`)
@@ -316,7 +334,7 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   down toward the viewer). Laid out in its own plane, from its top edge down the slope, all centered, `GAP` 0.006 m apart:
   - the output row (center's `row`), only while `center.shows.row` (main.js sets its group's visibility);
   - the toolbar; it only moves when the output row comes or goes (up to the lectern's top edge without a row);
-  - the one open panel of Prompt, Gallery, LoRA, Light, Input, Configuration (1.8 x 1.15 each), unfolding toward the viewer.
+  - the one open panel of Prompt, Library, Gallery, LoRA, Light, Input, Configuration (1.8 x 1.15 each), unfolding toward the viewer.
 - Output pop-up: upright (not tilted) in front of the screen's bottom edge, its bottom edge on it, its right edge over the cog's right
   edge, `POPUP_Z` 0.02 toward the viewer (no z-fighting with the screen).
 - Every panel group has scale 0.35 (`PANEL_SCALE`); main.js `layout()` is the single place that positions them and sets the open
@@ -326,13 +344,13 @@ stripped labels (the snapshot and `store.inputs` keep the raw name; `key` is unc
   message is up) and `cogRect()` (the cog's box in the row, panel px), and calls `screen.onChange()` (main.js `relayout`) once when
   the stage's size or any of these changed. No host reads center's `mesh.visible` or its cog widget.
 Each panel module exports `export function createXPanel(...) -> { group: THREE.Object3D, ... }` (plus `update(dt)` for center;
-main.js also reads `panel`, the Prompt panel's `minHeight()` (its layout's smallest height), center's `shows` / `row` / `cogRect()` / `popup` /
+main.js also reads `panel`, the Prompt panel's `minHeight()` (its layout's smallest height) and `setPrompt(text, json)` (for the Library panel), center's `shows` / `row` / `cogRect()` / `popup` /
 `closePopup()` / `pick` / `ringPick(on)` / `gallery` / `note` / `rowH` (the tile size, for the deck) and `model` / `image`; the lighting panel is `createLightsPanel(ctx, center.model) -> { group, panel, room, background }`, main.js
 adds `room` to the scene; the Configuration panel is `createConfigPanel(onChange) -> { group, panel, minHeight(), toolbarAt() }`
 (main.js passes `relayout`, called after a change, and hands `toolbarAt` to the deck); the toolbar is
 `createToolbar(ctx, tabs, view, onError) -> { group, panel, arrange(dock) }` (main.js's panel buttons and view button, and
 `onError(text)`, phone.js `toast`; `arrange` the phones' layout, below); center is `createCenterPanel(ctx, rowW, onPick)`, rowW the toolbar's
-width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only); the Input panel is `createInputPanel(ctx)`, the Prompt and LoRA panels (`createPromptPanel()`, `createLoraPanel()`) take nothing. The panels import three,
+width, onPick() a tap on the phones' output button (phone.js `toggleTray`), which also returns `rowTile(size, vertical)`, layout only); the Input panel is `createInputPanel(ctx)`, the Prompt and LoRA panels (`createPromptPanel()`, `createLoraPanel()`) take nothing, the Library panel is `createLibraryPanel(setPrompt)`. The panels import three,
 ui.js and state.js (the `store`) themselves; `ctx` only holds the page's objects, `{ scene, renderer, camera, screen, client, xr: {
 isPresenting() }, desktopView() }`, and main.js gives the store its client (`store.client`).
 main.js positions the returned group per the layout above (panel modules build their content at the group origin, facing +z).
@@ -340,8 +358,8 @@ main.js positions the returned group per the layout above (panel modules build t
 ### Toolbar and icons
 One canvas panel (`toolbar.js`, "toolbar"), the same object in both views: on the lectern in VR, in the Desktop View's deck. A rounded slab
 (`radius` 56 px) that never collapses. Top tier: the run status at the left and its timer at the right (monospace), then the node progress
-bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main.js's round icon buttons (100 px) Prompt, Gallery, LoRA,
-Light, Input, Configuration (main.js `PANELS`), a separator, the view button; then a flexible gap, Cancel (round, `x`,
+bar (8 px, accent at 55 %) over the total progress bar (12 px). Bottom row: main.js's round icon buttons (100 px) Prompt, Library, Gallery,
+LoRA, Light, Input, Configuration (main.js `PANELS`), a separator, the view button; then a flexible gap, Cancel (round, `x`,
 `danger`; the plain grey `default` look and disabled when nothing runs or is queued) and Generate (pill, `accent`, 260 px; disabled
 with no active output). The width follows the icon row (at least `MIN_ICONS` 6 buttons): more buttons, a wider toolbar.
 - Phones: phone.js (the phone host) owns the dock: one grid, margin `PM` 16, button `PB` 80, the output row's own `TILE_GAP` and
@@ -354,13 +372,13 @@ with no active output). The width follows the icon row (at least `MIN_ICONS` 6 b
   timer, bars and the play pill itself): portrait (208 px tall: `3 * PM + TIER_H + PB`, toolbar.js exports `TIER_H`) the status tier (`PM` from
   every side) over Cancel and Generate on the tab bar's columns: Cancel over the first tab, Generate from the second tab's left edge to
   the last one's right edge; landscape (`BAR` wide, full height: the dock is two equal halves) the run column on the rail's rows (the
-  same `spread`): rows 1–3 one status word (Ready, Queued, Running, Done, Interrupted, Error in red, Inactive for "No active output";
+  same `spread`): rows 1–4 one status word (Ready, Queued, Running, Done, Interrupted, Error in red, Inactive for "No active output";
   28 px, shrunk to the column's width), the timer, then the node and total bars side by side, vertical, filling bottom-up to the
-  bottom of row 3; Cancel on row 4 (level with Light); Generate a play pill from the top of row 5 to the bottom of row 6 (`play` icon,
+  bottom of row 4; Cancel on row 5 (level with Light); Generate a play pill from the top of row 6 to the bottom of row 7 (`play` icon,
   no text; a round button's icon follows its shorter side). While the row has something (`shows.row`) the first place of the run
   row / column is left free for center's output button (the dock's `slot`): portrait, the slot over the first tab, Cancel over
-  the second, Generate from the third tab's left edge to the last one's right edge; landscape, the status on rows 1–2 (its bars end
-  at the bottom of row 2), the slot on row 3, Cancel and Generate as before. The toolbar knows nothing about outputs or the dock's
+  the second, Generate from the third tab's left edge to the last one's right edge; landscape, the status on rows 1–3 (its bars end
+  at the bottom of row 3), the slot on row 4, Cancel and Generate as before. The toolbar knows nothing about outputs or the dock's
   grid. A tap on "Error" or its timer calls `onError(message)`. `arrange(null)` puts the panel buttons back on the toolbar; phone.js
   then calls `setPx()` (world size, desk layout).
 - The panel buttons are lit (`toggled`) while their panel is open: in VR they work like tabs (pressing one opens its panel on the lectern
@@ -392,6 +410,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Use | Lucide icon | Where |
 |---|---|---|
 | Prompt | `pencil` | main.js `PANELS` |
+| Library | `library-big` (not in the frontend's set; path data from Lucide) | main.js `PANELS` |
 | Gallery | `images` | main.js `PANELS` |
 | LoRA | `layers` | main.js `PANELS` |
 | Light | `sun` (no `lightbulb` in the frontend's set) | main.js `PANELS` |
@@ -407,7 +426,8 @@ another Lucide icon's path data under its name and change the name where it is u
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
 | Prompt mode: Text / JSON | `text-initial` / `code` (not in the frontend's set; path data from Lucide) | prompt.js `ModeSwitch` |
 | Save / Load a prompt | `save` / `folder-open` (the second not in the frontend's set) | prompt.js `Tool` |
-| Saved prompts' tree: folder, JSON prompt, text prompt | `folder` / `file-code` / `file-text` (the last not in the frontend's set) | prompt.js sheets |
+| Saved prompts' tree: folder, JSON prompt, text prompt | `folder` / `file-code` / `file-text` (the last not in the frontend's set) | prompt.js sheets, library.js |
+| Library: a part or fragment file, a group; back | `file-text`, `folder`; `arrow-left` | library.js |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -498,11 +518,11 @@ another Lucide icon's path data under its name and change the name where it is u
   `background`, a `THREE.Color` set to the lighting preset's horizon colour (`sky[1]`), so it follows the Light window; the room is
   hidden. The lights still light the model. Input on the 3D view as above: drag pans the image / turns the model, the wheel zooms
   about the cursor, shift- or right-drag moves the model; one finger pans / turns, two pinch-zoom and move.
-- Windows: Prompt, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
+- Windows: Prompt, Library, Gallery, LoRA, Light, Input, Configuration, one panel each. They host the same Panel objects as VR: each panel's own canvas
   is placed in a DOM window (`main.js` passes `createDesktop` one spec per window, `{ name, title, icon, button, panel, minW, minH(w) }`
   in panel px: `button` the toolbar's, lit while the window is open; the first size is the panel's VR size (1800 x 1150 for every
   window); `minW` / `minH(w)` the smallest
-  its layout takes, the height at content width w (Prompt 560 wide, its height from prompt.js's `minHeight()`; Gallery 500 x 500, LoRA 560 x
+  its layout takes, the height at content width w (Prompt 560 wide, its height from prompt.js's `minHeight()`; Library 560 x 600; Gallery 500 x 500, LoRA 560 x
   700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`). A snapshot load re-places the
   windows (the prompt panel's entries change its minimum).
   At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
@@ -724,6 +744,38 @@ another Lucide icon's path data under its name and change the name where it is u
   `background` (the horizon colour), the Desktop View's `scene.background`. Only the model's
   MeshStandardMaterial reads the environment and the lights; panels and images are MeshBasicMaterial with `toneMapped: false`.
   At most 3 directional lights, no shadows.
+- library (Library panel, 1.8 x 1.15 m in VR, `createLibraryPanel(setPrompt)`, setPrompt the Prompt panel's): the library on disk
+  (parts.js). Top to bottom: "Library" (34 px bold) with the last message at the right of its row (muted, red for an error); a tab
+  row Prompts, Presets, Parts, Fragments (`toggled`; on a narrow panel the labels shrink until the longest fits); a search line
+  (substring, case-insensitive) with "+ New" and "+ Folder" (Prompts) or "+ Group" (Parts / Fragments inside a file) at its right;
+  then the list (`TreeRow`s in a ScrollView) and the detail of the selection (a ScrollView of `stack()`ed items). Panels at least
+  `WIDE` 1100 px wide put the detail right of the list (the list 42 %); narrower ones (phones, a narrow window) show the list, and
+  the detail in its place once something is selected or a form is open, with a "Back" row at its top. A tab switch clears the
+  search and the selection.
+  - Prompts: the saved prompts' tree (folders fold; a tap on a folder selects it and opens it, a second tap on the selected one
+    folds it); with a query, the folders and prompts whose path matches, flat, their folder as the sub. A prompt: its folder, its
+    name (commit renames it, extension kept), "Load into prompt" (accent; the slot sheet over this panel when it has slots, then the
+    Prompt panel's `setPrompt`; disabled without a prompt box), Delete, its text (JSON for a `.json`, which must parse; Save writes
+    it with the mtime it was read at), "Move to" the other folders ("No folder" first). A folder: its name (commit renames it),
+    Delete (asks again; a folder with content says how many items go with it, then deletes recursively), "Move to" (not into
+    itself). "+ New": a name, then "Create text" (`.txt`, empty) or "Create JSON" (`.json`, `{}`), in the selected folder or the
+    selected prompt's; "+ Folder": a name, Create (`mkdir`).
+  - Presets: by subject type (the schema's, then any other presets file), each preset with its id as the sub. A preset: its name
+    (commit renames it), its JSON (an object; Save writes it with `set` and the file's mtime), Delete. "+ New": a name, then
+    "Create <type>" for each schema type (`{ type }`).
+  - Parts / Fragments: the files (`values/` / `fragments/`), their line count as the sub; a tap opens one: "All fields" / "All
+    fragments" (back), the file, then its groups (count as sub) each followed by its lines (indented; a line naming a missing
+    fragment has the warning tint). The file: its line and group counts, its name (commit renames the file), "Edit file as text"
+    (the whole file in one multiline field, Save writes it with the mtime it was read at, Cancel), Delete. A group: its name
+    (commit renames it; "Ungrouped" has none), "+ Part" / "+ Value", Delete (asks again with its line count; the lines go too). A
+    line: its group, its text (commit renames it), Delete, "Move to" the other groups. "+ New" in the file list: a new empty file
+    (a field key, a fragment name); inside a file: a part / value added to the selected group (or the selected line's, else
+    Ungrouped); "+ Group": a new `# group` line.
+  Every action is one `edit` (parts.js); success clears the message (or says "Saved …" / "Loaded … into the prompt"), a refused
+  one says why in red (409: "… changed on disk: showing the version on disk", the detail's fields reset to the library as it is
+  now). Delete buttons are plain until pressed, then ask again in `danger`. The detail's text fields are kept across re-renders and
+  follow the library until the user types in them (each remembers the mtime it was read at); a selection the library no longer
+  has is dropped. The panel re-renders on every library "change".
 - config (Configuration panel, 1.8 x 1.15 m in VR; its window's minimum height is its content's): settings of the page's own UI, not of the workflow. Title, then
   "Toolbar position": a 3 x 2 grid of buttons laid out like the screen (top row Top left / Top center / Top right, bottom row Bottom
   left / Bottom center / Bottom right), the current one `toggled`; the grid re-flows to the panel's width. Kept in localStorage
@@ -790,9 +842,15 @@ Prompt panel:
 - The editor writes the generated JSON with `store.set(prompt key, text)` after every edit. prompt.js `refresh()` (every store
   `change`) only copies values and repaints; the editor keeps its own model and an open sheet. `layout()` (load, resize, fold,
   mode switch) gives the editor its rect and re-places an open sheet (`sheet.refresh()`).
-- Library client: `GET /snugui/parts` once at panel creation into the library object; each part or preset edit writes its one file
-  (`onLibrary(kind, name)` → `POST /snugui/parts/{kind}/{name}`); saving a prompt is `POST /snugui/parts/edit` (`editParts`), whose
-  answer replaces the library (a 409 reloads it, then the error shows).
+- Library client (parts.js, shared with the Library panel): `library` (GET's shape), `reload()` (GET), `sync()` (a reload whose
+  failure keeps the library as it was), `edit(body)` (POST /snugui/parts/edit; its answer replaces the library; a 409 reloads it,
+  then throws the server's message with `conflict` set), `mtime(kind, name)`; `events` dispatches "change" whenever the library is
+  replaced. Disk is the source of truth, with no sync button: the library is fetched at page load (prompt.js; a failure shows in
+  place of the workflow name), when the Library panel's toolbar button is pressed (main.js), when a picker, slot or Load sheet opens,
+  and on `visibilitychange` to visible. Line, part and preset changes are edits the server applies to the file as it is (edits
+  made on the side are kept); whole-file writes carry the mtime the page read and are refused when the file changed since. An
+  open sheet re-runs its content on every "change" (prompt.js, library.js). The editor's library changes: "Add & save" / "Save as
+  part" = `add`, "Save as preset" = presets `set` (the same name replaces it); a refused one shows in place of the workflow name.
 
 Library (the parts folder, Server above):
 ```
@@ -804,8 +862,9 @@ parts/
 ```
 - Field key: the field's path with the subject's type in place of `subjects[i]` (`lighting`, `camera.angle`, `person.pose`). Person
   `pose` and animal `pose` are separate libraries. A custom field's file is created the first time a part is saved to it.
-- Value file: one part per line, `# Group` opens a group, blank lines ignored; the text is its label. Saving collapses whitespace;
-  ungrouped parts are written first, an empty group is dropped (a part starting with `#` would read back as a group: not guarded).
+- Value file: one part per line, `# Group` opens a group, blank lines ignored; the text is its label. A new part's whitespace is
+  collapsed; the server edits lines in place (other lines, blank lines and the order are kept; an empty group stays as its `#`
+  line); a part may not start with `#`.
 - Preset: a whole subject saved under a name (the same name overwrites); adding one gives it the preset's id when free, else
   `<type>_<n>`. Placed parts are copies: editing the library never changes a prompt.
 - Fragment: a named value list, `fragments/<name>.txt`, in the value file format (names: the field keys' characters,
@@ -821,9 +880,10 @@ parts/
   `hair_color`, `material`, `time_of_day` (9–14 values), `presets/person.json` (Hiker, Barista, Painter; Hiker with placeholders),
   empty `animal.json` / `object.json`.
 
-Editor (`createEditor({ panel, sheet, schema, library, onChange(text), onLibrary(kind, name) })` -> `{ resolve(title, texts, label,
-onDone), layout(rect), show(), hide(), load(model) }`; `sheet` the panel's `createSheet(panel)` -> `{ open(name, content), refresh(),
-close() }`, one sheet at a time; hidden until `show()`, `hide()` and `load()` close the sheet):
+Editor (`createEditor({ panel, sheet, schema, onChange(text), onError(text) })` -> `{ layout(rect), show(), hide(), load(model) }`;
+`sheet` the panel's `createSheet(panel)` -> `{ open(name, content), refresh(), close() }`, one sheet at a time; hidden until
+`show()`, `hide()` and `load()` close the sheet; `resolve(sheet, title, texts, label, onDone)` and `resolveSaved(sheet, path,
+onDone(text, json))` fill slots in any panel's sheet):
 ```
 ▾ Scene        (a smuggler waiting in a cantina) [+]
 ▾ Subjects                                 [+ Person][▾]
@@ -846,8 +906,9 @@ close() }`, one sheet at a time; hidden until `show()`, `hide()` and `load()` cl
   they leave.
 - Picker (`+`): first the free-text line, already editing, "Add without saving…" (commit adds the chip) and "Add & save" beside it
   (disabled while empty: adds the chip, then the save-as-part sheet); then the search line (substring filter), "→ subject" (the
-  prompt's subject ids, tap to add one as a chip), the field's parts by group (tap to add; rename in place; delete, a second tap on
-  "Delete" confirms; a part naming a missing fragment is flagged). Adding anything closes it; a part with slots opens the slot sheet.
+  prompt's subject ids, tap to add one as a chip), the field's parts by group (`TreeRow`s, tap to add; a part naming a missing
+  fragment is flagged). Renaming and deleting parts is the Library panel's. Adding anything closes it; a part with slots opens the
+  slot sheet.
 - Slot sheet (a picked part with slots, a preset with slots; `resolve(title, texts, label, onDone)`): the texts with their slots
   (`SlotText`: word-wrapped, each slot a box holding its value or `{name}`, the current one outlined in the accent colour, a tap
   makes it current), then a free line "Other value…" (commit fills the current slot) with Random (a random value for it), "Random

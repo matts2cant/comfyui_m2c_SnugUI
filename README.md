@@ -30,16 +30,16 @@ with this code are now in their own package, `comfyui_m2c_sapiens2_tools`; SnugU
 ## Views
 
 The page picks its layout from the window: the phone layout on a phone, the Desktop View on a wider window; the goggles button
-on the toolbar enters VR. Every view has the same panels, Prompt, Gallery, LoRA, Light, Input (the workflow's inputs) and
-Configuration (settings of this page), and the same toolbar: the run status, a timer, two progress bars, Cancel and Generate.
+on the toolbar enters VR. Every view has the same panels, Prompt, Library (saved prompts, presets, parts and fragments), Gallery,
+LoRA, Light, Input (the workflow's inputs) and Configuration (settings of this page), and the same toolbar: the run status, a timer, two progress bars, Cancel and Generate.
 
 ### Phones
 
 On a phone (a window narrower than 600 px, or a landscape one shorter than 500 px) the page uses a phone layout instead of
 windows. Portrait: the image above a dock with the run status, Cancel and Generate (lined up over the first tab and the other
-five) and a tab bar of the six panels (tap one to open it, tap it again to close it). Landscape: the image at the left and a dock
+six) and a tab bar of the seven panels (tap one to open it, tap it again to close it). Landscape: the image at the left and a dock
 along the right edge: a run column (one-word status, timer, upright progress bars, Cancel, a play button for Generate; tap a red
-"Error" to read the whole message) and the tabs, on the same rows: Cancel level with the fourth tab, Generate with the last two.
+"Error" to read the whole message) and the tabs, on the same rows: Cancel level with the fifth tab, Generate with the last two.
 An open panel takes all the room left by the dock, edge to edge, over the image; closing it brings the image back.
 With several outputs (or a single image output, for its settings) the dock gets an output button showing the selected output (portrait: over the first tab, Cancel moves over
 the second; landscape: level with the third tab), with a dot when another output has new results. Tap it to open the output tiles
@@ -54,7 +54,7 @@ phones; a wider window brings the Desktop View back with its windows as you left
 
 Without a VR session a window wider than a phone's opens in the Desktop View, for a desktop browser or a tablet: the image or 3D model fills the
 window over a flat background in the colour of the lighting preset, and the panels float in windows on top of it: Prompt,
-Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
+Library, Gallery, LoRA, Light, Input, Configuration. With no image or model yet, the message ("No images yet"...) shows in a small box in
 the middle. The toolbar sits in the bottom-right corner with the output tiles above it, both always on top of the windows (scaled
 down to fit a narrow window). Configuration > Toolbar position moves them to another corner or to the middle of the top or
 bottom edge (at the top the tiles go under the toolbar); it only applies to the Desktop View and is remembered. The toolbar's
@@ -122,8 +122,8 @@ Switching back to Text shows the generated JSON, which is also what Generate sen
 In the editor every field is a row of chips:
 
 - `+` after a field opens the picker: type a free text at the top and press Enter to add it as is, or "Add & save" to also keep it
-  in the parts library (it asks for a group). Below are the saved parts of that field by group: tap one to add it, the pencil to
-  rename it, the x then "Delete" to remove it. "→ subject" adds a subject's id, to refer to another subject in a text.
+  in the parts library (it asks for a group). Below are the saved parts of that field by group: tap one to add it (rename and
+  delete them in the Library panel). "→ subject" adds a subject's id, to refer to another subject in a text.
 - A part can hold placeholders such as `{color} t-shirt` or `{color} {fabric} jacket`: picking it opens a sheet where you fill
   each `{…}` from that fragment's values (or type one, or Random; "Random all" fills them all), then "Add chip". Presets with
   placeholders work the same way.
@@ -142,9 +142,12 @@ as for parts.
 
 The parts library lives in `models/snugui/parts/` (Comfy Desktop: the `snugui/parts` folder of its models directory), one text file
 per field in `values/` (`person.pose.txt`: one part per line, `# Group` lines start a group), one JSON file of presets per
-subject type in `presets/`, the fragments in `fragments/` and the saved prompts in `prompts/` (`color.txt`, same format as the value files: the values `{color}`
-takes). A placeholder naming a fragment that does not exist stays as typed (the picker shows its part in orange); braces you type
-yourself are never replaced. You can edit the files by hand; reload the page to see the changes. A starter set is copied in at every
+subject type in `presets/`, the fragments in `fragments/` (`color.txt`, same format as the value files: the values `{color}` takes)
+and the saved prompts in `prompts/`. A placeholder naming a fragment that does not exist stays as typed (the picker shows its part in
+orange); braces you type yourself are never replaced. The files on disk are what counts: you can edit them by hand at any time, and
+the page reads them again when the Library panel or a picker opens and when you come back to the tab; edits from the page change
+only the line or entry they touch, so changes made on the side are kept. If a file you were editing as a whole changed on disk
+meanwhile, saving is refused and the newer version shows. A starter set is copied in at every
 ComfyUI start for the files that are missing; existing files are never overwritten (delete one to get the starter version back). To
 keep the library elsewhere, add a `snugui_parts` line to your `extra_model_paths.yaml` (Comfy Desktop: its extra models config):
 
@@ -152,6 +155,15 @@ keep the library elsewhere, add a `snugui_parts` line to your `extra_model_paths
 snugui:
   snugui_parts: D:/prompt-parts
 ```
+
+## Library panel
+
+The Library panel (the books button, after Prompt) manages everything the prompt editor saves, in four tabs: Prompts (the saved
+prompts' folders), Presets (by subject type), Parts (one file per field, then its parts by group) and Fragments (the same for
+the placeholder value lists). Each has a search line, "+ New" and "+ Folder" / "+ Group". Pick an item to rename it (edit its name
+and press Enter), move it to another folder or group, delete it (press Delete twice) or edit it: a part's text, a preset's JSON,
+a prompt's text. A part or fragment file can also be edited as a whole ("Edit file as text"), and a saved prompt loaded into the
+Prompt panel ("Load into prompt"). On a wide panel the details show beside the list; on a phone they replace it, with a Back row.
 
 ## Run status
 

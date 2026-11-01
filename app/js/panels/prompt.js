@@ -5,7 +5,8 @@ import * as THREE from "three";
 import * as ui from "../ui.js";
 import * as fmt from "../jsonprompt.js";
 import { commit } from "../keyboard.js";
-import { button, createEditor, createSheet, focus, note, TreeRow } from "../jsoneditor.js";
+import { button, createEditor, createSheet, focus, note, resolveSaved, TreeRow } from "../jsoneditor.js";
+import { edit, events, library, mtime, reload, sync } from "../parts.js";
 import { store } from "../state.js";
 import { pref, setPref } from "../prefs.js";
 import schema from "../../prompt/schema.json" with { type: "json" };
@@ -15,32 +16,6 @@ const M = 20, GAP = 12, TOP = 60, ROW_H = 64, BTN_W = 60, FOLD_H = 52, NEG_H = 1
 const NEGATIVE_KEY = "snugui.negative";
 
 const { theme } = ui;
-
-// the JSON prompt's parts library on the server (__init__.py): { values: { <field key>: text }, fragments: { <name>: text },
-// presets: { <type>: {…} }, prompts: { <folder/…/name.ext>: text }, folders: [<folder/…>], mtimes: { "prompts/<path>": µs } }
-async function fetchParts() {
-	const res = await fetch("/snugui/parts");
-	if (!res.ok) throw new Error("HTTP " + res.status);
-	return res.json();
-}
-
-// writes one library file: values/<name>.txt or presets/<name>.json
-async function saveParts(kind, name, body) {
-	const res = await fetch(`/snugui/parts/${kind}/${encodeURIComponent(name)}`, { method: "POST", body });
-	if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "HTTP " + res.status);
-}
-
-// One library edit (POST /snugui/parts/edit): the library takes the server's answer, the whole library as it is now; a refused
-// edit (409: the file changed on disk, or is already there) reloads it before throwing.
-async function editParts(library, body) {
-	const res = await fetch("/snugui/parts/edit", { method: "POST", body: JSON.stringify(body) });
-	const data = await res.json().catch(() => ({}));
-	if (res.status === 409) Object.assign(library, await fetchParts());
-	if (!res.ok) throw new Error(data.error ?? "HTTP " + res.status);
-	Object.assign(library, data);
-}
-
-const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 // a small bordered icon button beside the switch, as discreet: Save, Load
 class Tool extends ui.Widget {
@@ -116,17 +91,10 @@ export function createPromptPanel() {
 	let json = false; // the prompt box's mode: the JSON editor in its place
 	let error = ""; // shown in red in place of the workflow name until the next prompt edit or mode switch
 
-	const library = { values: {}, fragments: {}, presets: {}, prompts: {}, folders: [], mtimes: {} };
 	const sheet = createSheet(panel);
-	const editor = createEditor({
-		panel, sheet, schema, library,
-		onChange: (text) => store.set(prompt[0].key, text),
-		onLibrary: (kind, file) => {
-			const body = kind === "values" ? library.values[file] : JSON.stringify(library.presets[file]);
-			saveParts(kind, file, body).catch((e) => setError(`Could not save ${file}: ${e.message}`));
-		},
-	});
-	fetchParts().then((parts) => Object.assign(library, parts), (e) => setError("Could not load the parts: " + e.message));
+	const editor = createEditor({ panel, sheet, schema, onChange: (text) => store.set(prompt[0].key, text), onError: (text) => setError(text) });
+	reload().catch((e) => setError("Could not load the parts: " + e.message));
+	events.addEventListener("change", () => sheet.refresh()); // an open sheet shows the library as it is now
 
 	function setError(text) {
 		error = text;
@@ -150,7 +118,8 @@ export function createPromptPanel() {
 		layout();
 	}
 
-	// a loaded prompt replaces the text, in JSON mode when asked (its text then read as by the switch)
+	// a loaded prompt replaces the text, in JSON mode when asked (its text then read as by the switch); the Library panel's
+	// "Load into prompt" too
 	function setPrompt(text, asJson) {
 		store.set(prompt[0].key, text);
 		json = false;
@@ -172,13 +141,13 @@ export function createPromptPanel() {
 			sheet.refresh();
 		};
 		const write = async (path) => {
-			const mtime = library.mtimes["prompts/" + path];
-			if (mtime !== undefined && asked !== path) {
+			const at = mtime("prompts", path);
+			if (at !== undefined && asked !== path) {
 				asked = path;
 				return sheet.refresh();
 			}
 			try {
-				await editParts(library, { kind: "prompts", name: path, op: "write", text, mtime });
+				await edit({ kind: "prompts", name: path, op: "write", text, mtime: at });
 				sheet.close();
 			} catch (e) {
 				asked = null;
@@ -211,11 +180,12 @@ export function createPromptPanel() {
 			label: it.name, sub, depth, icon: it.folder ? "folder" : it.path.endsWith(".json") ? "file-code" : "file-text",
 			open: it.folder ? open.has(it.path) : undefined,
 			onClick: () => {
-				if (!it.folder) return loadPrompt(it.path);
+				if (!it.folder) return resolveSaved(sheet, it.path, setPrompt);
 				if (!open.delete(it.path)) open.add(it.path);
 				sheet.refresh();
 			},
 		});
+		sync();
 		const tree = (dir, depth) => fmt.listing(library, dir).flatMap((it) => [row(it, depth), ...it.folder && open.has(it.path) ? tree(it.path, depth + 1) : []]);
 		sheet.open(() => "Load a prompt", () => {
 			const q = search.value.trim().toLowerCase();
@@ -225,14 +195,6 @@ export function createPromptPanel() {
 			}) : tree("", 0);
 			return [search, ...rows, ...rows.length ? [] : [note(q ? "No saved prompt matches" : "No saved prompts yet")]];
 		});
-	}
-
-	function loadPrompt(path) {
-		const text = library.prompts[path], title = path.slice(path.lastIndexOf("/") + 1);
-		let obj = null;
-		if (path.endsWith(".json")) try { obj = JSON.parse(text); } catch {}
-		if (isObject(obj)) editor.resolve(title, fmt.strings(obj), "Load", (t) => setPrompt(JSON.stringify(fmt.withStrings(obj, t)), true));
-		else editor.resolve(title, [text], "Load", ([t]) => setPrompt(t, false));
 	}
 
 	// the empty box shows its name
@@ -352,5 +314,5 @@ export function createPromptPanel() {
 	});
 	build();
 
-	return { group, panel, minHeight };
+	return { group, panel, minHeight, setPrompt };
 }
