@@ -46,15 +46,17 @@ app/js/help.js           insecure-context help screen (DOM)
 app/js/comfy.js          ComfyClient: ws, queue, interrupt, previews, snapshot fetch
 app/js/state.js          store: snapshot model, values, seeds, loras, buildPrompt, generate
 app/js/rules.js          placement rule table
-app/js/jsonprompt.js     JSON prompts without DOM: prompt text <-> the editor's model, subject ids and renames, part files
-app/js/jsoneditor.js     the JSON prompt editor, a region of the Prompt panel (createEditor), and its sheets
+app/js/jsonprompt.js     JSON prompts without DOM: prompt text <-> the editor's model, subject ids and renames, part files,
+                         placeholders, the saved prompts' folders
+app/js/jsoneditor.js     the JSON prompt editor, a region of the Prompt panel (createEditor), and its sheets; the sheet machinery
+                         the Prompt panel's own sheets share (createSheet, stack, button, note, focus, TreeRow)
 app/prompt/schema.json   the JSON prompt schema
 app/prompt/parts/        the starter parts library, copied into the parts folder (below)
 app/js/panels/toolbar.js toolbar: run status, timer, node / total progress bars, main.js's icon buttons, Cancel, Generate
 app/js/panels/center.js  image / 3D model display, output row (tiles + cog), output pop-up, the phones' output button, gallery panel
                          (the results in history.js, the HD layer in quad.js)
-app/js/panels/prompt.js  Prompt panel: workflow name, Text / JSON switch, prompt box or JSON editor, folding negative prompt, seed
-                         row; the parts library's client
+app/js/panels/prompt.js  Prompt panel: workflow name, Save / Load, Text / JSON switch, prompt box or JSON editor, folding negative
+                         prompt, seed row; the parts library's client
 app/js/panels/input.js   Input panel: the workflow's inputs (everything the prompt and LoRA panels do not take)
 app/js/panels/config.js  Configuration panel: settings of the page's own UI (toolbar position)
 app/js/panels/lora.js    LoRA panel(s) + LoRA Manager API client
@@ -76,8 +78,16 @@ app/js/panels/lights.js  Light panel: presets for the model's lights, PMREM envi
   `get_folder_paths("snugui_parts")[0]`, so a `snugui_parts:` line in the user's extra_model_paths YAML (loaded before custom
   nodes) wins. At every start each file of `app/prompt/parts/` missing from it is copied in (folders created); an existing file is
   never overwritten or changed, so a deleted starter file comes back on the next start.
-- `GET /snugui/parts` → `{ values: { "<field key>": text }, fragments: { "<name>": text }, presets: { "<type>": { "<name>": subject } } }`
-  from `values/*.txt`, `fragments/*.txt` and `presets/*.json` (an unreadable preset file is skipped with a `logging` warning).
+- `GET /snugui/parts` → the library, `{ values: { "<field key>": text }, fragments: { "<name>": text }, presets: { "<type>": {
+  "<name>": subject } }, prompts: { "<folder/…/name.ext>": text }, folders: ["<folder/…>"], mtimes: { "prompts/<path>": µs } }`
+  from `values/*.txt`, `fragments/*.txt`, `presets/*.json` and `prompts/` (every `.json` / `.txt` at any depth whose path matches
+  `PROMPT_PATH`, every folder matching `PROMPT_FOLDER`, empty ones too; an unreadable preset or prompt file is skipped with a
+  `logging` warning). `mtimes` are `st_mtime_ns // 1000` (exact in a JS number).
+- `POST /snugui/parts/edit` body `{ kind, name, op, … }` → the library as above after the edit. `kind: "prompts"`, `name` a saved
+  prompt's path (`PROMPT_PATH`: names of words of `\w` and `-` joined by single spaces or dots, `/` between folders, `.json` or
+  `.txt`), `op: "write"` with `text` and `mtime`: without `mtime` it only creates the file (409 `already exists` when it is there),
+  with one it only replaces the file whose mtime is still that one (409 `changed on disk` otherwise); missing folders are created.
+  400 for anything else or a path resolving outside `prompts/`.
 - `POST /snugui/parts/{kind}/{name}` writes one file: `values/<name>.txt` (the body is the file text) or `presets/<name>.json` (the
   body a JSON object, written indented). 400 for another kind, a name not matching `[\w-]+(\.[\w-]+)*` or resolving outside the
   folder (the static route's `resolve().is_relative_to()` guard), or a preset body that is not an object.
@@ -396,6 +406,8 @@ another Lucide icon's path data under its name and change the name where it is u
 | Gallery thumbnail download button | `download` | center.js `Gallery` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
 | Prompt mode: Text / JSON | `text-initial` / `code` (not in the frontend's set; path data from Lucide) | prompt.js `ModeSwitch` |
+| Save / Load a prompt | `save` / `folder-open` (the second not in the frontend's set) | prompt.js `Tool` |
+| Saved prompts' tree: folder, JSON prompt, text prompt | `folder` / `file-code` / `file-text` (the last not in the frontend's set) | prompt.js sheets |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
 
 ### main.js
@@ -651,7 +663,7 @@ another Lucide icon's path data under its name and change the name where it is u
   their directions stay put while the model is moved. A replaced
   or stale model's geometries, materials and textures are disposed.
 - prompt (Prompt panel, 1800 x 1150 px in VR, any size in the Desktop View): top to bottom, the workflow name (28 px, top left)
-  with the Text / JSON switch at the right end of its row (over the prompt box's right edge; only with a prompt box); the prompt
+  with Save, Load and the Text / JSON switch at the right end of its row (over the prompt box's right edge; only with a prompt box); the prompt
   box of `store.groups.prompt`, full width, taking all the extra height, or the JSON editor in its place (JSON prompt, below); the
   negative prompt of `.negative`; the seed row.
   Prompt boxes are plain multi-line TextFields without a label (full prompt, word-wrapped, clipped with "…");
@@ -756,6 +768,17 @@ Prompt panel:
 - The switch (`ModeSwitch`, 2 x 56 x 44 px): a bordered pair of small muted icons, `text-initial` (Text) and `code` (JSON), the current
   one on a `surface` fill with its icon in `fg`. Text mode: the TextField as before. JSON mode: the editor takes the prompt box's
   rect; the negative prompt (plain text) and the seed row are unchanged.
+- Save and Load (`Tool`, 56 x 44 px each, 8 px apart, left of the switch): bordered like it, a muted `save` / `folder-open` icon (fg
+  on hover). Both work in Text and JSON mode and open the panel's sheet (the editor's sheet machinery, over the whole panel):
+  - Save: "Name" (already editing), "Folder" (typed, `portraits/studio` nests new folders; or a tap on the folder list below: "No
+    folder", then every folder indented by depth, the current one selected), then Save (accent; disabled while a name is not
+    `validName`, with a red note). JSON mode saves the generated JSON as `<folder>/<name>.json`, Text mode the text as `.txt`. A
+    path already in the library first turns the button into Overwrite (danger) with a note; Overwrite writes with the file's mtime.
+    A refused write (409) reloads the library and shows the error in the sheet; a write closes it.
+  - Load: a search line, then the saved prompts' tree (`TreeRow`s: folders first, by name, folded, a tap folds / unfolds them;
+    prompts with `file-code` (.json) or `file-text` (.txt)); with a query, the prompts whose path contains it, their folder as the
+    sub. A tap replaces the prompt: its slots are resolved first (the slot sheet, "Load"; a JSON prompt over all its strings),
+    then JSON mode for a `.json` that parses as an object (its text read as by the switch), else Text with the text as is.
 - Every snapshot load decides the mode: JSON when the `_prompt` text parses as a JSON object (starts with `{`), else Text, and closes
   any sheet. The switch overrides it until the next load; nothing is remembered. A press on it first commits an open text edit.
 - Text → JSON: the text is read (a JSON object as above; plain text becomes a new prompt with the text as `scene`; empty, a new prompt
@@ -765,9 +788,10 @@ Prompt panel:
   JSON after an edit).
 - The editor writes the generated JSON with `store.set(prompt key, text)` after every edit. prompt.js `refresh()` (every store
   `change`) only copies values and repaints; the editor keeps its own model and an open sheet. `layout()` (load, resize, fold,
-  mode switch) gives the editor its rect, which re-places an open sheet.
-- Library client: `GET /snugui/parts` once at panel creation into `{ values, fragments, presets }`; each library edit writes its one file
-  (`onLibrary(kind, name)` → `POST /snugui/parts/{kind}/{name}`).
+  mode switch) gives the editor its rect and re-places an open sheet (`sheet.refresh()`).
+- Library client: `GET /snugui/parts` once at panel creation into the library object; each part or preset edit writes its one file
+  (`onLibrary(kind, name)` → `POST /snugui/parts/{kind}/{name}`); saving a prompt is `POST /snugui/parts/edit` (`editParts`), whose
+  answer replaces the library (a 409 reloads it, then the error shows).
 
 Library (the parts folder, Server above):
 ```
@@ -775,6 +799,7 @@ parts/
   values/<field key>.txt      lighting.txt, person.pose.txt, camera.angle.txt, person.tattoo.txt
   fragments/<name>.txt        color.txt, fabric.txt: the values a {name} placeholder takes
   presets/<type>.json         person.json: { "Han Solo": { "id": "han", "type": "person", … } }
+  prompts/<folder>/…/<name>.json | .txt   saved prompts, in nested folders of any depth
 ```
 - Field key: the field's path with the subject's type in place of `subjects[i]` (`lighting`, `camera.angle`, `person.pose`). Person
   `pose` and animal `pose` are separate libraries. A custom field's file is created the first time a part is saved to it.
@@ -783,18 +808,21 @@ parts/
 - Preset: a whole subject saved under a name (the same name overwrites); adding one gives it the preset's id when free, else
   `<type>_<n>`. Placed parts are copies: editing the library never changes a prompt.
 - Fragment: a named value list, `fragments/<name>.txt`, in the value file format (names: the field keys' characters,
-  `[\w-]+(\.[\w-]+)*`). A `{name}` placeholder in library text (a part, a preset's string values) is a slot that takes one of its
+  `[\w-]+(\.[\w-]+)*`). A `{name}` placeholder in library text (a part, a preset's string values, a saved prompt) is a slot that takes one of its
   values; braces in a fragment's values stay literal (no nesting); a placeholder naming no fragment stays literal text (its part
   is flagged in the picker: warning tint and border). Text the user types is never resolved, its braces stay literal.
   Resolution happens when a library text is placed (jsonprompt.js `segments`, `fill`, `strings` / `withStrings` for a preset's
   strings): the chip or subject then holds plain text.
+- Saved prompt: one file per prompt, a JSON mode one as `.json` (the generated JSON), a Text mode one as `.txt`; only saved prompts
+  use folders (parts and fragments keep `# Group` lines, presets one file per type).
 - Starter set (`app/prompt/parts/`): a value file for every chip field of the schema (10–20 parts for the common ones, 5–15 for the
   rarer, a few with placeholders: `{color} t-shirt`, `a quiet street at {time_of_day}`), fragments `color`, `fabric`,
   `hair_color`, `material`, `time_of_day` (9–14 values), `presets/person.json` (Hiker, Barista, Painter; Hiker with placeholders),
   empty `animal.json` / `object.json`.
 
-Editor (`createEditor({ panel, schema, library, onChange(text), onLibrary(kind, name) })` -> `{ layout(rect), show(), hide(),
-load(model), closeSheet() }`; hidden until `show()`, `hide()` closes the sheet):
+Editor (`createEditor({ panel, sheet, schema, library, onChange(text), onLibrary(kind, name) })` -> `{ resolve(title, texts, label,
+onDone), layout(rect), show(), hide(), load(model) }`; `sheet` the panel's `createSheet(panel)` -> `{ open(name, content), refresh(),
+close() }`, one sheet at a time; hidden until `show()`, `hide()` and `load()` close the sheet):
 ```
 ▾ Scene        (a smuggler waiting in a cantina) [+]
 ▾ Subjects                                 [+ Person][▾]

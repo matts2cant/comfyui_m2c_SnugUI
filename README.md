@@ -134,9 +134,15 @@ In the editor every field is a row of chips:
 
 JSON from other tools opens as it is (nested groups, lists, numbers), without the schema's empty rows.
 
+The two small buttons left of the switch save and load whole prompts, in Text and JSON mode. Save asks for a name and a folder:
+pick one from the list or type a new one (`portraits/studio` makes nested folders); a JSON prompt is saved as `.json`, a text one
+as `.txt`, and saving onto an existing name asks before overwriting. Load shows the folders (tap to open them) and a search line;
+tapping a prompt replaces the current one and switches to JSON or Text to match. Placeholders in a saved prompt are filled first,
+as for parts.
+
 The parts library lives in `models/snugui/parts/` (Comfy Desktop: the `snugui/parts` folder of its models directory), one text file
 per field in `values/` (`person.pose.txt`: one part per line, `# Group` lines start a group), one JSON file of presets per
-subject type in `presets/` and the fragments in `fragments/` (`color.txt`, same format as the value files: the values `{color}`
+subject type in `presets/`, the fragments in `fragments/` and the saved prompts in `prompts/` (`color.txt`, same format as the value files: the values `{color}`
 takes). A placeholder naming a fragment that does not exist stays as typed (the picker shows its part in orange); braces you type
 yourself are never replaced. You can edit the files by hand; reload the page to see the changes. A starter set is copied in at every
 ComfyUI start for the files that are missing; existing files are never overwritten (delete one to get the starter version back). To

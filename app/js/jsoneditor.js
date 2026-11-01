@@ -1,8 +1,9 @@
 // JSON prompt editor, the prompt panel's JSON mode: the prompt's fields as rows of chips in one scrolling box of the host panel,
 // and sheets over the whole panel: the picker (free text, parts, subject ids), a chip's menu, a subject's menu, new fields, the
 // subjects to add, the slots of a library text. The model and its JSON are jsonprompt.js's; the library ({ values: { <field key>:
-// part file text }, fragments: { <name>: file text }, presets: { <type>: { <name>: subject } } }) is the host's: the editor changes
-// it in place and calls onLibrary(kind, name) for the file that changed.
+// part file text }, fragments: { <name>: file text }, presets: { <type>: { <name>: subject } }, … }) is the host's: the editor
+// changes it in place and calls onLibrary(kind, name) for the file that changed. The sheet machinery (createSheet, stack, button,
+// note, focus, TreeRow) is shared with the prompt panel's own sheets.
 import * as ui from "./ui.js";
 import { commit } from "./keyboard.js";
 import * as fmt from "./jsonprompt.js";
@@ -210,6 +211,40 @@ class PartRow extends Boxes {
 	}
 }
 
+// A row of a tree or list in a sheet: indented by depth, a chevron when it folds (open true / false; undefined: none), an icon
+// (icons.js), the label and a muted sub at its end; selected: the accent fill
+export class TreeRow extends ui.Widget {
+	constructor(o) { super({ label: "", sub: "", icon: null, depth: 0, open: undefined, selected: false, h: ROW, ...o }); }
+	draw(ctx) {
+		const x = this.depth * IND, w = this.w - x;
+		ctx.beginPath();
+		ctx.roundRect(x, 0, w, this.h, R);
+		ctx.fillStyle = this.selected ? theme.accent : theme.surface;
+		ctx.fill();
+		ui.tint(ctx, this, x, 0, w, this.h, R);
+		let tx = x + 16;
+		if (this.open !== undefined) {
+			ui.drawChevron(ctx, tx + 6, this.h / 2, this.open);
+			tx += 28;
+		}
+		ctx.strokeStyle = ctx.fillStyle = theme.fg;
+		if (this.icon) {
+			ui.drawIcon(ctx, this.icon, tx, (this.h - 30) / 2, 30);
+			tx += 42;
+		}
+		ctx.textAlign = "right";
+		ctx.textBaseline = "middle";
+		ctx.font = ui.font(22);
+		const sub = ui.ellipsize(ctx, this.sub, w * 0.4), end = this.w - 16 - (sub ? ctx.measureText(sub).width + 16 : 0);
+		ctx.fillStyle = this.selected ? theme.fg : theme.muted;
+		ctx.fillText(sub, this.w - 16, this.h / 2 + 1);
+		ctx.textAlign = "left";
+		ctx.font = ui.font(SIZE - 2);
+		ctx.fillStyle = theme.fg;
+		ctx.fillText(ui.ellipsize(ctx, this.label, end - tx), tx, this.h / 2 + 1);
+	}
+}
+
 // dims the panel under a sheet and draws the sheet's card and title; a tap outside the card closes it
 class Shade extends ui.Widget {
 	draw(ctx) {
@@ -234,24 +269,87 @@ class Shade extends ui.Widget {
 	onClick(p) { if (!ui.inRect(p, this.card)) this.onClose(); }
 }
 
-const button = (text, onClick, o) => {
+export const button = (text, onClick, o) => {
 	measure.font = ui.font(24, true);
 	return new ui.Button({ text, size: 24, h: ROW, w: Math.ceil(measure.measureText(text).width) + 48, onClick, ...o });
 };
-const note = (text, bold = false, color = theme.muted) => new ui.Label({ text, size: 24, bold, color, wrap: true });
+export const note = (text, bold = false, color = theme.muted) => new ui.Label({ text, size: 24, bold, color, wrap: true });
 const title = (key, top) => {
 	const t = key.replaceAll("_", " ");
 	return top ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 };
 
 // starts editing a sheet's field once the press that opened it is over (dom.js commits an edit on a press elsewhere when it ends)
-const focus = (f) => queueMicrotask(() => { if (f.panel && !f.ta) f.edit({ lx: f.w, ly: f.h / 2 }); });
+export const focus = (f) => queueMicrotask(() => { if (f.panel && !f.ta) f.edit({ lx: f.w, ly: f.h / 2 }); });
 
-// panel: the host; onChange(text): the prompt's JSON after every edit. Hidden until show(), placed by layout(rect).
-export function createEditor({ panel, schema, library, onChange, onLibrary }) {
+// Lays items out top to bottom in a column w wide (an array is a row of buttons, wrapped, where a field takes the room the buttons
+// leave; a field's edit bar goes above it, so it hides no button) -> the widgets, placed
+export function stack(items, w) {
+	const kids = [];
+	let y = 0;
+	for (const item of items) {
+		if (Array.isArray(item)) {
+			const field = item.find((b) => b instanceof ui.TextField);
+			if (field) Object.assign(field, { barAbove: true, w: w - item.reduce((s, b) => b === field ? s : s + b.w + GAP, 0) });
+			let x = 0;
+			for (const b of item) {
+				if (x && x + b.w > w) { x = 0; y += ROW + GAP; }
+				Object.assign(b, { x, y, w: Math.min(b.w, w) });
+				x += b.w + GAP;
+			}
+			if (item.length) y += ROW + GAP;
+			kids.push(...item);
+			continue;
+		}
+		if (item instanceof ui.TextField) item.barAbove = true;
+		Object.assign(item, { x: 0, y, w });
+		item.relayout();
+		y += item.h + GAP;
+		kids.push(item);
+	}
+	return kids;
+}
+
+// One sheet at a time over the panel: a card over the dimmed panel, name() as its title, a close button, then content() stacked
+// in a scrolling body. refresh() re-runs content() (and re-places the card); fields kept across runs keep their edit.
+export function createSheet(panel) {
+	let sheet = null;
+
+	function open(name, content) {
+		close();
+		sheet = { name, content, shade: new Shade({ onClose: close }), body: new ui.ScrollView({}), close: new ui.Button({ icon: "x", round: true, w: ROW, h: ROW, onClick: close }) };
+		for (const w of [sheet.shade, sheet.body, sheet.close]) panel.add(w);
+		refresh();
+	}
+
+	function refresh() {
+		if (!sheet) return;
+		const { name, content, shade, body } = sheet, W = panel.width, H = panel.height;
+		const cw = Math.min(W - 2 * M, SHEET_W), cx = (W - cw) / 2, bw = cw - 2 * M, top = M + ROW + 2 * M;
+		body.setChildren(stack(content(), bw));
+		Object.assign(body, { x: cx + M, y: top, w: bw, h: Math.min(body.contentH(), H - top - 2 * M) });
+		Object.assign(shade, { x: 0, y: 0, w: W, h: H, title: name(), card: { x: cx, y: M, w: cw, h: top + body.h } });
+		Object.assign(sheet.close, { x: cx + cw - M - ROW, y: 2 * M });
+		panel.invalidate();
+	}
+
+	function close() {
+		const s = sheet;
+		if (!s) return;
+		sheet = null;
+		commit(); // its field's onDone may still act
+		for (const w of [s.shade, s.body, s.close]) panel.remove(w);
+	}
+
+	return { open, refresh, close };
+}
+
+// panel: the host; sheet: its createSheet(panel); onChange(text): the prompt's JSON after every edit. Hidden until show(), placed
+// by layout(rect).
+export function createEditor({ panel, sheet, schema, library, onChange, onLibrary }) {
 	const view = panel.add(new Box({ visible: false }));
 	const folded = new WeakSet(), gone = new Set(); // folded nodes; ids of deleted subjects, whose mentions are flagged
-	let model = fmt.newPrompt(schema), lines = [], sheet = null; // lines: [{ depth, main, right: [buttons over its end] }]
+	let model = fmt.newPrompt(schema), lines = []; // lines: [{ depth, main, right: [buttons over its end] }]
 
 	const flag = (text) => [...gone].some((id) => fmt.mentions(text, id));
 	const texts = (node) => node.kind === "chips" ? node.chips.map((c) => c.text)
@@ -340,58 +438,6 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 		view.invalidate();
 	}
 
-	// A card over the dimmed panel: name() as its title, a close button, then content() stacked in a scrolling body (an array in
-	// it is a row of buttons, wrapped, where a field takes the room the buttons leave). refresh() re-runs content(); fields kept
-	// across runs keep their edit.
-	function openSheet(name, content) {
-		closeSheet();
-		sheet = { name, content, shade: new Shade({ onClose: closeSheet }), body: new ui.ScrollView({}), close: new ui.Button({ icon: "x", round: true, w: ROW, h: ROW, onClick: closeSheet }) };
-		for (const w of [sheet.shade, sheet.body, sheet.close]) panel.add(w);
-		refresh();
-	}
-
-	function refresh() {
-		if (!sheet) return;
-		const { name, content, shade, body, close } = sheet, W = panel.width, H = panel.height;
-		const cw = Math.min(W - 2 * M, SHEET_W), cx = (W - cw) / 2, bw = cw - 2 * M, top = M + ROW + 2 * M;
-		const kids = [];
-		let y = 0;
-		for (const item of content()) {
-			if (Array.isArray(item)) {
-				const field = item.find((b) => b instanceof ui.TextField);
-				if (field) Object.assign(field, { barAbove: true, w: bw - item.reduce((s, b) => b === field ? s : s + b.w + GAP, 0) });
-				let x = 0;
-				for (const b of item) {
-					if (x && x + b.w > bw) { x = 0; y += ROW + GAP; }
-					Object.assign(b, { x, y, w: Math.min(b.w, bw) });
-					x += b.w + GAP;
-				}
-				if (item.length) y += ROW + GAP;
-				kids.push(...item);
-				continue;
-			}
-			// a field's edit bar goes above it, over the title or the line before, so it hides no button
-			if (item instanceof ui.TextField) item.barAbove = true;
-			Object.assign(item, { x: 0, y, w: bw });
-			item.relayout();
-			y += item.h + GAP;
-			kids.push(item);
-		}
-		body.setChildren(kids);
-		Object.assign(body, { x: cx + M, y: top, w: bw, h: Math.min(body.contentH(), H - top - 2 * M) });
-		Object.assign(shade, { x: 0, y: 0, w: W, h: H, title: name(), card: { x: cx, y: M, w: cw, h: top + body.h } });
-		Object.assign(close, { x: cx + cw - M - ROW, y: 2 * M });
-		panel.invalidate();
-	}
-
-	function closeSheet() {
-		const s = sheet;
-		if (!s) return;
-		sheet = null;
-		commit(); // its field's onDone may still act
-		for (const w of [s.shade, s.body, s.close]) panel.remove(w);
-	}
-
 	function editParts(key, edit) {
 		const groups = fmt.parseParts(library.values[key] ?? "");
 		edit(groups);
@@ -409,19 +455,19 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 	// is filled), then the current slot's fragment values by group (a tap fills it and moves to the next empty slot).
 	function resolve(name, texts, label, onDone) {
 		const segs = texts.map((t) => fmt.segments(t, library.fragments)), all = segs.flat().filter((s) => typeof s !== "string");
-		closeSheet();
+		sheet.close();
 		if (!all.length) return onDone(texts);
 		const values = all.map(() => undefined);
 		let current = 0, done = false;
 		const set = (k, v) => {
 			values[k] = v;
 			current = values.map((_, j) => (k + 1 + j) % values.length).find((j) => values[j] === undefined) ?? k;
-			refresh();
+			sheet.refresh();
 		};
 		const random = (k) => fmt.randomValue(library.fragments, all[k].name);
 		const view = new SlotText({ texts: segs.filter((s) => s.some((x) => typeof x !== "string")), onSlot: (k) => {
 			current = k;
-			refresh();
+			sheet.refresh();
 		} });
 		const free = new ui.TextField({ placeholder: "Other value…", onDone: (v) => {
 			free.value = "";
@@ -432,10 +478,10 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			done = true;
 			let i = 0;
 			const filled = segs.map((s) => s.map((x) => typeof x === "string" ? x : values[i++]).join(""));
-			closeSheet();
+			sheet.close();
 			onDone(filled);
 		};
-		openSheet(() => name, () => {
+		sheet.open(() => name, () => {
 			Object.assign(view, { values, current });
 			const slot = all[current], groups = fmt.parseParts(library.fragments[slot.name] ?? "");
 			return [
@@ -443,7 +489,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 				[free, button("Random", () => set(current, random(current)))],
 				[button("Random all", () => {
 					values.forEach((_, k) => { values[k] = random(k); });
-					refresh();
+					sheet.refresh();
 				}), button(label, finish, { variant: "accent", disabled: values.includes(undefined) })],
 				note(`{${slot.name}}`, true),
 				...groups.flatMap(({ group, parts }) => [...group ? [note(group)] : [], parts.map((v) => button(v, () => set(current, v)))]),
@@ -458,14 +504,14 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 		let renaming = null, confirm = null, rename = null; // the parts ({ group, text }) being renamed / asked to delete
 		const same = (a, b) => a?.group === b.group && a.text === b.text;
 		const find = (groups, p) => groups.find((g) => g.group === p.group);
-		const search = new ui.TextField({ placeholder: "Search parts…", onInput: refresh });
+		const search = new ui.TextField({ placeholder: "Search parts…", onInput: sheet.refresh });
 		// Add & save runs before its press commits the line, whose onDone then finds it added
 		let added = false;
 		const add = (v, save) => {
 			const text = v.trim();
 			if (added || !text) return;
 			added = true;
-			closeSheet();
+			sheet.close();
 			addChip(node, text);
 			if (save) savePart(key, text);
 		};
@@ -475,7 +521,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			addSave.invalidate();
 		} });
 		const pick = (text) => resolve(key, [text], "Add chip", ([t]) => addChip(node, t));
-		openSheet(() => key, () => {
+		sheet.open(() => key, () => {
 			const q = search.value.trim().toLowerCase(), ids = fmt.subjectIds(model), items = [[free, addSave], search];
 			if (ids.length) items.push(note("→ subject"), ids.map((id) => button(id, () => pick(id))));
 			const start = items.length;
@@ -498,14 +544,14 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 									if (i >= 0) g.parts[i] = text;
 								});
 								if (renaming === p) renaming = null;
-								refresh();
+								sheet.refresh();
 							},
 							onCancel: () => {
 								if (renaming === p) renaming = null;
-								refresh();
+								sheet.refresh();
 							},
 						});
-						refresh();
+						sheet.refresh();
 						focus(rename);
 					},
 					onDelete: () => {
@@ -514,7 +560,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 							if (i >= 0) g.parts.splice(i, 1);
 						});
 						confirm = same(confirm, p) ? null : p;
-						refresh();
+						sheet.refresh();
 					},
 				}));
 			}
@@ -530,7 +576,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			const i = node.chips.indexOf(chip);
 			if (i < 0) return;
 			node.chips.splice(i, 1);
-			closeSheet();
+			sheet.close();
 			changed(true);
 		};
 		const move = (d) => {
@@ -558,7 +604,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			field.value = chip.text;
 			changed(false);
 		};
-		openSheet(() => key, () => {
+		sheet.open(() => key, () => {
 			const ids = fmt.subjectIds(model);
 			return [
 				field,
@@ -576,13 +622,13 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 		const save = (group) => {
 			if (saved || !text) return;
 			saved = true;
-			closeSheet();
+			sheet.close();
 			editParts(key, (gs) => (gs.find((g) => g.group === group) ?? gs[gs.push({ group, parts: [] }) - 1]).parts.push(text));
 		};
 		const fresh = new ui.TextField({ placeholder: "New group…", onDone: (v) => { if (v.trim()) save(v.trim()); } });
 		const groups = fmt.parseParts(library.values[key] ?? "").map((g) => g.group);
 		if (!groups.includes("")) groups.push("");
-		openSheet(() => `Save as a part of ${key}`, () => [note(text, false, theme.fg), note("Group"), groups.map((g) => button(g || "Ungrouped", () => save(g))), fresh]);
+		sheet.open(() => `Save as a part of ${key}`, () => [note(text, false, theme.fg), note("Group"), groups.map((g) => button(g || "Ungrouped", () => save(g))), fresh]);
 	}
 
 	// ⋯ on a card: a subject's id (a rename follows in every text), save it as a preset, delete it; a plain card: delete
@@ -593,11 +639,11 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			if (i < 0) return;
 			list.items.splice(i, 1);
 			if (sub) gone.add(sub.id);
-			closeSheet();
+			sheet.close();
 			changed(true);
 		};
 		const remove = button("Delete", drop, { variant: "danger" });
-		if (!sub) return openSheet(() => cardName(list, item), () => [[remove]]);
+		if (!sub) return sheet.open(() => cardName(list, item), () => [[remove]]);
 		const id = new ui.TextField({ value: sub.id, onDone: (v) => {
 			const to = v.trim();
 			const why = to === sub.id ? "" : !fmt.validId(to) ? "An id is lowercase letters, digits and _" : fmt.subjectIds(model).includes(to) ? `${to} is already used` : null;
@@ -608,9 +654,9 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			}
 			error.setText(why ?? "");
 			id.value = sub.id;
-			refresh();
+			sheet.refresh();
 		} });
-		openSheet(() => cardName(list, item), () => [note("Id"), id, ...error.text ? [error] : [], [button("Save as preset", () => presetSheet(item)), remove]]);
+		sheet.open(() => cardName(list, item), () => [note("Id"), id, ...error.text ? [error] : [], [button("Save as preset", () => presetSheet(item)), remove]]);
 	}
 
 	function presetSheet(item) {
@@ -622,10 +668,10 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			saved = true;
 			(library.presets[type] ??= {})[name] = fmt.toJSON(item);
 			onLibrary("presets", type);
-			closeSheet();
+			sheet.close();
 		};
 		const name = new ui.TextField({ value: item.sub.id, onDone: save });
-		openSheet(() => `Save ${item.sub.id} as a ${type} preset`, () => [note("Preset name"), name, [button("Save", () => {
+		sheet.open(() => `Save ${item.sub.id} as a ${type} preset`, () => [note("Preset name"), name, [button("Save", () => {
 			commit();
 			save(name.value);
 		}, { variant: "accent" })]]);
@@ -635,7 +681,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 	// ▾ next to "+ Person": an empty subject of each type, or one of its presets
 	function subjectSheet(list) {
 		const add = (type, name, preset = {}) => resolve(name, fmt.strings(preset), "Add subject", (texts) => addSubject(list, type, fmt.withStrings(preset, texts)));
-		openSheet(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => [
+		sheet.open(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => [
 			note(title(type, true), true),
 			[button(`Empty ${type}`, () => add(type)), ...Object.entries(library.presets[type] ?? {}).map(([name, p]) => button(name, () => add(type, name, p)))],
 		]));
@@ -658,15 +704,15 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			if (added || !key) return;
 			if (group.fields.some((f) => f.key === key) || group.sub && (key === "id" || key === "type")) {
 				error.setText(`${key} is already there`);
-				return refresh();
+				return sheet.refresh();
 			}
 			added = true;
 			group.fields.push({ key, node: { kind: "chips", chips: [] } });
-			closeSheet();
+			sheet.close();
 			changed(true);
 		};
 		const field = new ui.TextField({ placeholder: "Field name", onDone: add });
-		openSheet(() => `New field in ${name}`, () => [field, ...error.text ? [error] : [], [button("Add", () => {
+		sheet.open(() => `New field in ${name}`, () => [field, ...error.text ? [error] : [], [button("Add", () => {
 			commit();
 			add(field.value);
 		}, { variant: "accent" })]]);
@@ -674,20 +720,19 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 	}
 
 	return {
-		closeSheet,
-		// the box's rect in panel px; an open sheet is placed again
+		resolve,
+		// the box's rect in panel px
 		layout(rect) {
 			Object.assign(view, rect);
 			restack();
-			refresh();
 		},
 		show() { view.visible = true; },
 		hide() {
-			closeSheet();
+			sheet.close();
 			view.visible = false;
 		},
 		load(m) {
-			closeSheet();
+			sheet.close();
 			model = m;
 			gone.clear();
 			build();
