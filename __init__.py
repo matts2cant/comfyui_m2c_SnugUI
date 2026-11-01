@@ -28,6 +28,10 @@ folder_paths.add_model_folder_path("snugui_parts", str(Path(models_base) / "snug
 PARTS_DIR = Path(folder_paths.get_folder_paths("snugui_parts")[0]).resolve()
 PARTS_FILES = {"values": ".txt", "presets": ".json"}
 PARTS_NAME = re.compile(r"[\w-]+(\.[\w-]+)*")
+PROMPTS_DIR = PARTS_DIR / "prompts"
+# saved prompts: <folder>/…/<name>.json or .txt under prompts/, each name words joined by single spaces or dots
+PROMPT_FOLDER = re.compile(r"[\w-]+([ .][\w-]+)*(/[\w-]+([ .][\w-]+)*)*")
+PROMPT_PATH = re.compile(PROMPT_FOLDER.pattern + r"\.(json|txt)")
 STARTER_DIR = APP_DIR / "prompt" / "parts"
 for src in STARTER_DIR.rglob("*"):
     dst = PARTS_DIR / src.relative_to(STARTER_DIR)
@@ -85,16 +89,57 @@ async def get_snapshot(request):
     return web.json_response(snapshot, headers=NO_CACHE)
 
 
-@routes.get("/snugui/parts")
-async def get_parts(request):
+# a file's modification time as the page compares it (µs: exact in a JS number)
+def stamp(path: Path):
+    return path.stat().st_mtime_ns // 1000
+
+
+# the whole library: the saved prompts by their path under prompts/ (with every folder, empty ones too) and their mtimes, keyed
+# "prompts/<path>"
+def library():
     values, fragments = ({f.stem: f.read_text(encoding="utf-8") for f in (PARTS_DIR / kind).glob("*.txt")} for kind in ("values", "fragments"))
-    presets = {}
+    presets, prompts, folders, mtimes = {}, {}, [], {}
     for f in (PARTS_DIR / "presets").glob("*.json"):
         try:
             presets[f.stem] = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             logging.warning("SnugUI: ignoring unreadable %s", f)
-    return web.json_response({"values": values, "fragments": fragments, "presets": presets}, headers=NO_CACHE)
+    for f in sorted(PROMPTS_DIR.rglob("*")):
+        name = f.relative_to(PROMPTS_DIR).as_posix()
+        if f.is_dir():
+            if PROMPT_FOLDER.fullmatch(name):
+                folders.append(name)
+        elif PROMPT_PATH.fullmatch(name):
+            try:
+                prompts[name] = f.read_text(encoding="utf-8")
+                mtimes["prompts/" + name] = stamp(f)
+            except ValueError:
+                logging.warning("SnugUI: ignoring unreadable %s", f)
+    return {"values": values, "fragments": fragments, "presets": presets, "prompts": prompts, "folders": folders, "mtimes": mtimes}
+
+
+@routes.get("/snugui/parts")
+async def get_parts(request):
+    return web.json_response(library(), headers=NO_CACHE)
+
+
+# One library edit, { kind, name, op, … }, answered with the whole library. write { text, mtime? } replaces a saved prompt only when
+# mtime is its current one, and creates one only without mtime (409 otherwise: changed on disk, or already there).
+@routes.post("/snugui/parts/edit")
+async def edit_parts(request):
+    body = await request.json()
+    kind, name, op = body.get("kind"), body.get("name"), body.get("op")
+    path = (PROMPTS_DIR / name).resolve() if kind == "prompts" and isinstance(name, str) and PROMPT_PATH.fullmatch(name) else None
+    if not path or not path.is_relative_to(PROMPTS_DIR) or op != "write" or not isinstance(body.get("text"), str):
+        return web.json_response({"error": f"invalid library edit {kind} {name} {op}"}, status=400)
+    mtime = body.get("mtime")
+    if mtime is None and path.exists():
+        return web.json_response({"error": f"{name} already exists"}, status=409)
+    if mtime is not None and (not path.is_file() or stamp(path) != mtime):
+        return web.json_response({"error": f"{name} changed on disk"}, status=409)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body["text"], encoding="utf-8")
+    return web.json_response(library(), headers=NO_CACHE)
 
 
 # one library file: values/<field key>.txt (the body is its text) or presets/<type>.json (the body is its JSON object)

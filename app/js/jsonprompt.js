@@ -214,6 +214,18 @@ export function withStrings(v, texts) {
 	return map(v);
 }
 
+// Saved prompts: { prompts: { <folder/…/name.ext>: text }, folders: [<folder/…>] } (the library's). The folder dir ("" = the
+// top): its sub-folders, then its prompts, by name -> [{ path, name, folder }]
+export function listing({ prompts, folders }, dir) {
+	const parent = (p) => p.slice(0, Math.max(0, p.lastIndexOf("/"))), name = (p) => p.slice(p.lastIndexOf("/") + 1);
+	const items = (paths, folder) => paths.filter((p) => parent(p) === dir).map((path) => ({ path, name: name(path), folder }))
+		.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+	return [...items(folders, true), ...items(Object.keys(prompts), false)];
+}
+
+// a folder or prompt name: words of letters, digits, _ and - joined by single spaces or dots (__init__.py's PROMPT_FOLDER)
+export const validName = (name) => /^[\p{L}\p{N}_-]+(?:[ .][\p{L}\p{N}_-]+)*$/u.test(name);
+
 // the ungrouped parts first; empty groups are dropped
 export function stringifyParts(groups) {
 	const lines = [];
