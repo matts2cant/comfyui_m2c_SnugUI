@@ -1,12 +1,12 @@
 // JSON prompt editor, the prompt panel's JSON mode: the prompt's fields as rows of chips in one scrolling box of the host panel,
 // and sheets over the whole panel: the picker (free text, parts, subject ids), a chip's menu, a subject's menu, new fields, the
-// subjects to add, the slots of a library text. The model and its JSON are jsonprompt.js's; the library ({ values: { <field key>:
-// part file text }, fragments: { <name>: file text }, presets: { <type>: { <name>: subject } }, … }) is the host's: the editor
-// changes it in place and calls onLibrary(kind, name) for the file that changed. The sheet machinery (createSheet, stack, button,
-// note, focus, TreeRow) is shared with the prompt panel's own sheets.
+// subjects to add, the slots of a library text. The model and its JSON are jsonprompt.js's, the library parts.js's (a sheet showing
+// it fetches it again as it opens; the editor's library changes are server edits). The sheet machinery (createSheet, stack,
+// button, note, focus, TreeRow, resolve, resolveSaved) is shared with the Prompt panel's own sheets and the Library panel.
 import * as ui from "./ui.js";
 import { commit } from "./keyboard.js";
 import * as fmt from "./jsonprompt.js";
+import { edit, library, sync } from "./parts.js";
 
 const { theme, measure } = ui;
 // panel px: margin, gap, indent per level, row height (headers, chips, buttons), chip text size, its line height and side
@@ -177,50 +177,22 @@ class SlotText extends Boxes {
 	}
 }
 
-// a library part in the picker: its text (tap: add it), rename and delete; confirm: the delete button asks again. warn: it names
-// a missing fragment
-class PartRow extends Boxes {
-	constructor(o) { super({ text: "", confirm: false, warn: false, h: ROW, ...o }); }
-	parts() {
-		const s = this.h, dw = this.confirm ? 150 : s;
-		return [
-			{ x: 0, y: 0, w: this.w - s - dw - 2 * GAP, h: s, run: this.onPick },
-			{ x: this.w - s - dw - GAP, y: 0, w: s, h: s, run: this.onRename, icon: "pencil" },
-			{ x: this.w - dw, y: 0, w: dw, h: s, run: this.onDelete, icon: this.confirm ? null : "x" },
-		];
-	}
-	draw(ctx) {
-		ctx.textBaseline = "middle";
-		this.parts().forEach((b, i) => {
-			ctx.beginPath();
-			ctx.roundRect(b.x, b.y, b.w, b.h, R);
-			ctx.fillStyle = i === 2 && this.confirm ? theme.danger : i === 0 && this.warn ? WARN_BG : theme.surface;
-			ctx.fill();
-			if (i === 0 && this.warn) {
-				ctx.strokeStyle = WARN;
-				ctx.lineWidth = 3;
-				ctx.stroke();
-			}
-			if (this.lit(i)) ui.drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, R);
-			ctx.fillStyle = ctx.strokeStyle = theme.fg;
-			if (b.icon) return ui.drawIcon(ctx, b.icon, b.x + (b.w - 32) / 2, b.y + (b.h - 32) / 2, 32);
-			ctx.font = ui.font(i ? 24 : SIZE, !!i);
-			ctx.textAlign = i ? "center" : "left";
-			ctx.fillText(i ? "Delete" : ui.ellipsize(ctx, this.text, b.w - 2 * PAD), i ? b.x + b.w / 2 : PAD, b.h / 2 + 1);
-		});
-	}
-}
-
-// A row of a tree or list in a sheet: indented by depth, a chevron when it folds (open true / false; undefined: none), an icon
-// (icons.js), the label and a muted sub at its end; selected: the accent fill
+// A row of a tree or list (a sheet's, the Library panel's): indented by depth, a chevron when it folds (open true / false;
+// undefined: none), an icon (icons.js), the label and a muted sub at its end; selected: the accent fill; warn: the warning tint
+// and border (a part naming a missing fragment)
 export class TreeRow extends ui.Widget {
-	constructor(o) { super({ label: "", sub: "", icon: null, depth: 0, open: undefined, selected: false, h: ROW, ...o }); }
+	constructor(o) { super({ label: "", sub: "", icon: null, depth: 0, open: undefined, selected: false, warn: false, h: ROW, ...o }); }
 	draw(ctx) {
 		const x = this.depth * IND, w = this.w - x;
 		ctx.beginPath();
 		ctx.roundRect(x, 0, w, this.h, R);
-		ctx.fillStyle = this.selected ? theme.accent : theme.surface;
+		ctx.fillStyle = this.selected ? theme.accent : this.warn ? WARN_BG : theme.surface;
 		ctx.fill();
+		if (this.warn) {
+			ctx.strokeStyle = WARN;
+			ctx.lineWidth = 3;
+			ctx.stroke();
+		}
 		ui.tint(ctx, this, x, 0, w, this.h, R);
 		let tx = x + 16;
 		if (this.open !== undefined) {
@@ -344,9 +316,69 @@ export function createSheet(panel) {
 	return { open, refresh, close };
 }
 
-// panel: the host; sheet: its createSheet(panel); onChange(text): the prompt's JSON after every edit. Hidden until show(), placed
-// by layout(rect).
-export function createEditor({ panel, sheet, schema, library, onChange, onLibrary }) {
+// Fills the slots of library texts (a part, a preset's strings, a saved prompt) in sheet: without any, onDone(texts) at once;
+// else one sheet walking through them: the texts with their slots, a free value and Random (the current slot), Random all and
+// `label` (once every slot is filled), then the current slot's fragment values by group (a tap fills it and moves to the next
+// empty slot). The library is fetched again as it opens.
+export function resolve(sheet, name, texts, label, onDone) {
+	const segs = texts.map((t) => fmt.segments(t, library.fragments)), all = segs.flat().filter((s) => typeof s !== "string");
+	sheet.close();
+	if (!all.length) return onDone(texts);
+	sync();
+	const values = all.map(() => undefined);
+	let current = 0, done = false;
+	const set = (k, v) => {
+		values[k] = v;
+		current = values.map((_, j) => (k + 1 + j) % values.length).find((j) => values[j] === undefined) ?? k;
+		sheet.refresh();
+	};
+	const random = (k) => fmt.randomValue(library.fragments, all[k].name);
+	const view = new SlotText({ texts: segs.filter((s) => s.some((x) => typeof x !== "string")), onSlot: (k) => {
+		current = k;
+		sheet.refresh();
+	} });
+	const free = new ui.TextField({ placeholder: "Other value…", onDone: (v) => {
+		free.value = "";
+		if (v.trim()) set(current, v.trim());
+	} });
+	const finish = () => {
+		if (done) return;
+		done = true;
+		let i = 0;
+		const filled = segs.map((s) => s.map((x) => typeof x === "string" ? x : values[i++]).join(""));
+		sheet.close();
+		onDone(filled);
+	};
+	sheet.open(() => name, () => {
+		Object.assign(view, { values, current });
+		const slot = all[current], groups = fmt.parseParts(library.fragments[slot.name] ?? "");
+		return [
+			view,
+			[free, button("Random", () => set(current, random(current)))],
+			[button("Random all", () => {
+				values.forEach((_, k) => { values[k] = random(k); });
+				sheet.refresh();
+			}), button(label, finish, { variant: "accent", disabled: values.includes(undefined) })],
+			note(`{${slot.name}}`, true),
+			...groups.flatMap(({ group, parts }) => [...group ? [note(group)] : [], parts.map((v) => button(v, () => set(current, v)))]),
+			...groups.length ? [] : [note(`No values in fragments/${slot.name}.txt`)],
+		];
+	});
+}
+
+// a saved prompt (prompts/<path>) with its slots filled in sheet ("Load"): onDone(text, json), json for a .json holding an object
+// (its strings filled), else the text as is
+export function resolveSaved(sheet, path, onDone) {
+	const text = library.prompts[path], name = path.slice(path.lastIndexOf("/") + 1);
+	let obj = null;
+	if (path.endsWith(".json")) try { obj = JSON.parse(text); } catch {}
+	if (obj && typeof obj === "object" && !Array.isArray(obj)) resolve(sheet, name, fmt.strings(obj), "Load", (t) => onDone(JSON.stringify(fmt.withStrings(obj, t)), true));
+	else resolve(sheet, name, [text], "Load", ([t]) => onDone(t, false));
+}
+
+// panel: the host; sheet: its createSheet(panel); onChange(text): the prompt's JSON after every edit; onError(text): a library edit
+// failed. Hidden until show(), placed by layout(rect).
+export function createEditor({ panel, sheet, schema, onChange, onError }) {
 	const view = panel.add(new Box({ visible: false }));
 	const folded = new WeakSet(), gone = new Set(); // folded nodes; ids of deleted subjects, whose mentions are flagged
 	let model = fmt.newPrompt(schema), lines = []; // lines: [{ depth, main, right: [buttons over its end] }]
@@ -438,72 +470,17 @@ export function createEditor({ panel, sheet, schema, library, onChange, onLibrar
 		view.invalidate();
 	}
 
-	function editParts(key, edit) {
-		const groups = fmt.parseParts(library.values[key] ?? "");
-		edit(groups);
-		library.values[key] = fmt.stringifyParts(groups);
-		onLibrary("values", key);
-	}
-
 	function addChip(node, text) {
 		node.chips.push({ text });
 		changed(true);
 	}
 
-	// Fills the slots of library texts (a part, a preset's strings): without any, onDone(texts) at once; else one sheet walking
-	// through them: the texts with their slots, a free value and Random (the current slot), Random all and `label` (once every slot
-	// is filled), then the current slot's fragment values by group (a tap fills it and moves to the next empty slot).
-	function resolve(name, texts, label, onDone) {
-		const segs = texts.map((t) => fmt.segments(t, library.fragments)), all = segs.flat().filter((s) => typeof s !== "string");
-		sheet.close();
-		if (!all.length) return onDone(texts);
-		const values = all.map(() => undefined);
-		let current = 0, done = false;
-		const set = (k, v) => {
-			values[k] = v;
-			current = values.map((_, j) => (k + 1 + j) % values.length).find((j) => values[j] === undefined) ?? k;
-			sheet.refresh();
-		};
-		const random = (k) => fmt.randomValue(library.fragments, all[k].name);
-		const view = new SlotText({ texts: segs.filter((s) => s.some((x) => typeof x !== "string")), onSlot: (k) => {
-			current = k;
-			sheet.refresh();
-		} });
-		const free = new ui.TextField({ placeholder: "Other value…", onDone: (v) => {
-			free.value = "";
-			if (v.trim()) set(current, v.trim());
-		} });
-		const finish = () => {
-			if (done) return;
-			done = true;
-			let i = 0;
-			const filled = segs.map((s) => s.map((x) => typeof x === "string" ? x : values[i++]).join(""));
-			sheet.close();
-			onDone(filled);
-		};
-		sheet.open(() => name, () => {
-			Object.assign(view, { values, current });
-			const slot = all[current], groups = fmt.parseParts(library.fragments[slot.name] ?? "");
-			return [
-				view,
-				[free, button("Random", () => set(current, random(current)))],
-				[button("Random all", () => {
-					values.forEach((_, k) => { values[k] = random(k); });
-					sheet.refresh();
-				}), button(label, finish, { variant: "accent", disabled: values.includes(undefined) })],
-				note(`{${slot.name}}`, true),
-				...groups.flatMap(({ group, parts }) => [...group ? [note(group)] : [], parts.map((v) => button(v, () => set(current, v)))]),
-				...groups.length ? [] : [note(`No values in fragments/${slot.name}.txt`)],
-			];
-		});
-	}
+	// a library edit; a refused one shows its message
+	const save = (body) => edit(body).catch((e) => onError(e.message));
 
 	// +: a free-text line (already editing) to add as is or also save as a part, then the field's parts by group (search, tap to
-	// add, rename, delete) and the subjects' ids
+	// add) and the subjects' ids
 	function picker(node, key) {
-		let renaming = null, confirm = null, rename = null; // the parts ({ group, text }) being renamed / asked to delete
-		const same = (a, b) => a?.group === b.group && a.text === b.text;
-		const find = (groups, p) => groups.find((g) => g.group === p.group);
 		const search = new ui.TextField({ placeholder: "Search parts…", onInput: sheet.refresh });
 		// Add & save runs before its press commits the line, whose onDone then finds it added
 		let added = false;
@@ -520,49 +497,17 @@ export function createEditor({ panel, sheet, schema, library, onChange, onLibrar
 			addSave.disabled = !v.trim();
 			addSave.invalidate();
 		} });
-		const pick = (text) => resolve(key, [text], "Add chip", ([t]) => addChip(node, t));
+		const pick = (text) => resolve(sheet, key, [text], "Add chip", ([t]) => addChip(node, t));
+		sync();
 		sheet.open(() => key, () => {
 			const q = search.value.trim().toLowerCase(), ids = fmt.subjectIds(model), items = [[free, addSave], search];
 			if (ids.length) items.push(note("→ subject"), ids.map((id) => button(id, () => pick(id))));
 			const start = items.length;
 			for (const { group, parts } of fmt.parseParts(library.values[key] ?? "")) {
-				const shown = parts.filter((text) => text.toLowerCase().includes(q)).map((text) => ({ group, text }));
+				const shown = parts.filter((text) => text.toLowerCase().includes(q));
 				if (!shown.length) continue;
 				items.push(note(group || "Ungrouped", true));
-				for (const p of shown) items.push(same(renaming, p) ? rename : new PartRow({
-					text: p.text, confirm: same(confirm, p), warn: fmt.missing(p.text, library.fragments),
-					onPick: () => pick(p.text),
-					onRename: () => {
-						renaming = p;
-						confirm = null;
-						rename = new ui.TextField({
-							value: p.text,
-							onDone: (v) => {
-								const text = v.replace(/\s+/g, " ").trim();
-								if (text && text !== p.text) editParts(key, (gs) => {
-									const g = find(gs, p), i = g?.parts.indexOf(p.text) ?? -1;
-									if (i >= 0) g.parts[i] = text;
-								});
-								if (renaming === p) renaming = null;
-								sheet.refresh();
-							},
-							onCancel: () => {
-								if (renaming === p) renaming = null;
-								sheet.refresh();
-							},
-						});
-						sheet.refresh();
-						focus(rename);
-					},
-					onDelete: () => {
-						if (same(confirm, p)) editParts(key, (gs) => {
-							const g = find(gs, p), i = g?.parts.indexOf(p.text) ?? -1;
-							if (i >= 0) g.parts.splice(i, 1);
-						});
-						confirm = same(confirm, p) ? null : p;
-						sheet.refresh();
-					},
-				}));
+				for (const text of shown) items.push(new TreeRow({ label: text, warn: fmt.missing(text, library.fragments), onClick: () => pick(text) }));
 			}
 			if (items.length === start) items.push(note(q ? "No parts match" : `No parts for ${key} yet`));
 			return items;
@@ -615,20 +560,20 @@ export function createEditor({ panel, sheet, schema, library, onChange, onLibrar
 		focus(field);
 	}
 
-	// asks for a group (existing or new) and appends the text to the field's parts
+	// asks for a group (existing or new) and adds the text to the field's parts in it
 	function savePart(key, text) {
 		text = text.replace(/\s+/g, " ").trim();
 		let saved = false;
-		const save = (group) => {
+		const add = (group) => {
 			if (saved || !text) return;
 			saved = true;
 			sheet.close();
-			editParts(key, (gs) => (gs.find((g) => g.group === group) ?? gs[gs.push({ group, parts: [] }) - 1]).parts.push(text));
+			save({ kind: "values", name: key, op: "add", group, text });
 		};
-		const fresh = new ui.TextField({ placeholder: "New group…", onDone: (v) => { if (v.trim()) save(v.trim()); } });
+		const fresh = new ui.TextField({ placeholder: "New group…", onDone: (v) => { if (v.trim()) add(v.trim()); } });
 		const groups = fmt.parseParts(library.values[key] ?? "").map((g) => g.group);
 		if (!groups.includes("")) groups.push("");
-		sheet.open(() => `Save as a part of ${key}`, () => [note(text, false, theme.fg), note("Group"), groups.map((g) => button(g || "Ungrouped", () => save(g))), fresh]);
+		sheet.open(() => `Save as a part of ${key}`, () => [note(text, false, theme.fg), note("Group"), groups.map((g) => button(g || "Ungrouped", () => add(g))), fresh]);
 	}
 
 	// ⋯ on a card: a subject's id (a rename follows in every text), save it as a preset, delete it; a plain card: delete
@@ -662,25 +607,24 @@ export function createEditor({ panel, sheet, schema, library, onChange, onLibrar
 	function presetSheet(item) {
 		const type = item.sub.type ?? "subject";
 		let saved = false;
-		const save = (v) => {
-			const name = v.trim();
-			if (saved || !name) return;
+		const add = (v) => {
+			const key = v.trim();
+			if (saved || !key) return;
 			saved = true;
-			(library.presets[type] ??= {})[name] = fmt.toJSON(item);
-			onLibrary("presets", type);
+			save({ kind: "presets", name: type, op: "set", key, value: fmt.toJSON(item) });
 			sheet.close();
 		};
-		const name = new ui.TextField({ value: item.sub.id, onDone: save });
+		const name = new ui.TextField({ value: item.sub.id, onDone: add });
 		sheet.open(() => `Save ${item.sub.id} as a ${type} preset`, () => [note("Preset name"), name, [button("Save", () => {
 			commit();
-			save(name.value);
+			add(name.value);
 		}, { variant: "accent" })]]);
 		focus(name);
 	}
 
 	// ▾ next to "+ Person": an empty subject of each type, or one of its presets
 	function subjectSheet(list) {
-		const add = (type, name, preset = {}) => resolve(name, fmt.strings(preset), "Add subject", (texts) => addSubject(list, type, fmt.withStrings(preset, texts)));
+		const add = (type, name, preset = {}) => resolve(sheet, name, fmt.strings(preset), "Add subject", (texts) => addSubject(list, type, fmt.withStrings(preset, texts)));
 		sheet.open(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => [
 			note(title(type, true), true),
 			[button(`Empty ${type}`, () => add(type)), ...Object.entries(library.presets[type] ?? {}).map(([name, p]) => button(name, () => add(type, name, p)))],
@@ -720,7 +664,6 @@ export function createEditor({ panel, sheet, schema, library, onChange, onLibrar
 	}
 
 	return {
-		resolve,
 		// the box's rect in panel px
 		layout(rect) {
 			Object.assign(view, rect);

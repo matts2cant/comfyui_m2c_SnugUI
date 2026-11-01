@@ -8,8 +8,10 @@ import { createDesktop } from "./desktop.js";
 import { createPointers } from "./pointers.js";
 import { ComfyClient } from "./comfy.js";
 import { store } from "./state.js";
+import { sync } from "./parts.js";
 import { createCenterPanel } from "./panels/center.js";
 import { createPromptPanel } from "./panels/prompt.js";
+import { createLibraryPanel } from "./panels/library.js";
 import { createInputPanel } from "./panels/input.js";
 import { createLoraPanel } from "./panels/lora.js";
 import { createLightsPanel } from "./panels/lights.js";
@@ -100,7 +102,7 @@ if (params.has("help") || needHelp && /OculusBrowser/.test(navigator.userAgent))
 // ---- panels ----
 // The screen is SCREEN_DIAGONAL_IN inches at the aspect of what it shows, on the vertical plane z = -SCREEN_DISTANCE (eye at the
 // origin). Under it the lectern, tilted LECTERN_TILT back about its top edge, from the top down its slope: the output row when
-// shown, the toolbar, then the one open panel (Prompt, Gallery, LoRA, Light, Input or Configuration), all centered. The output pop-up
+// shown, the toolbar, then the one open panel (Prompt, Library, Gallery, LoRA, Light, Input or Configuration), all centered. The output pop-up
 // stands upright in front of the screen's bottom edge, above the cog. Every panel group has PANEL_SCALE, so px density and
 // fonts match.
 const SCREEN_DIAGONAL_IN = 32, SCREEN_DISTANCE = 0.5;
@@ -128,11 +130,12 @@ function panelGroup(panel) {
 }
 
 // the toolbar's panel buttons, in order: [name, icon, title (Desktop View window)]; then the view button (none on phones)
-const PANELS = [["prompt", "pencil", "Prompt"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"], ["light", "sun", "Light"], ["input", "sliders-horizontal", "Input"],
-	["config", "settings", "Configuration"]];
+const PANELS = [["prompt", "pencil", "Prompt"], ["library", "library-big", "Library"], ["gallery", "images", "Gallery"], ["lora", "layers", "LoRA"],
+	["light", "sun", "Light"], ["input", "sliders-horizontal", "Input"], ["config", "settings", "Configuration"]];
 let open = "prompt"; // the panel on the lectern (one at a time, pressing it again closes it); every session starts with Prompt
 let uiShown = true; // false: every panel hidden (toggleUI), the stage and what it shows stay
 const tabs = PANELS.map(([name, icon]) => new ui.Button({ icon, round: true, onClick: () => {
+	if (name === "library") sync(); // the Library panel shows the library on disk as it opens
 	if (deskView) return windows.toggle(name);
 	open = open === name ? null : name;
 	layout();
@@ -142,12 +145,13 @@ const toolbar = createToolbar(ctx, tabs, viewBtn, (text) => windows.toast(text))
 
 const center = createCenterPanel(ctx, toolbar.panel.width, () => windows.toggleTray());
 const prompt = createPromptPanel();
+const library = createLibraryPanel(prompt.setPrompt);
 const inputs = createInputPanel(ctx);
 const loras = createLoraPanel();
 const lights = createLightsPanel(ctx, center.model);
 const config = createConfigPanel(relayout); // the toolbar position moves the Desktop View's deck
 scene.add(lights.room);
-const hosts = { prompt, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
+const hosts = { prompt, library, gallery: { group: panelGroup(center.gallery), panel: center.gallery }, lora: loras, light: lights, input: inputs, config };
 
 const lectern = new THREE.Group();
 lectern.rotation.x = -LECTERN_TILT;
@@ -189,7 +193,7 @@ function layout() {
 
 // Desktop View windows: the same panels, sized to the window (panel px; first size = the VR size, min = what their layouts take).
 // Phones show one at a time, taking all the room the dock leaves.
-const MIN = { prompt: [560, prompt.minHeight], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
+const MIN = { prompt: [560, prompt.minHeight], library: [560, () => 600], gallery: [500, () => 500], lora: [560, () => 700], light: [420, () => 500], input: [560, () => 500], config: [560, config.minHeight] };
 const windows = createDesktop(PANELS.map(([name, icon, title], i) => (
 	{ name, title, icon, button: tabs[i], panel: hosts[name].panel, minW: MIN[name][0], minH: MIN[name][1] }
 )), center.note, {

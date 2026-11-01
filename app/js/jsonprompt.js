@@ -225,14 +225,3 @@ export function listing({ prompts, folders }, dir) {
 
 // a folder or prompt name: words of letters, digits, _ and - joined by single spaces or dots (__init__.py's PROMPT_FOLDER)
 export const validName = (name) => /^[\p{L}\p{N}_-]+(?:[ .][\p{L}\p{N}_-]+)*$/u.test(name);
-
-// the ungrouped parts first; empty groups are dropped
-export function stringifyParts(groups) {
-	const lines = [];
-	for (const g of [...groups].sort((a, b) => !!a.group - !!b.group)) {
-		if (!g.parts.length) continue;
-		if (g.group) lines.push("# " + g.group);
-		lines.push(...g.parts);
-	}
-	return lines.length ? lines.join("\n") + "\n" : "";
-}
