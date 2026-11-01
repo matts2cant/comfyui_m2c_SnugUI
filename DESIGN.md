@@ -393,6 +393,7 @@ another Lucide icon's path data under its name and change the name where it is u
 | Image output tile (placeholder, badge) | `image` | center.js `OutputTile` |
 | Mesh output tile (placeholder, badge) | `box` | center.js `OutputTile` |
 | Output pop-up cog | `settings` | center.js |
+| Gallery thumbnail download button | `download` | center.js `Gallery` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
 | Prompt mode: Text / JSON | `text-initial` / `code` (not in the frontend's set; path data from Lucide) | prompt.js `ModeSwitch` |
 | New line (edit toolbar) | `corner-down-left` (not in the frontend's set; path data from Lucide) | ui.js `EditBar` |
@@ -602,6 +603,11 @@ another Lucide icon's path data under its name and change the name where it is u
   while running; a batch shows its last image (all of them are in the gallery). An empty stage frees the image's textures.
   Gallery panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
   output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
+  Each thumbnail has a round download button (`DL` 64 px, `DL_PAD` 12 px in from its top right corner, the badge's dark fill,
+  `download` icon; hovering it tints the button instead of the tile); a press on it (the button or its inset) does not show the
+  entry: an image opens its `/view` URL in a new tab (`window.open`), a 3D model downloads through a same-origin `<a href download>`
+  named after the file (center.js `saveEntry`). Both run in the press's pointer up (the user activation; in an XR session the
+  `selectend`), so the popup blocker lets the tab through. In an immersive session the new tab may pause VR on the Quest (untested).
   Output row (center's `row`, no background): when App mode configures two outputs or more, one square `OutputTile` per output
   (`TILE` 200 px, rounded): the output's latest result from the history (image: its thumbnail, cover-cropped; 3D: `modelThumb`), its
   kind's `image` / `box` icon as a placeholder before the first result (never a live preview), a kind badge (top left), the title along

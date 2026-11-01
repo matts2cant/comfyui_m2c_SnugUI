@@ -192,7 +192,8 @@ choice is remembered. Panels and images are not lit.
 - B (right controller): hide or show every panel, leaving the image or model; the same panels come back. Hands have no B button.
   Desktop: H.
 - Desktop View (monitor icon on the toolbar): leave VR for the Desktop View.
-- Gallery: the results of the selected output; tap one to show it.
+- Gallery: the results of the selected output; tap one to show it. The download button in a thumbnail's top-right corner opens an
+  image in a new browser tab and downloads a 3D model (in the headset, a new tab may pause VR).
 - Cog at the end of the output row (image outputs only): Flat / 3D R/L / 3D L/R (side-by-side 3D images), HD (see below).
 - Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and

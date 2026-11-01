@@ -34,6 +34,7 @@ export const paths = {
 	code: "m16 18 6-6-6-6M8 6l-6 6 6 6",
 	"text-initial": "M15 5h6M15 12h6M3 19h18M3 12l3.553-7.724a.5.5 0 0 1 .894 0L11 12M3.92 10h6.16",
 	"rectangle-goggles": "M20 6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4a2 2 0 0 1-1.6-.8l-1.6-2.13a1 1 0 0 0-1.6 0L9.6 17.2A2 2 0 0 1 8 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z",
+	download: "M12 15V3m9 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5l5-5",
 };
 
 export const icons = Object.fromEntries(Object.entries(paths).map(([name, d]) => [name, new Path2D(d)]));

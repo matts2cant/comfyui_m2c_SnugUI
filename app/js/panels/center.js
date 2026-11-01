@@ -14,6 +14,7 @@ const { theme } = ui;
 
 export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, phone.js)
 const TILE = 200, SMALL_TILE = 120, RING = 4;
+const DL = 64, DL_PAD = 12; // the gallery tiles' download button, inset from the top right corner
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const MISSING = "File no longer exists — removed from the gallery";
@@ -56,6 +57,18 @@ function ring(ctx, x, y, s, r, color) {
 	ctx.stroke();
 }
 
+// a gallery entry's file: an image opens in a new tab, anything else downloads (same origin, so `download` names the file). Called
+// from the press's pointer up, so the popup blocker lets the tab through.
+function saveEntry(e) {
+	if (e.kind === "image") window.open(e.url, "_blank");
+	else {
+		const a = document.createElement("a");
+		a.href = e.url;
+		a.download = e.filename;
+		a.click();
+	}
+}
+
 function loadStereo() {
 	const mode = pref(STEREO_KEY);
 	return STEREO_MODES.some(([m]) => m === mode) ? mode : "flat";
@@ -66,8 +79,28 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	const group = new THREE.Group();
 
 	// ---- widgets ----
-	// the grid of the selected output's history (its items are the entries): each thumbnail whole, the shown entry ringed
+	// the grid of the selected output's history (its items are the entries): each thumbnail whole with a download button in its top
+	// right corner, the shown entry ringed
 	class Gallery extends ui.ImageGrid {
+		// the index of the item whose download button (or its inset) is under p, else -1
+		buttonAt(p) {
+			const i = this.itemAt(p), g = this.grid();
+			if (i < 0 || p.lx - (i % g.cols) * g.step < g.cw - DL - DL_PAD || p.ly + this.scroll - Math.floor(i / g.cols) * g.step >= DL + DL_PAD) return -1;
+			return i;
+		}
+		onMove(p) {
+			const b = this.buttonAt(p) >= 0;
+			if (b !== this.hotButton) {
+				this.hotButton = b;
+				this.invalidate();
+			}
+			super.onMove(p);
+		}
+		onClick(p) {
+			const i = this.buttonAt(p);
+			if (i >= 0) saveEntry(this.items[i]);
+			else super.onClick(p);
+		}
 		drawTile(ctx, e, i, x, y, s) {
 			ctx.beginPath();
 			ctx.roundRect(x, y, s, s, 16);
@@ -80,7 +113,15 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 				drawFit(ctx, thumb, x, y, s, s);
 				ctx.restore();
 			}
-			if (this.hover && i === this.hotItem) ui.drawTint(ctx, false, x, y, s, s, 16);
+			const hot = this.hover && i === this.hotItem, bx = x + s - DL - DL_PAD, by = y + DL_PAD;
+			if (hot && !this.hotButton) ui.drawTint(ctx, false, x, y, s, s, 16);
+			ctx.beginPath();
+			ctx.arc(bx + DL / 2, by + DL / 2, DL / 2, 0, Math.PI * 2);
+			ctx.fillStyle = "rgba(0,0,0,0.6)";
+			ctx.fill();
+			if (hot && this.hotButton) ui.drawTint(ctx, false, bx, by, DL, DL, DL / 2);
+			ctx.strokeStyle = theme.fg;
+			ui.drawIcon(ctx, "download", bx + DL / 4, by + DL / 4, DL / 2);
 			if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
 		}
 	}
