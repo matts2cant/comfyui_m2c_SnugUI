@@ -179,7 +179,8 @@ Label{text, size, color, align, wrap}, Button{text, icon, round, onClick, varian
   name, centered alone or left of the text, stroked in the text colour; round: circle / pill),
 Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, format} (drag + −/+ buttons; tapping the value edits it in place via an embedded TextField, "," ok, clamped + rounded to step),
 List{items:[{label, value, sub?}], selected, onSelect, rowH, outline} (scrollable; outline: an accent border, Combo's dropdown),
-TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar),
+TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar, shown
+  only while `setEditBar(true)`: main.js `setView` turns it on for the VR views, off for the Desktop View and phones; off by default),
 Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty} (scrollable, the
   `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; a subclass
   draws its own tiles with `drawTile(ctx, item, i, x, y, s)`, as center's Gallery does),
@@ -190,10 +191,11 @@ the items gone.
 `keyboard.js`: `export function editText({ initial, multiline, onInput(v), onSelection(), onKey(e), onDone(v), onCancel() }) -> textarea`,
 plus `commit()`, `isEditing()`, `setXR(bool)`, `showKeyboard()`, `erase(dir)` and `newline()`. A hidden in-DOM `<textarea>` `ta` is the edit MODEL: its value and
 selection are what the TextField draws and what taps move (selection APIs work on an unfocused textarea; never use `ta.select()`, it focuses).
-Desktop (`setXR(false)`, a mouse press in the Desktop View or the VR-like view): `ta` is focused at edit start and takes physical keys; blur, Enter in a single-line field and `commit()` commit
-(onDone), Escape reverts (onInput(initial), onCancel).
-XR (main.js calls `setXR` on session start/end; a finger press in the Desktop View or on the 3D view sets it too, so tablets
-use the same path): the Quest system keyboard can only insert (each open starts an empty session whose first
+Desktop (`setXR(false)`: a mouse press on the 3D view, and every press in the DOM hosts, dom.js `bindPanel`, so tablets and phones
+type with their own keyboard, its caret, selection and backspace): `ta` is focused at edit start and takes the keys; blur, Enter in a
+single-line field, Ctrl+Enter and `commit()` commit (onDone), Escape reverts (onInput(initial), onCancel).
+XR (main.js calls `setXR` on session start/end; a finger press on the 3D view sets it too, so a touch screen in the VR-like view
+uses the same path): the Quest system keyboard can only insert (each open starts an empty session whose first
 key overwrites the focused element's value, existing text is not shown, backspace cannot delete existing text, and while it is up the
 session is `visible-blurred` with no controller input). So `ta` is never focused; a second always-empty hidden element `kb` (an `<input>` for single-line fields, a `<textarea>` for multiline ones) is focused by
 `showKeyboard()` (the toolbar's Keyboard button, from its select handler for user activation). On kb focus the model text around the caret
@@ -206,10 +208,12 @@ EXPERIMENTAL and unverified on the headset: whether the Quest keyboard shows a r
 New line button (multiline fields only: `newline()` replaces the selection with "\n" in the model, same path as `erase`, in XR and on
 desktop) is the reliable way to break a line.
 TextField edit UX: the first tap enters edit mode with the caret at the tap (no keyboard yet); taps move the caret, dragging selects
-(down anchors, move extends), a second tap within 400 ms selects the word. While editing, an `EditBar` overlays the panel below the field
-(above when there is no room or `barAbove`): Keyboard, New line (icon, multiline fields only), Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard,
-Del, Done. A Combo's dropdown goes below its bar (above the field when it does not fit). pointers.js commits when a press lands away from every
-TextField and EditBar (on release). Only one edit at a time.
+(down anchors, move extends), a second tap within 400 ms selects the word. While editing in the VR views (XR session, VR-like view), an
+`EditBar` overlays the panel below the field (above when there is no room or `barAbove`): Keyboard, New line (icon, multiline fields
+only), Del, <-, ->, Select all, Done; `compact` (Slider value, Combo filter) is Keyboard, Del, Done. The Desktop View and phones have
+no bar: the system keyboard edits `ta` itself, and a press away from the field finishes the edit (the only way for a multiline one on a
+touch screen). A Combo's dropdown goes below the field, under its bar in VR (above the field when it does not fit). pointers.js commits
+when a press lands away from every TextField and EditBar (on release). Only one edit at a time.
 
 `comfy.js`:
 ```js
@@ -470,7 +474,7 @@ another Lucide icon's path data under its name and change the name where it is u
   700, Light 420 x 500, Input 560 x 500, Configuration 560 x its content's height, config's `minHeight()`). A snapshot load re-places the
   windows (the prompt panel's entries change its minimum).
   At 560 px (the phones' narrowest) the seed row drops its "Seed" label (narrower than `SEED_W`), the Configuration grid's labels
-  shrink until the longest fits, and an edit toolbar wider than its panel drops Keyboard and the arrows.
+  shrink until the longest fits.
   `layout()` hides the lectern and the pop-up in the Desktop View; the meshes are not rendered. `screen.onChange` (stage size, output
   row, pop-up or note change) re-places the windows and the deck too. Stored window sizes (the Prompt window held the output band before) are not migrated.
 - A window: a title bar (icon, title, close button; drag to move), the panels, a corner grip (drag to resize; 40 px on coarse
@@ -483,13 +487,13 @@ another Lucide icon's path data under its name and change the name where it is u
   Desktop View go back to their world size at scale 1 (`setPx()`), so VR keeps its layout.
 - Several windows may be open; a press on one raises it (z-index, kept). Windows sit above the 3D view, so pointer input over a
   window always goes to it. Canvas pointer events map to `panel.pointer(type, x, y, pointerId)` in panel px (pointer capture on
-  press, wheel = `panel.scroll`; a drag in a panel scrolls it as in VR). A press on a TextField or EditBar keeps an edit, any other
+  press, wheel = `panel.scroll`; a drag in a panel scrolls it as in VR). A press on a TextField keeps an edit, any other
   window press commits it on release; moving, resizing, closing, a toolbar button do too. The window layer keeps the focused textarea
-  (mousedown, and touch pointerdown, prevented while editing). A finger tap that starts an edit opens the on-screen keyboard
-  (`showKeyboard()`, keyboard.js's XR path; the tap is its user activation; on phones the desktop path: `ta` itself is focused, so the
-  system keyboard edits it with its own caret, selection and backspace).
-  A re-flow during an edit (a rotation, the phone keyboard) keeps it: a TextField whose panel was rebuilt (Input / LoRA `panel.clear()`)
-  adds its EditBar back when drawn, a Combo its bar and list.
+  (mousedown, and touch pointerdown, prevented while editing). No edit toolbar: a finger tap that starts an edit focuses `ta` (the
+  desktop path; the tap is its user activation), which opens the on-screen keyboard, and the system keyboard edits it with its own
+  caret, selection and backspace.
+  A re-flow during an edit (a rotation, the phone keyboard) keeps it: a Combo whose panel was rebuilt (Input / LoRA `panel.clear()`)
+  adds its list back when drawn (in VR a TextField its EditBar too).
 - Deck (`.deck`, fixed, above every window), placed by `renderDeck` from the Configuration panel's toolbar position (`at()`,
   `<top|bottom>-<left|center|right>`, default bottom-right): `EDGE` 16 px from the chosen edges, horizontally centered for center.
   The output row (while `shows.row`) sits `DECK_GAP` 8 px over the toolbar (desktop.js sets it as the deck's flex `gap`) at the bottom, under it at the top (the deck

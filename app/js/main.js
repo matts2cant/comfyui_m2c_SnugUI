@@ -217,6 +217,7 @@ function relayout() {
 
 function setView(desk) {
 	deskView = desk;
+	ui.setEditBar(!desk);
 	input.releaseAll();
 	lights.room.visible = !desk;
 	scene.background = desk ? lights.background : null;

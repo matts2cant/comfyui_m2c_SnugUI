@@ -1,7 +1,7 @@
 // Canvas-texture UI toolkit: a Panel is a textured plane, widgets draw into its 2D canvas.
 //
 // Setup: main.js calls setRenderer(renderer) once, before creating panels, so textures get the
-// renderer's max anisotropy (crisp text at grazing angles).
+// renderer's max anisotropy (crisp text at grazing angles), and setEditBar(on) on every view change.
 // Coordinates: widget x/y/w/h are canvas px in the parent's space (panel, or a ScrollView's content).
 // Widget.draw(ctx) is called with ctx translated to the widget's top-left: draw in local 0..w / 0..h.
 // Pointer events carry p = { x, y (panel px), lx, ly (widget-local px), id }.
@@ -18,6 +18,11 @@ export function setRenderer(renderer) {
 	maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 	for (const p of Panel.all) p.texture.anisotropy = maxAnisotropy;
 }
+
+// Text fields show an EditBar while editing only in the VR views, for the Quest keyboard, which cannot delete existing text;
+// elsewhere the system keyboard edits the text alone.
+let editBar = false;
+export const setEditBar = (on) => { editBar = on; };
 
 export const PX_PER_M = 1000; // a Panel's canvas px per meter of its world size, unless it sets pxPerM
 
@@ -502,7 +507,7 @@ export class List extends Scrollable {
 	}
 }
 
-// The toolbar overlaying the panel next to the field being edited (below it, above when there is no room or the
+// The toolbar overlaying the panel next to the field being edited in VR (below it, above when there is no room or the
 // field sets barAbove): Keyboard opens the system keyboard, New line (multiline fields only) / Del / arrows / Select all
 // edit the model, Done commits. A compact bar only has Keyboard, Del and Done.
 export class EditBar extends Widget {
@@ -515,22 +520,17 @@ export class EditBar extends Widget {
 		const all = [["Keyboard", showKeyboard], ["Del", () => erase()], ["←", () => caret(-1)], ["→", () => caret(1)], ["Select all", () => field.selectAll()], ["Done", commit]];
 		if (field.multiline) all.splice(1, 0, ["", newline, "corner-down-left"]);
 		measure.font = font(this.size, true);
-		// a panel too narrow for the bar (a phone, whose system keyboard is up and moves the caret) gets it without Keyboard and the arrows
-		this.rows = [compact ? [all[0], all[1], all[all.length - 1]] : all, all.filter(([text]) => !["Keyboard", "←", "→"].includes(text))].map((set) => {
-			let x = 8;
-			const btns = set.map(([text, run, icon]) => {
-				const b = { text, run, icon, x, y: 8, w: Math.max(72, Math.ceil(measure.measureText(text).width) + 40), h: this.h - 16 };
-				x += b.w + 8;
-				return b;
-			});
-			return { btns, w: x };
+		let x = 8;
+		this.btns = (compact ? [all[0], all[1], all[all.length - 1]] : all).map(([text, run, icon]) => {
+			const b = { text, run, icon, x, y: 8, w: Math.max(72, Math.ceil(measure.measureText(text).width) + 40), h: this.h - 16 };
+			x += b.w + 8;
+			return b;
 		});
-		Object.assign(this, this.rows[0]);
+		this.w = x;
 	}
 
 	place() {
 		const { panel, field } = this, a = field.abs(), below = a.y + field.h + 6;
-		Object.assign(this, this.rows.find((r) => r.w <= panel.width - 16) ?? this.rows[1]);
 		this.x = Math.max(8, Math.min(a.x, panel.width - this.w - 8));
 		this.y = !field.barAbove && below + this.h <= panel.height ? below : Math.max(0, a.y - 6 - this.h);
 	}
@@ -567,7 +567,7 @@ export class EditBar extends Widget {
 }
 
 // Tapping starts an in-place edit through keyboard.js: the field draws the hidden textarea's live value,
-// caret and selection, shows an EditBar, and handles taps (caret), drags (selection) and double taps (word) itself.
+// caret and selection, shows an EditBar in VR (setEditBar), and handles taps (caret), drags (selection) and double taps (word) itself.
 // Options: onInput(v) live, onDone(v) on commit, onCancel(), onEdit() when an edit starts, onKey(e), compact and
 // barAbove for the toolbar.
 export class TextField extends Widget {
@@ -596,8 +596,10 @@ export class TextField extends Widget {
 		// the caret goes where the field showed the tap: laid out from the start of the text
 		this.ta.setSelectionRange(0, 0);
 		this.setCaret(this.indexAt(p));
-		this.panel.add(this.bar);
-		this.bar.place();
+		if (editBar) {
+			this.panel.add(this.bar);
+			this.bar.place();
+		}
 		this.timer = setInterval(() => { this.blink = !this.blink; this.invalidate(); }, 500);
 		this.onEdit?.();
 		this.invalidate();
@@ -712,8 +714,8 @@ export class TextField extends Widget {
 	}
 
 	draw(ctx) {
-		if (this.ta) {
-			// a re-flow that rebuilt the panel (a rotation, a phone's keyboard) dropped the bar
+		if (this.ta && editBar) {
+			// a re-flow that rebuilt the panel dropped the bar
 			if (!this.bar.panel) this.panel.add(this.bar);
 			this.bar.place();
 		}
@@ -778,16 +780,19 @@ export class Combo extends TextField {
 		this.reveal(true);
 	}
 
-	// below the toolbar, or above the field when the panel has no room (the toolbar is above the field when it has none below)
+	// below the field (and its toolbar), or above the field when the panel has no room (above the toolbar when that is above)
 	place() {
 		const { list, bar } = this, a = this.abs();
-		for (const w of [bar, list]) if (!w.panel) this.panel.add(w); // dropped by a re-flow, as in TextField.draw
-		bar.place();
+		if (editBar) {
+			if (!bar.panel) this.panel.add(bar); // dropped by a re-flow, as in TextField.draw
+			bar.place();
+		}
+		if (!list.panel) this.panel.add(list);
 		list.h = Math.min(this.rows, list.items.length) * list.rowH;
 		list.w = this.w;
 		list.x = a.x;
-		const belowBar = bar.y > a.y, y = belowBar ? bar.y + bar.h + 6 : bar.y - 6 - list.h;
-		list.y = belowBar && y + list.h > this.panel.height ? Math.max(0, a.y - 6 - list.h) : Math.max(0, y);
+		const below = !editBar || bar.y > a.y, y = below ? (editBar ? bar.y + bar.h : a.y + this.h) + 6 : bar.y - 6 - list.h;
+		list.y = below && y + list.h > this.panel.height ? Math.max(0, a.y - 6 - list.h) : Math.max(0, y);
 		list.visible = list.items.length > 0;
 	}
 

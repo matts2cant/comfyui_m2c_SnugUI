@@ -58,8 +58,7 @@ export function createDesktop(specs, note, deck, relayout) {
 	deckBox.append(row.canvas, toolbar.canvas, popup.canvas);
 	popup.canvas.className = "popup";
 	const phone = createPhone(specs, deck, relayout);
-	const isPhone = () => !!layout;
-	for (const p of [toolbar, row, popup]) bindPanel(p, isPhone);
+	for (const p of [toolbar, row, popup]) bindPanel(p);
 	for (const layer of [root, deckBox]) keepEdit(layer);
 	let shown = false, lastNew = null, layout = null; // layout: "portrait" | "landscape" on phones (phone.js), else null
 	let top = Math.max(0, ...Object.values(saved).map((s) => s.z ?? 0));
@@ -74,7 +73,7 @@ export function createDesktop(specs, note, deck, relayout) {
 		const grip = el("div", "grip", box);
 		close.title = "Close";
 		body.append(spec.panel.canvas);
-		bindPanel(spec.panel, isPhone);
+		bindPanel(spec.panel);
 		// radius: the panel's own, which a phone squares while it hosts it
 		const win = { spec, box, bar, body, rect: null, radius: spec.panel.radius, state: saved[spec.name] ?? { open: i === 0 } };
 

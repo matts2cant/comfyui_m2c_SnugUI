@@ -46,8 +46,8 @@ the second; landscape: level with the third tab), with a dot when another output
 in a small tray just above (portrait) or left of (landscape) the dock: tap a tile to switch outputs (the tray stays open; swipe
 it when the tiles do not fit), or the cog for the output's settings. Tap the button again, anywhere else, a tab, or press Esc to
 close it. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the open panel moves above
-it (portrait: the dock hides; landscape: the panel takes the whole width) until you are done. Pinch and drag the image to zoom
-and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button do not apply on
+it (portrait: the dock hides; landscape: the panel takes the whole width) until you tap outside the field, which applies the
+text. Pinch and drag the image to zoom and pan. Turning the phone keeps the open panel and any edit. The toolbar position setting and the VR button do not apply on
 phones; a wider window brings the Desktop View back with its windows as you left them.
 
 ### Desktop View
@@ -64,7 +64,9 @@ back inside a smaller window). The first time only Prompt is open.
 
 - Image: drag pans, the wheel zooms about the cursor. 3D model: drag turns it, the wheel zooms, shift- or right-drag moves it.
 - Touch: one finger pans the image (turns the model), two fingers pinch to zoom and move it. Tapping a text field opens the
-  on-screen keyboard; use the edit toolbar to delete and move the caret.
+  on-screen keyboard.
+- Text fields edit in place with the system keyboard: Enter (single-line fields), Ctrl+Enter or a click / tap outside the field
+  applies the text, Escape reverts it.
 - H hides the windows and the toolbar (H again shows them), R resets the image / model, Esc closes the output pop-up (not with
   Ctrl, Alt or Cmd held, nor while typing in a page field).
 - The goggles button enters VR on the Quest. In a desktop browser it shows the VR layout instead (the VR-like view): drag to
@@ -164,7 +166,7 @@ choice is remembered. Panels and images are not lit.
 - Seed row: −, the value (tap to type), +, then the mode: lock = fixed, plus = increment, shuffle = random.
 - HD: shows the image on a native XR quad layer for full sharpness. It is off by default and
   experimental; if the layer breaks the image falls back to the normal mesh on its own.
-- Text fields edit in place: tap one to get a caret and a small toolbar (Keyboard, New line in multi-line fields, Del, arrows, Select all, Done). Tap to move
+- Text fields edit in place: tap one to get a caret and, in VR only, a small toolbar (Keyboard, New line in multi-line fields, Del, arrows, Select all, Done). Tap to move
   the caret, drag to select, double-tap for a word. Keyboard opens the Quest keyboard, which only inserts text at the caret
   (use Del and the arrows for the rest). Done, tapping elsewhere or Enter (single-line fields) applies the text; Escape reverts it.
 

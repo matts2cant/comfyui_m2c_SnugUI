@@ -41,7 +41,7 @@ export function createPhone(specs, { toolbar, arrange, tabs, shows, row, popup, 
 		const across = tabBar.width >= tabBar.height, { s, at } = spread(across ? tabBar.width : tabBar.height, tabs.length), c = (BAR - s) / 2;
 		tabs.forEach((b, i) => Object.assign(b, { x: across ? at(i) : c, y: across ? c : at(i), w: s, h: s }));
 	};
-	for (const p of [tabBar, pick]) bindPanel(p, () => true);
+	for (const p of [tabBar, pick]) bindPanel(p);
 	// the tray closes on a press anywhere but on it, its pop-up and the output button
 	addEventListener("pointerdown", (e) => { if (![strip, popup.canvas, pick.canvas].some((n) => n.contains(e.target))) closeTray(); }, true);
 	keepEdit(layer);

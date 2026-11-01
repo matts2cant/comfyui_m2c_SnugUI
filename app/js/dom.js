@@ -34,12 +34,11 @@ export function keepEdit(layer) {
 	layer.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
-// A press on a TextField or its EditBar keeps the edit; any other press commits it once released. A tap with a finger that
-// starts an edit opens the on-screen keyboard (keyboard.js's XR path on tablets, the textarea itself on phones: phone()), the
-// press being the user activation it needs.
-export function bindPanel(panel, phone) {
+// A press on a TextField keeps the edit; any other press commits it once released. The edit takes keyboard.js's desktop path:
+// its textarea is focused by the tap that starts it, which opens a touch device's own keyboard on it (caret, selection, backspace).
+export function bindPanel(panel) {
 	const c = panel.canvas;
-	let outside = false, field = null;
+	let outside = false;
 	const at = (e) => {
 		const r = c.getBoundingClientRect();
 		return [(e.clientX - r.left) * panel.width / r.width, (e.clientY - r.top) * panel.height / r.height];
@@ -47,19 +46,16 @@ export function bindPanel(panel, phone) {
 	c.addEventListener("pointerdown", (e) => {
 		if (e.button !== 0) return;
 		c.setPointerCapture(e.pointerId);
-		keyboard.setXR(e.pointerType === "touch" && !phone());
+		keyboard.setXR(false);
 		const [x, y] = at(e), hit = panel.hitTest(x, y);
-		outside = keyboard.isEditing() && !(hit instanceof ui.TextField || hit instanceof ui.EditBar);
-		field = hit instanceof ui.TextField && !hit.ta ? hit : null;
+		outside = keyboard.isEditing() && !(hit instanceof ui.TextField);
 		panel.pointer("down", x, y, e.pointerId);
 	});
 	c.addEventListener("pointermove", (e) => panel.pointer("move", ...at(e), e.pointerId));
 	c.addEventListener("pointerup", (e) => {
 		panel.pointer("up", ...at(e), e.pointerId);
 		if (outside) keyboard.commit();
-		if (e.pointerType === "touch" && field?.ta) keyboard.showKeyboard();
 		outside = false;
-		field = null;
 	});
 	c.addEventListener("pointercancel", (e) => panel.pointer("up", -1e6, -1e6, e.pointerId));
 	c.addEventListener("pointerleave", (e) => panel.pointer("leave", 0, 0, e.pointerId));
