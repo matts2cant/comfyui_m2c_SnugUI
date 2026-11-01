@@ -6,7 +6,7 @@
 import * as ui from "./ui.js";
 import { commit } from "./keyboard.js";
 import * as fmt from "./jsonprompt.js";
-import { edit, library, sync } from "./parts.js";
+import { edit, events, library, sync } from "./parts.js";
 
 const { theme, measure } = ui;
 // panel px: margin, gap, indent per level, row height (headers, chips, buttons), chip text size, its line height and side
@@ -45,16 +45,16 @@ class Boxes extends ui.Widget {
 	onClick(p) { this.parts()[this.at(p)]?.run(); }
 }
 
-// A chip field: its label, its chips (wrapped, a long one wrapped inside) and + after the last one. On a wide row the
-// labels take a column of their own (lined up across nesting: inset is the row's indent), on a narrow one the chips flow after the
-// label. A top-level row has a chevron and folds to one line of ellipsized chips. onChip(chip), onAdd(), onFold(); flag(text): a
-// chip drawn as a warning (it names a deleted subject).
+// A chip field: its label, its chips (wrapped, a long one wrapped inside), + after the last one and, with dice (the field has
+// parts), the dice after it. On a wide row the labels take a column of their own (lined up across nesting: inset is the row's
+// indent), on a narrow one the chips flow after the label. A top-level row has a chevron and folds to one line of ellipsized chips.
+// onChip(chip), onAdd(), onDice(), onFold(); flag(text): a chip drawn as a warning (it names a deleted subject).
 class FieldRow extends Boxes {
-	constructor(o) { super({ label: "", node: null, top: false, open: true, inset: 0, flag: () => false, h: ROW, ...o }); }
+	constructor(o) { super({ label: "", node: null, top: false, open: true, inset: 0, dice: false, flag: () => false, h: ROW, ...o }); }
 
 	relayout() {
 		const lead = this.top ? LEAD : 0, wide = this.w >= WIDE, col = Math.max(LABEL_W / 2, LABEL_W - this.inset), x0 = wide ? col : lead; // x0: where wrapped lines start
-		const right = this.w - ROW - GAP; // the chips' right edge: every line keeps room for +
+		const right = this.w - (this.dice ? 2 : 1) * (ROW + GAP); // the chips' right edge: every line keeps room for + (and the dice)
 		measure.font = ui.font(SIZE - 2, this.top);
 		this.labelW = wide ? col - lead - 16 : Math.min(measure.measureText(this.label).width, right - lead - 16);
 		let x = wide ? col : lead + this.labelW + 16, y = 0, lineH = ROW;
@@ -80,6 +80,7 @@ class FieldRow extends Boxes {
 			this.boxes.push({ chip, lines, ...place(Math.min(tw, full), ROW + (lines.length - 1) * LH, run) });
 		}
 		this.boxes.push({ plus: true, x, y, w: ROW, h: ROW, run: () => this.onAdd() }); // the room was kept on every line
+		if (this.dice) this.boxes.push({ dice: true, x: x + ROW + GAP, y, w: ROW, h: ROW, run: () => this.onDice() });
 		if (this.top) this.boxes.push({ label: true, x: 0, y: 0, w: lead + this.labelW + 16, h: ROW, run: () => this.onFold() });
 		this.h = y + lineH;
 	}
@@ -98,12 +99,13 @@ class FieldRow extends Boxes {
 			const r = (ROW - 8) / 2;
 			ctx.beginPath();
 			ctx.roundRect(b.x, b.y + 4, b.w, b.h - 8, r);
-			if (b.plus) {
+			if (b.plus || b.dice) {
 				ctx.fillStyle = theme.surface;
 				ctx.fill();
 				if (this.lit(i)) ui.drawTint(ctx, this.pressed, b.x, b.y + 4, b.w, b.h - 8, r);
+				ctx.fillStyle = ctx.strokeStyle = theme.fg;
+				if (b.dice) return ui.drawIcon(ctx, "dices", b.x + (ROW - 30) / 2, b.y + (ROW - 30) / 2, 30);
 				ctx.font = ui.font(34, true);
-				ctx.fillStyle = theme.fg;
 				ctx.textAlign = "center";
 				ctx.fillText("+", b.x + ROW / 2, ROW / 2 + b.y + 1);
 				ctx.textAlign = "left";
@@ -243,7 +245,7 @@ class Shade extends ui.Widget {
 
 export const button = (text, onClick, o) => {
 	measure.font = ui.font(24, true);
-	return new ui.Button({ text, size: 24, h: ROW, w: Math.ceil(measure.measureText(text).width) + 48, onClick, ...o });
+	return new ui.Button({ text, size: 24, h: ROW, w: Math.ceil(measure.measureText(text).width) + (o?.icon ? 92 : 48), onClick, ...o });
 };
 export const note = (text, bold = false, color = theme.muted) => new ui.Label({ text, size: 24, bold, color, wrap: true });
 const title = (key, top) => {
@@ -416,14 +418,18 @@ export function createEditor({ panel, sheet, schema, onChange, onError }) {
 			const key = prefix + k, name = title(k, top), open = !folded.has(node);
 			if (node.kind === "chips") {
 				lines.push({ depth, main: new FieldRow({
-					label: name, node, top, open, flag, inset: depth * IND,
+					label: name, node, top, open, flag, inset: depth * IND, dice: parts(key).length > 0,
 					onChip: (chip) => chipSheet(node, chip, key), onAdd: () => picker(node, key), onFold: () => fold(node),
+					onDice: () => {
+						node.chips = [{ text: randomPart(key) }];
+						changed(true);
+					},
 				}) });
 				continue;
 			}
 			const head = new ui.Header({ title: name, open, preview: preview(node), h: ROW, onClick: () => fold(node) });
 			if (node.kind === "group") {
-				lines.push({ depth, main: head });
+				lines.push({ depth, main: head, right: dice(node, key + ".") });
 				if (open) {
 					fields(node, key + ".", depth + 1);
 					lines.push({ depth: depth + 1, main: addField(node, name) });
@@ -437,13 +443,32 @@ export function createEditor({ panel, sheet, schema, onChange, onError }) {
 
 	function card(list, item, prefix, depth) {
 		const open = !folded.has(item), name = cardName(list, item);
-		lines.push({ depth, main: new ui.Header({ title: name, open, preview: preview(item), h: ROW, onClick: () => fold(item) }), right: [button("•••", () => cardMenu(list, item), { w: ROW, size: 18 })] });
+		lines.push({ depth, main: new ui.Header({ title: name, open, preview: preview(item), h: ROW, onClick: () => fold(item) }), right: [...dice(item, prefix), button("•••", () => cardMenu(list, item), { w: ROW, size: 18 })] });
 		if (!open) return;
 		fields(item, prefix, depth + 1);
 		lines.push({ depth: depth + 1, main: addField(item, name) });
 	}
 
 	const addField = (group, name) => button("+ field", () => newField(group, name));
+
+	// the parts of a field key, and one of them with its slots filled at random
+	const parts = (key) => fmt.parseParts(library.values[key] ?? "").flatMap((g) => g.parts);
+	const randomPart = (key) => fmt.fillRandom(fmt.randomOf(parts(key)), library.fragments);
+
+	// the chip fields of a group (and of its groups, not its cards): [{ node, key }]
+	const chipFields = (group, prefix) => group.fields.flatMap(({ key, node }) => node.kind === "chips" ? [{ node, key: prefix + key }]
+		: node.kind === "group" ? chipFields(node, prefix + key + ".") : []);
+
+	// a card's or a group's dice, when one of its fields has parts: one random part in each empty field that has some
+	function dice(group, prefix) {
+		if (!chipFields(group, prefix).some((f) => parts(f.key).length)) return [];
+		return [button("", () => {
+			for (const { node, key } of chipFields(group, prefix)) {
+				if (parts(key).length && !node.chips.some((c) => c.text.trim())) node.chips = [{ text: randomPart(key) }];
+			}
+			changed(true);
+		}, { icon: "dices", w: ROW })];
+	}
 
 	function subjectButtons(list) {
 		const type = Object.keys(schema.subjects)[0];
@@ -622,13 +647,22 @@ export function createEditor({ panel, sheet, schema, onChange, onError }) {
 		focus(name);
 	}
 
-	// ▾ next to "+ Person": an empty subject of each type, or one of its presets
+	// ▾ next to "+ Person": an empty subject of each type, one of its presets, or a random one (its slots filled at random)
 	function subjectSheet(list) {
 		const add = (type, name, preset = {}) => resolve(sheet, name, fmt.strings(preset), "Add subject", (texts) => addSubject(list, type, fmt.withStrings(preset, texts)));
-		sheet.open(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => [
-			note(title(type, true), true),
-			[button(`Empty ${type}`, () => add(type)), ...Object.entries(library.presets[type] ?? {}).map(([name, p]) => button(name, () => add(type, name, p)))],
-		]));
+		const random = (type) => {
+			const preset = fmt.randomOf(Object.values(library.presets[type]));
+			sheet.close();
+			addSubject(list, type, fmt.withStrings(preset, fmt.strings(preset).map((t) => fmt.fillRandom(t, library.fragments))));
+		};
+		sheet.open(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => {
+			const presets = Object.entries(library.presets[type] ?? {});
+			return [
+				note(title(type, true), true),
+				[button(`Empty ${type}`, () => add(type)), ...presets.length ? [button("Random preset", () => random(type), { icon: "dices" })] : [],
+					...presets.map(([name, p]) => button(name, () => add(type, name, p)))],
+			];
+		}));
 	}
 
 	function addSubject(list, type, preset) {
@@ -662,6 +696,8 @@ export function createEditor({ panel, sheet, schema, onChange, onError }) {
 		}, { variant: "accent" })]]);
 		focus(field);
 	}
+
+	events.addEventListener("change", () => { if (view.visible) build(); }); // the dice follow the library
 
 	return {
 		// the box's rect in panel px

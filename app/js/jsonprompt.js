@@ -205,6 +205,8 @@ export const randomOf = (list) => list[Math.floor(Math.random() * list.length)];
 // a random value of the fragment, or the placeholder itself when it has none
 export const randomValue = (fragments, name) => randomOf(fragmentValues(fragments[name])) ?? `{${name}}`;
 
+export const fillRandom = (text, fragments) => fill(text, fragments, slots(text, fragments).map((s) => randomValue(fragments, s.name)));
+
 // every string of a JSON value in order (a preset, a saved JSON prompt), and the value with them replaced by texts
 export const strings = (v) => typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(strings) : [];
 export function withStrings(v, texts) {
