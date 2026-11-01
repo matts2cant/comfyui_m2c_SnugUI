@@ -4,6 +4,7 @@ soft overcast daylight
 harsh midday sun, crisp shadows
 blue hour twilight
 moonlight through clouds
+{time_of_day} light
 dappled light through leaves
 # Studio
 softbox key light, gentle fill

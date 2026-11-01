@@ -1,0 +1,11 @@
+cotton
+linen
+denim
+wool
+leather
+suede
+silk
+velvet
+corduroy
+tweed
+nylon

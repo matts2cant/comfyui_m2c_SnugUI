@@ -1,5 +1,7 @@
 # Casual
 white t-shirt and jeans
+{color} t-shirt
+{color} {fabric} jacket
 oversized knit sweater
 denim jacket over a hoodie
 striped shirt, rolled sleeves

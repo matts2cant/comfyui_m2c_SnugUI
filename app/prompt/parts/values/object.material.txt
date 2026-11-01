@@ -5,3 +5,4 @@ matte ceramic
 frosted glass
 worn leather
 woven wicker
+{material}

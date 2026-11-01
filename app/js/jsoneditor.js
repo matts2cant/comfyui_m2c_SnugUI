@@ -1,8 +1,8 @@
 // JSON prompt editor, the prompt panel's JSON mode: the prompt's fields as rows of chips in one scrolling box of the host panel,
 // and sheets over the whole panel: the picker (free text, parts, subject ids), a chip's menu, a subject's menu, new fields, the
-// subjects to add. The model and its JSON are jsonprompt.js's; the library ({ values: { <field key>: part file text }, presets:
-// { <type>: { <name>: subject } } }) is the host's: the editor changes it in place and calls onLibrary(kind, name) for the file
-// that changed.
+// subjects to add, the slots of a library text. The model and its JSON are jsonprompt.js's; the library ({ values: { <field key>:
+// part file text }, fragments: { <name>: file text }, presets: { <type>: { <name>: subject } } }) is the host's: the editor changes
+// it in place and calls onLibrary(kind, name) for the file that changed.
 import * as ui from "./ui.js";
 import { commit } from "./keyboard.js";
 import * as fmt from "./jsonprompt.js";
@@ -10,9 +10,9 @@ import * as fmt from "./jsonprompt.js";
 const { theme, measure } = ui;
 // panel px: margin, gap, indent per level, row height (headers, chips, buttons), chip text size, its line height and side
 // padding, the chevron's room (ui.Header's), the row width from which labels take a column of their own (LABEL_W), the sheets'
-// widest
-const M = 20, GAP = 10, IND = 36, ROW = 60, SIZE = 28, LH = 36, PAD = 20, LEAD = 48, WIDE = 1000, LABEL_W = 280, SHEET_W = 1100;
-const R = theme.radius * 0.7, WARN = "#f0a830";
+// widest, a slot box's height
+const M = 20, GAP = 10, IND = 36, ROW = 60, SIZE = 28, LH = 36, PAD = 20, LEAD = 48, WIDE = 1000, LABEL_W = 280, SHEET_W = 1100, SLOT_H = 52;
+const R = theme.radius * 0.7, WARN = "#f0a830", WARN_BG = "rgba(240,168,48,0.2)";
 
 // the scrolling column, framed like the text box it replaces
 class Box extends ui.ScrollView {
@@ -109,7 +109,7 @@ class FieldRow extends Boxes {
 				return;
 			}
 			const flagged = this.flag(b.chip.text);
-			ctx.fillStyle = flagged ? "rgba(240,168,48,0.2)" : theme.surfaceHi;
+			ctx.fillStyle = flagged ? WARN_BG : theme.surfaceHi;
 			ctx.fill();
 			if (flagged) {
 				ctx.strokeStyle = WARN;
@@ -124,9 +124,62 @@ class FieldRow extends Boxes {
 	}
 }
 
-// a library part in the picker: its text (tap: add it), rename and delete; confirm: the delete button asks again
+// The texts of a slot sheet ([[literal string | { name }]], jsonprompt.js segments), word-wrapped, each slot a box holding its
+// value or {name}, the current one outlined; a tap on a slot makes it current (onSlot(i), i counted across the texts).
+class SlotText extends Boxes {
+	constructor(o) { super({ texts: [], values: [], current: 0, ...o }); }
+	relayout() {
+		measure.font = ui.font(SIZE);
+		this.words = [];
+		this.boxes = [];
+		let y = 0, i = 0;
+		for (const text of this.texts) {
+			let x = 0;
+			const put = (w) => {
+				if (x && x + w > this.w) { x = 0; y += SLOT_H + GAP; }
+				x += w;
+				return { x: x - w, y };
+			};
+			for (const s of text) {
+				if (typeof s === "string") {
+					for (const word of s.match(/\S+\s*|\s+/g)) this.words.push({ text: word, ...put(measure.measureText(word).width) });
+					continue;
+				}
+				const k = i++, value = this.values[k], w = measure.measureText(value ?? `{${s.name}}`).width + 2 * 14;
+				this.boxes.push({ k, value, name: s.name, w, h: SLOT_H, ...put(w + 6), run: () => this.onSlot(k) });
+			}
+			y += SLOT_H + 2 * GAP;
+		}
+		this.h = Math.max(SLOT_H, y - 2 * GAP);
+	}
+	parts() { return this.boxes; }
+	draw(ctx) {
+		ctx.font = ui.font(SIZE);
+		ctx.textAlign = "left";
+		ctx.textBaseline = "middle";
+		ctx.fillStyle = theme.fg;
+		for (const w of this.words) ctx.fillText(w.text, w.x, w.y + SLOT_H / 2 + 1);
+		this.boxes.forEach((b, i) => {
+			ctx.beginPath();
+			ctx.roundRect(b.x, b.y, b.w, b.h, R);
+			ctx.fillStyle = b.value === undefined ? theme.surface : theme.surfaceHi;
+			ctx.fill();
+			if (b.k === this.current) {
+				ctx.strokeStyle = theme.accent;
+				ctx.lineWidth = 4;
+				ctx.stroke();
+			}
+			if (this.lit(i)) ui.drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, R);
+			ctx.fillStyle = b.value === undefined ? theme.muted : theme.fg;
+			ctx.fillText(b.value ?? `{${b.name}}`, b.x + 14, b.y + SLOT_H / 2 + 1);
+		});
+	}
+}
+
+// a library part in the picker: its text (tap: add it), rename and delete; confirm: the delete button asks again. warn: it names
+// a missing fragment
 class PartRow extends Boxes {
-	constructor(o) { super({ text: "", confirm: false, h: ROW, ...o }); }
+	constructor(o) { super({ text: "", confirm: false, warn: false, h: ROW, ...o }); }
 	parts() {
 		const s = this.h, dw = this.confirm ? 150 : s;
 		return [
@@ -140,8 +193,13 @@ class PartRow extends Boxes {
 		this.parts().forEach((b, i) => {
 			ctx.beginPath();
 			ctx.roundRect(b.x, b.y, b.w, b.h, R);
-			ctx.fillStyle = i === 2 && this.confirm ? theme.danger : theme.surface;
+			ctx.fillStyle = i === 2 && this.confirm ? theme.danger : i === 0 && this.warn ? WARN_BG : theme.surface;
 			ctx.fill();
+			if (i === 0 && this.warn) {
+				ctx.strokeStyle = WARN;
+				ctx.lineWidth = 3;
+				ctx.stroke();
+			}
 			if (this.lit(i)) ui.drawTint(ctx, this.pressed, b.x, b.y, b.w, b.h, R);
 			ctx.fillStyle = ctx.strokeStyle = theme.fg;
 			if (b.icon) return ui.drawIcon(ctx, b.icon, b.x + (b.w - 32) / 2, b.y + (b.h - 32) / 2, 32);
@@ -346,6 +404,54 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 		changed(true);
 	}
 
+	// Fills the slots of library texts (a part, a preset's strings): without any, onDone(texts) at once; else one sheet walking
+	// through them: the texts with their slots, a free value and Random (the current slot), Random all and `label` (once every slot
+	// is filled), then the current slot's fragment values by group (a tap fills it and moves to the next empty slot).
+	function resolve(name, texts, label, onDone) {
+		const segs = texts.map((t) => fmt.segments(t, library.fragments)), all = segs.flat().filter((s) => typeof s !== "string");
+		closeSheet();
+		if (!all.length) return onDone(texts);
+		const values = all.map(() => undefined);
+		let current = 0, done = false;
+		const set = (k, v) => {
+			values[k] = v;
+			current = values.map((_, j) => (k + 1 + j) % values.length).find((j) => values[j] === undefined) ?? k;
+			refresh();
+		};
+		const random = (k) => fmt.randomValue(library.fragments, all[k].name);
+		const view = new SlotText({ texts: segs.filter((s) => s.some((x) => typeof x !== "string")), onSlot: (k) => {
+			current = k;
+			refresh();
+		} });
+		const free = new ui.TextField({ placeholder: "Other value…", onDone: (v) => {
+			free.value = "";
+			if (v.trim()) set(current, v.trim());
+		} });
+		const finish = () => {
+			if (done) return;
+			done = true;
+			let i = 0;
+			const filled = segs.map((s) => s.map((x) => typeof x === "string" ? x : values[i++]).join(""));
+			closeSheet();
+			onDone(filled);
+		};
+		openSheet(() => name, () => {
+			Object.assign(view, { values, current });
+			const slot = all[current], groups = fmt.parseParts(library.fragments[slot.name] ?? "");
+			return [
+				view,
+				[free, button("Random", () => set(current, random(current)))],
+				[button("Random all", () => {
+					values.forEach((_, k) => { values[k] = random(k); });
+					refresh();
+				}), button(label, finish, { variant: "accent", disabled: values.includes(undefined) })],
+				note(`{${slot.name}}`, true),
+				...groups.flatMap(({ group, parts }) => [...group ? [note(group)] : [], parts.map((v) => button(v, () => set(current, v)))]),
+				...groups.length ? [] : [note(`No values in fragments/${slot.name}.txt`)],
+			];
+		});
+	}
+
 	// +: a free-text line (already editing) to add as is or also save as a part, then the field's parts by group (search, tap to
 	// add, rename, delete) and the subjects' ids
 	function picker(node, key) {
@@ -368,10 +474,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 			addSave.disabled = !v.trim();
 			addSave.invalidate();
 		} });
-		const pick = (text) => {
-			closeSheet();
-			addChip(node, text);
-		};
+		const pick = (text) => resolve(key, [text], "Add chip", ([t]) => addChip(node, t));
 		openSheet(() => key, () => {
 			const q = search.value.trim().toLowerCase(), ids = fmt.subjectIds(model), items = [[free, addSave], search];
 			if (ids.length) items.push(note("→ subject"), ids.map((id) => button(id, () => pick(id))));
@@ -381,7 +484,7 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 				if (!shown.length) continue;
 				items.push(note(group || "Ungrouped", true));
 				for (const p of shown) items.push(same(renaming, p) ? rename : new PartRow({
-					text: p.text, confirm: same(confirm, p),
+					text: p.text, confirm: same(confirm, p), warn: fmt.missing(p.text, library.fragments),
 					onPick: () => pick(p.text),
 					onRename: () => {
 						renaming = p;
@@ -531,13 +634,10 @@ export function createEditor({ panel, schema, library, onChange, onLibrary }) {
 
 	// ▾ next to "+ Person": an empty subject of each type, or one of its presets
 	function subjectSheet(list) {
-		const add = (type, preset) => {
-			closeSheet();
-			addSubject(list, type, preset);
-		};
+		const add = (type, name, preset = {}) => resolve(name, fmt.strings(preset), "Add subject", (texts) => addSubject(list, type, fmt.withStrings(preset, texts)));
 		openSheet(() => "Add a subject", () => Object.keys(schema.subjects).flatMap((type) => [
 			note(title(type, true), true),
-			[button(`Empty ${type}`, () => add(type)), ...Object.entries(library.presets[type] ?? {}).map(([name, p]) => button(name, () => add(type, p)))],
+			[button(`Empty ${type}`, () => add(type)), ...Object.entries(library.presets[type] ?? {}).map(([name, p]) => button(name, () => add(type, name, p)))],
 		]));
 	}
 

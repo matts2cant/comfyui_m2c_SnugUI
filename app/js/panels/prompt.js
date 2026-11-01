@@ -16,7 +16,8 @@ const NEGATIVE_KEY = "snugui.negative";
 
 const { theme } = ui;
 
-// the JSON prompt's parts library on the server (__init__.py): { values: { <field key>: text }, presets: { <type>: {…} } }
+// the JSON prompt's parts library on the server (__init__.py): { values: { <field key>: text }, fragments: { <name>: text },
+// presets: { <type>: {…} } }
 async function fetchParts() {
 	const res = await fetch("/snugui/parts");
 	if (!res.ok) throw new Error("HTTP " + res.status);
@@ -85,7 +86,7 @@ export function createPromptPanel() {
 	let json = false; // the prompt box's mode: the JSON editor in its place
 	let error = ""; // shown in red in place of the workflow name until the next prompt edit or mode switch
 
-	const library = { values: {}, presets: {} };
+	const library = { values: {}, fragments: {}, presets: {} };
 	const editor = createEditor({
 		panel, schema, library,
 		onChange: (text) => store.set(prompt[0].key, text),

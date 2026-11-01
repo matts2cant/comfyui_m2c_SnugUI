@@ -168,6 +168,52 @@ export function parseParts(text) {
 	return groups;
 }
 
+// Placeholders: a {name} in library text (a part, a preset's strings, a saved prompt) names a fragment, a value list in the
+// fragments ({ <name>: file text }, the part file format). A placeholder naming no fragment stays literal text; braces in a
+// fragment's values are literal (no nesting).
+const PLACEHOLDER = /\{([\w-]+(?:\.[\w-]+)*)\}/g;
+
+export const fragmentValues = (text) => parseParts(text).flatMap((g) => g.parts);
+
+// the text cut into literal strings and its slots ({ name }: a placeholder whose fragment exists), in order
+export function segments(text, fragments) {
+	const out = [];
+	let at = 0;
+	for (const m of text.matchAll(PLACEHOLDER)) {
+		if (!Object.hasOwn(fragments, m[1])) continue;
+		if (m.index > at) out.push(text.slice(at, m.index));
+		out.push({ name: m[1] });
+		at = m.index + m[0].length;
+	}
+	if (at < text.length) out.push(text.slice(at));
+	return out;
+}
+
+export const slots = (text, fragments) => segments(text, fragments).filter((s) => typeof s !== "string");
+
+// whether text has a placeholder naming no fragment
+export const missing = (text, fragments) => [...text.matchAll(PLACEHOLDER)].some((m) => !Object.hasOwn(fragments, m[1]));
+
+// text with its slots replaced by values, in order
+export function fill(text, fragments, values) {
+	let i = 0;
+	return segments(text, fragments).map((s) => typeof s === "string" ? s : values[i++]).join("");
+}
+
+export const randomOf = (list) => list[Math.floor(Math.random() * list.length)];
+
+// a random value of the fragment, or the placeholder itself when it has none
+export const randomValue = (fragments, name) => randomOf(fragmentValues(fragments[name])) ?? `{${name}}`;
+
+// every string of a JSON value in order (a preset, a saved JSON prompt), and the value with them replaced by texts
+export const strings = (v) => typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(strings) : [];
+export function withStrings(v, texts) {
+	let i = 0;
+	const map = (x) => typeof x === "string" ? texts[i++] : Array.isArray(x) ? x.map(map)
+		: isObject(x) ? Object.fromEntries(Object.entries(x).map(([k, y]) => [k, map(y)])) : x;
+	return map(v);
+}
+
 // the ungrouped parts first; empty groups are dropped
 export function stringifyParts(groups) {
 	const lines = [];

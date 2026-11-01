@@ -87,14 +87,14 @@ async def get_snapshot(request):
 
 @routes.get("/snugui/parts")
 async def get_parts(request):
-    values = {f.stem: f.read_text(encoding="utf-8") for f in (PARTS_DIR / "values").glob("*.txt")}
+    values, fragments = ({f.stem: f.read_text(encoding="utf-8") for f in (PARTS_DIR / kind).glob("*.txt")} for kind in ("values", "fragments"))
     presets = {}
     for f in (PARTS_DIR / "presets").glob("*.json"):
         try:
             presets[f.stem] = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             logging.warning("SnugUI: ignoring unreadable %s", f)
-    return web.json_response({"values": values, "presets": presets}, headers=NO_CACHE)
+    return web.json_response({"values": values, "fragments": fragments, "presets": presets}, headers=NO_CACHE)
 
 
 # one library file: values/<field key>.txt (the body is its text) or presets/<type>.json (the body is its JSON object)

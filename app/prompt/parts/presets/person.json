@@ -2,8 +2,8 @@
   "Hiker": {
     "id": "hiker",
     "type": "person",
-    "appearance": ["short brown hair", "light stubble"],
-    "clothing": "red rain jacket, hiking boots",
+    "appearance": ["short {hair_color} hair", "light stubble"],
+    "clothing": "{color} rain jacket, hiking boots",
     "expression": "relaxed smile"
   },
   "Barista": {

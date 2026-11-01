@@ -6,6 +6,7 @@ silver hair in a low bun
 shaved head
 blonde bob cut
 braided brown hair
+{hair_color} hair in a ponytail
 # Face
 freckles
 stubble

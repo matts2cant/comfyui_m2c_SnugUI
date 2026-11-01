@@ -1,0 +1,16 @@
+# Natural
+oak
+walnut
+marble
+granite
+wicker
+# Metal
+brass
+copper
+brushed steel
+cast iron
+# Other
+glass
+ceramic
+porcelain
+concrete
