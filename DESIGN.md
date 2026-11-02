@@ -366,7 +366,9 @@ with no active output). The width follows the icon row (at least `MIN_ICONS` 6 b
   `COG` (center.js exports them), `BAR`, `spread`, the output button's slot and the `tabs` panel. The panel buttons move to that
   panel (radius 0, `BAR` 112 px thick), laid out along its longer side (a tab bar, or a rail when taller than wide) by `spread`: `PM` from both ends,
   the leftover spread evenly as the gaps between them; when the side is too short for gaps of at least `PM` the gaps stay `PM` and
-  the buttons shrink below `PB` (a landscape window under 355 CSS px tall, a portrait one under 355 px wide). The view button and
+  the buttons shrink below `PB` (a landscape window under 355 CSS px tall, a portrait one under 355 px wide), never below 0 (the
+  hidden tab bar, back at `BAR` x `BAR` while the keyboard is up: a negative size would give a round button a negative radius,
+  which throws and stops the frame loop). The view button and
   separator hide; the toolbar re-flows to the box it is given (`setPx`), radius 0, and draws into the boxes phone.js's
   `dock(w, h)` gives at its size (`arrange(dock)`: `{ status, cancel, generate, vertical }`, panel px; it only draws the status,
   timer, bars and the play pill itself): portrait (208 px tall: `3 * PM + TIER_H + PB`, toolbar.js exports `TIER_H`) the status tier (`PM` from

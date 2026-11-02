@@ -15,10 +15,11 @@ const PM = TILE_GAP, PB = COG, BAR = PB + 2 * PM;
 const gap = PM * PHONE; // every margin, in CSS px
 
 // n buttons along a side len px long, PM from both ends, the rest spread evenly between them (at least PM, the buttons shrink
-// below PB when the side is too short for that): the tab bar's columns, the rail's rows and the run column's beside it.
+// below PB when the side is too short for that, to 0 on the hidden tab bar back at its BAR x BAR size, never negative: a round
+// button's negative radius throws and stops the frame loop): the tab bar's columns, the rail's rows and the run column's beside it.
 // -> { s: button size, at(i): offset of the i-th }
 function spread(len, n) {
-	const s = Math.min(PB, (len - (n + 1) * PM) / n), gap = (len - 2 * PM - n * s) / (n - 1);
+	const s = Math.max(0, Math.min(PB, (len - (n + 1) * PM) / n)), gap = (len - 2 * PM - n * s) / (n - 1);
 	return { s, at: (i) => PM + i * (s + gap) };
 }
 
