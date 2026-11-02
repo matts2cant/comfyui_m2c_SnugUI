@@ -898,7 +898,8 @@ onDone(text, json))` fill slots in any panel's sheet):
 [+ field]
 ```
 - One scrolling column in a box framed like the text box. Sections and cards fold (`ui.Header`; folded, a muted preview of their
-  texts, the subjects' ids for `Subjects`); a top-level chip field folds to one line of ellipsized chips (tap its label). Fold state
+  texts, the subjects' ids for `Subjects`); chip fields never fold (no chevron), a top-level one's bold label lined up with the
+  sections' titles. Fold state
   is the editor's, not saved. Rows at least 1000 panel px wide put the labels in a column (lined up across nesting), narrower ones
   flow the chips after the label; top-level labels are capitalized, `_` shows as a space. Chips wrap to the next line, a chip longer
   than the row wraps its text (`ui.wrapLines` with `ui.measure`); every line keeps room for `+` (and the dice).

@@ -47,10 +47,10 @@ class Boxes extends ui.Widget {
 
 // A chip field: its label, its chips (wrapped, a long one wrapped inside), + after the last one and, with dice (the field has
 // parts), the dice after it. On a wide row the labels take a column of their own (lined up across nesting: inset is the row's
-// indent), on a narrow one the chips flow after the label. A top-level row has a chevron and folds to one line of ellipsized chips.
-// onChip(chip), onAdd(), onDice(), onFold(); flag(text): a chip drawn as a warning (it names a deleted subject).
+// indent), on a narrow one the chips flow after the label. A top-level row's bold label starts where the sections' titles do.
+// onChip(chip), onAdd(), onDice(); flag(text): a chip drawn as a warning (it names a deleted subject).
 class FieldRow extends Boxes {
-	constructor(o) { super({ label: "", node: null, top: false, open: true, inset: 0, dice: false, flag: () => false, h: ROW, ...o }); }
+	constructor(o) { super({ label: "", node: null, top: false, inset: 0, dice: false, flag: () => false, h: ROW, ...o }); }
 
 	relayout() {
 		const lead = this.top ? LEAD : 0, wide = this.w >= WIDE, col = Math.max(LABEL_W / 2, LABEL_W - this.inset), x0 = wide ? col : lead; // x0: where wrapped lines start
@@ -69,19 +69,11 @@ class FieldRow extends Boxes {
 		this.boxes = [];
 		for (const chip of this.node.chips) {
 			const tw = measure.measureText(chip.text).width + 2 * PAD, run = () => this.onChip(chip);
-			if (!this.open) {
-				const room = right - x;
-				if (room < 120) break;
-				this.boxes.push({ chip, lines: [chip.text], ...place(Math.min(tw, room), ROW, run) });
-				if (tw > room) break;
-				continue;
-			}
 			const full = right - x0, lines = tw > full ? ui.wrapLines(measure, chip.text, full - 2 * PAD).map((l) => l.text) : [chip.text];
 			this.boxes.push({ chip, lines, ...place(Math.min(tw, full), ROW + (lines.length - 1) * LH, run) });
 		}
 		this.boxes.push({ plus: true, x, y, w: ROW, h: ROW, run: () => this.onAdd() }); // the room was kept on every line
 		if (this.dice) this.boxes.push({ dice: true, x: x + ROW + GAP, y, w: ROW, h: ROW, run: () => this.onDice() });
-		if (this.top) this.boxes.push({ label: true, x: 0, y: 0, w: lead + this.labelW + 16, h: ROW, run: () => this.onFold() });
 		this.h = y + lineH;
 	}
 
@@ -90,12 +82,10 @@ class FieldRow extends Boxes {
 	draw(ctx) {
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
-		if (this.top) ui.drawChevron(ctx, 24, ROW / 2, this.open);
 		ctx.font = ui.font(SIZE - 2, this.top);
 		ctx.fillStyle = this.top ? theme.fg : theme.muted;
 		ctx.fillText(ui.ellipsize(ctx, this.label, this.labelW), this.top ? LEAD : 0, ROW / 2 + 1);
 		this.boxes.forEach((b, i) => {
-			if (b.label) return;
 			const r = (ROW - 8) / 2;
 			ctx.beginPath();
 			ctx.roundRect(b.x, b.y + 4, b.w, b.h - 8, r);
@@ -418,8 +408,8 @@ export function createEditor({ panel, sheet, schema, onChange, onError }) {
 			const key = prefix + k, name = title(k, top), open = !folded.has(node);
 			if (node.kind === "chips") {
 				lines.push({ depth, main: new FieldRow({
-					label: name, node, top, open, flag, inset: depth * IND, dice: parts(key).length > 0,
-					onChip: (chip) => chipSheet(node, chip, key), onAdd: () => picker(node, key), onFold: () => fold(node),
+					label: name, node, top, flag, inset: depth * IND, dice: parts(key).length > 0,
+					onChip: (chip) => chipSheet(node, chip, key), onAdd: () => picker(node, key),
 					onDice: () => {
 						node.chips = [{ text: randomPart(key) }];
 						changed(true);
