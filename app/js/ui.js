@@ -865,11 +865,15 @@ export class Combo extends TextField {
 	}
 }
 
+const CORNER = 64, CORNER_PAD = 12; // an ImageGrid tile's corner button, inset from its top corner
+
 // items: [{ url or image (a canvas), label, value }]; the tile whose value is `selected` is outlined. bg: the colour behind the
-// tiles (null: none), empty: the text shown without items. A subclass may draw its own tiles (drawTile).
+// tiles (null: none), empty: the text shown without items. corner: an icons.js name for a round button in each tile's top right
+// corner (top left with cornerLeft), pressed through onCorner(item, i) instead of onSelect. A subclass may draw its own tiles
+// (drawTile, then drawCorner).
 export class ImageGrid extends Scrollable {
 	constructor(o) {
-		super({ items: [], selected: undefined, cell: 200, gap: 12, bg: theme.bg, empty: "", w: 600, h: 600, ...o });
+		super({ items: [], selected: undefined, cell: 200, gap: 12, bg: theme.bg, empty: "", corner: null, cornerLeft: false, w: 600, h: 600, ...o });
 	}
 	grid() {
 		const cols = Math.max(1, Math.floor((this.w + this.gap) / (this.cell + this.gap)));
@@ -892,13 +896,24 @@ export class ImageGrid extends Scrollable {
 		const i = row * g.cols + col;
 		return i >= 0 && i < this.items.length ? i : -1;
 	}
-	onMove(p) {
-		const i = this.itemAt(p);
-		if (i !== this.hotItem) { this.hotItem = i; this.invalidate(); }
+	// the index of the item whose corner button (or its inset) is under p, else -1
+	cornerAt(p) {
+		const i = this.itemAt(p), g = this.grid();
+		if (i < 0 || !this.corner) return -1;
+		const lx = p.lx - (i % g.cols) * g.step, ly = p.ly + this.scroll - Math.floor(i / g.cols) * g.step;
+		return (this.cornerLeft ? lx < CORNER + CORNER_PAD : lx >= g.cw - CORNER - CORNER_PAD) && ly < CORNER + CORNER_PAD ? i : -1;
 	}
+	onMove(p) {
+		const i = this.itemAt(p), c = this.cornerAt(p);
+		if (i !== this.hotItem || c !== this.hotCorner) { this.hotItem = i; this.hotCorner = c; this.invalidate(); }
+	}
+	// a press marks its tile too: touch has no hover before it
+	onDown(p) { this.onMove(p); }
 	onClick(p) {
 		const i = this.itemAt(p);
-		if (i >= 0) this.onSelect?.(this.items[i], i);
+		if (i < 0) return;
+		if (this.cornerAt(p) === i) this.onCorner?.(this.items[i], i);
+		else this.onSelect?.(this.items[i], i);
 	}
 	draw(ctx) {
 		const g = this.grid();
@@ -930,16 +945,30 @@ export class ImageGrid extends Scrollable {
 		const img = it.image ?? (it.url ? this.image(it.url) : null);
 		if (img) drawCover(ctx, img, x, y, s);
 		if (it.label) drawCaption(ctx, it.label, x, y, s);
-		if (this.hover && i === this.hotItem) {
+		if (this.hover && i === this.hotItem && i !== this.hotCorner) {
 			ctx.fillStyle = "rgba(255,255,255,0.14)";
 			ctx.fillRect(x, y, s, s);
 		}
 		ctx.restore();
+		this.drawCorner(ctx, i, x, y, s);
 		if (this.selected === undefined || it.value !== this.selected) return;
 		rrect(ctx, x, y, s, s, r);
 		ctx.lineWidth = 7;
 		ctx.strokeStyle = theme.accent;
 		ctx.stroke();
+	}
+	// the corner button of the i-th tile (s x s at x, y): a dark round badge with the `corner` icon, tinted instead of the tile
+	// while hovered
+	drawCorner(ctx, i, x, y, s) {
+		if (!this.corner) return;
+		const bx = this.cornerLeft ? x + CORNER_PAD : x + s - CORNER - CORNER_PAD, by = y + CORNER_PAD;
+		ctx.beginPath();
+		ctx.arc(bx + CORNER / 2, by + CORNER / 2, CORNER / 2, 0, Math.PI * 2);
+		ctx.fillStyle = "rgba(0,0,0,0.6)";
+		ctx.fill();
+		if (this.hover && i === this.hotCorner) drawTint(ctx, false, bx, by, CORNER, CORNER, CORNER / 2);
+		ctx.strokeStyle = theme.fg;
+		drawIcon(ctx, this.corner, bx + CORNER / 4, by + CORNER / 4, CORNER / 2);
 	}
 }
 

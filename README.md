@@ -94,6 +94,9 @@ Lists the LoRAs of the selected LoRA Manager node. Tap a weight to type it ("," 
 The clip strength follows while it equals the weight. The search matches the LoRA's path under its LoRA folder (so `character` finds
 everything inside a `Character` folder, at any depth) and its model name, ignoring case. The library shows LoRAs by file name, as many
 per page as the panel holds.
+The "i" in a tile's top-left corner shows the LoRA's info sheet (model name, path, base model, strength, trigger words, tags, size,
+notes) while the pointer is on it; the sheet stays open while the pointer is on the tile or on the sheet. On a touch screen, tap the
+"i" to keep the sheet open, and tap it again (or any tile) to close it. The copy button next to the trigger words copies all of them.
 
 ## Prompt panel inputs
 

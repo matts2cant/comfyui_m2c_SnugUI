@@ -14,7 +14,6 @@ const { theme } = ui;
 
 export const TILE_GAP = 16, TILE_R = 24, COG = 80; // the output row's (the phones' dock grid follows it, phone.js)
 const TILE = 200, SMALL_TILE = 120, RING = 4;
-const DL = 64, DL_PAD = 12; // the gallery tiles' download button, inset from the top right corner
 const NOTE_PAD_X = 40, NOTE_PAD_Y = 20;
 const ASPECT_EPS = 0.01, EMPTY_ASPECT = 16 / 9;
 const MISSING = "File no longer exists — removed from the gallery";
@@ -80,27 +79,8 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 
 	// ---- widgets ----
 	// the grid of the selected output's history (its items are the entries): each thumbnail whole with a download button in its top
-	// right corner, the shown entry ringed
+	// right corner (`corner`), the shown entry ringed
 	class Gallery extends ui.ImageGrid {
-		// the index of the item whose download button (or its inset) is under p, else -1
-		buttonAt(p) {
-			const i = this.itemAt(p), g = this.grid();
-			if (i < 0 || p.lx - (i % g.cols) * g.step < g.cw - DL - DL_PAD || p.ly + this.scroll - Math.floor(i / g.cols) * g.step >= DL + DL_PAD) return -1;
-			return i;
-		}
-		onMove(p) {
-			const b = this.buttonAt(p) >= 0;
-			if (b !== this.hotButton) {
-				this.hotButton = b;
-				this.invalidate();
-			}
-			super.onMove(p);
-		}
-		onClick(p) {
-			const i = this.buttonAt(p);
-			if (i >= 0) saveEntry(this.items[i]);
-			else super.onClick(p);
-		}
 		drawTile(ctx, e, i, x, y, s) {
 			ctx.beginPath();
 			ctx.roundRect(x, y, s, s, 16);
@@ -113,15 +93,8 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 				drawFit(ctx, thumb, x, y, s, s);
 				ctx.restore();
 			}
-			const hot = this.hover && i === this.hotItem, bx = x + s - DL - DL_PAD, by = y + DL_PAD;
-			if (hot && !this.hotButton) ui.drawTint(ctx, false, x, y, s, s, 16);
-			ctx.beginPath();
-			ctx.arc(bx + DL / 2, by + DL / 2, DL / 2, 0, Math.PI * 2);
-			ctx.fillStyle = "rgba(0,0,0,0.6)";
-			ctx.fill();
-			if (hot && this.hotButton) ui.drawTint(ctx, false, bx, by, DL, DL, DL / 2);
-			ctx.strokeStyle = theme.fg;
-			ui.drawIcon(ctx, "download", bx + DL / 4, by + DL / 4, DL / 2);
+			if (this.hover && i === this.hotItem && i !== this.hotCorner) ui.drawTint(ctx, false, x, y, s, s, 16);
+			this.drawCorner(ctx, i, x, y, s);
 			if (e === this.selected) ring(ctx, x, y, s, 16, theme.accent);
 		}
 	}
@@ -205,7 +178,7 @@ export function createCenterPanel({ client, renderer, xr, screen, desktopView },
 	const noteText = note.add(new ui.Label({ text: "", size: 44, color: theme.muted, align: "center", x: NOTE_PAD_X, y: NOTE_PAD_Y, h: 72 }));
 
 	const galleryTitle = galleryPanel.add(new ui.Label({ text: "Gallery", size: 34, bold: true, x: 24, y: 14, h: 50 }));
-	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, cell: 250, bg: null, empty: "No results yet", onSelect: (e) => showEntry(e) }));
+	const gallery = galleryPanel.add(new Gallery({ x: 24, y: 84, cell: 250, bg: null, empty: "No results yet", corner: "download", onCorner: saveEntry, onSelect: (e) => showEntry(e) }));
 	// from the panel's size: the Desktop View's window re-flows it
 	galleryPanel.onResize = () => {
 		galleryTitle.w = gallery.w = galleryPanel.width - 48;

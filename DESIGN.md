@@ -225,9 +225,13 @@ Toggle{label, value, onChange}, Slider{label, min, max, step, value, onChange, f
 List{items:[{label, value, sub?}], selected, onSelect, rowH, outline} (scrollable; outline: an accent border, Combo's dropdown),
 TextField{value, placeholder, multiline, onInput, onDone, onCancel, onEdit, onKey, compact, barAbove} (+ EditBar, its edit toolbar, shown
   only while `setEditBar(true)`: main.js `setView` turns it on for the VR views, off for the Desktop View and phones; off by default),
-Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty} (scrollable, the
-  `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; a subclass
-  draws its own tiles with `drawTile(ctx, item, i, x, y, s)`, as center's Gallery does),
+Combo{options:[{label, value, url?}], current, rows, onChange} (TextField + dropdown List), ImageGrid{items:[{url | image (a canvas), label, value}], selected, onSelect, cell, bg, empty, corner, cornerLeft, onCorner} (scrollable, the
+  `selected` value's tile outlined; `bg` the colour behind the tiles, null for none; `empty` the text shown without items; `corner` an
+  icons.js name for a round button on every tile, `CORNER` 64 px inset `CORNER_PAD` 12 px from its top right corner (top left with
+  `cornerLeft`): the badge's dark fill and the icon, tinted instead of the tile while hovered; a press on it (the button or its inset,
+  `cornerAt(p)` -> index or -1) calls `onCorner(item, i)` instead of `onSelect`; `hotItem` / `hotCorner` are the indexes under the last
+  move or press (-1: none), read with `hover`; a subclass draws its own tiles with `drawTile(ctx, item, i, x, y, s)` and calls
+  `drawCorner(ctx, i, x, y, s)`, as center's Gallery does),
 ScrollView{children} (vertical scroll container), Header{title, preview, open, right, h} (a folding section's row: chevron, bold title
   and, folded, a muted ellipsized preview; `right` px at its end left to buttons placed over it; the negative prompt's and the JSON
   editor's), helper `stackY(widgets, {x, y, w, gap}) -> nextY`.
@@ -425,6 +429,8 @@ another Lucide icon's path data under its name and change the name where it is u
 | Mesh output tile (placeholder, badge) | `box` | center.js `OutputTile` |
 | Output pop-up cog | `settings` | center.js |
 | Gallery thumbnail download button | `download` | center.js `Gallery` |
+| LoRA library tile info button | `info` | lora.js |
+| LoRA info sheet: copy the trigger words, copied | `copy` / `check` | lora.js `InfoSheet` |
 | Seed: Fixed / Increment / Random | `lock` / `plus` / `shuffle` | prompt.js `MODES` |
 | Prompt mode: Text / JSON | `text-initial` / `code` (not in the frontend's set; path data from Lucide) | prompt.js `ModeSwitch` |
 | Save / Load a prompt | `save` / `folder-open` (the second not in the frontend's set) | prompt.js `Tool` |
@@ -638,9 +644,8 @@ another Lucide icon's path data under its name and change the name where it is u
   while running; a batch shows its last image (all of them are in the gallery). An empty stage frees the image's textures.
   Gallery panel: a scrollable `ImageGrid` of the history (session list, also persisted to localStorage, last 50) of the selected
   output, newest first, the shown entry outlined; tap a thumbnail to show it. Its title names the output when there are several.
-  Each thumbnail has a round download button (`DL` 64 px, `DL_PAD` 12 px in from its top right corner, the badge's dark fill,
-  `download` icon; hovering it tints the button instead of the tile); a press on it (the button or its inset) does not show the
-  entry: an image opens its `/view` URL in a new tab (`window.open`), a 3D model downloads through a same-origin `<a href download>`
+  Each thumbnail has a round download button (the ImageGrid's `corner: "download"` in its top right corner; hovering it tints the
+  button instead of the tile); a press on it (the button or its inset, `onCorner`) does not show the entry: an image opens its `/view` URL in a new tab (`window.open`), a 3D model downloads through a same-origin `<a href download>`
   named after the file (center.js `saveEntry`). Both run in the press's pointer up (the user activation; in an XR session the
   `selectend`), so the popup blocker lets the tab through. In an immersive session the new tab may pause VR on the Quest (untested).
   Output row (center's `row`, no background): when App mode configures two outputs or more, one square `OutputTile` per output
@@ -725,7 +730,7 @@ another Lucide icon's path data under its name and change the name where it is u
   rounded to 2 decimals, not clamped, anything else reverts; clip strength follows while equal), remove ×. Row edits apply to the store's
   current list, matched by name (unique per node): the weight field commits only after a press elsewhere has run (× on another row,
   or the same row's −, + or checkbox, which replace its entry; the typed weight then lands on the new entry).
-  Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (a page is what the
+  Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (cell 250 like the gallery and lights; a page is what the
   grid holds without scrolling, `ImageGrid.pageSize()`, at most 100; re-sized on a re-flow or the stack growing, keeping the first
   tile shown on the page; paging buttons, thumbnails from item.preview_url, labelled and suggested by item.file_name; videos → use
   no-preview `/loras_static/images/no-preview.png`). No query:
@@ -735,6 +740,20 @@ another Lucide icon's path data under its name and change the name where it is u
   (`item.folder + "/" + item.file_name`, no extension) or model_name, keeping LoRA Manager's name order. The matches are kept for the
   current query (paging and suggestions reuse them, a changed query refetches) and paged locally. Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
+  Each library tile has an info button in its top left corner (`corner: "info"`, `cornerLeft`). Info sheet (`InfoSheet`, added last so
+  it is over the panel; it sits at 0, 0, draws in panel px and `draw()` places its box for the hit tests): opens while a pointer (mouse,
+  VR ray) is on a tile's info button and stays while one is on that tile or on the sheet, else it closes; touch has no hover, so a
+  press on the info button pins the tile's sheet (again: unpins; a tile press, a new page or query unpin it too) and a hovered sheet
+  wins over the pinned one. `INFO_W` 600 px wide (the panel's width less the margins when narrower), its height from its content;
+  touching the tile so the pointer can cross onto it: right of it, left without room, else (a phone) under it or above it, top aligned,
+  clamped inside the panel; `theme.panel` fill, `theme.border` hairline. Content, only the lines that have a value: bold model_name,
+  muted `folder/file_name`, then label / value rows: Base model (base_model), Strength (newLora's strength, "clip" when it differs; 1
+  without usage_tips), Trigger words (civitai.trainedWords joined with ", ", one line, ellipsized) with a Copy button (`COPY` 48 px,
+  `copy` icon, `check` for `COPIED_MS` 1.5 s after a press), Tags (2 lines), Size (file_size in MB, one decimal), Notes (4 lines),
+  wrapped rows ellipsized. Copy copies the whole joined text through a temporary read-only textarea's selection and
+  `document.execCommand("copy")` from the press (`navigator.clipboard` needs a secure context, and SnugUI is mostly served over plain
+  http on the LAN); focusing it commits an open edit, as the press's release would. A press anywhere else on the sheet does nothing
+  and does not reach the tiles under it.
 - lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 6 columns in VR; the Desktop View's
   window re-flows it), each the preset's sky gradient (`skyCanvas`, the colours `paintSky` gives the room) with the preset name as
   its label, drawn like the LoRA library tiles; the current one outlined (`selected`, as the gallery outlines the shown entry). Applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,

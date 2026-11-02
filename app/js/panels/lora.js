@@ -8,9 +8,12 @@ const NO_PREVIEW = "/loras_static/images/no-preview.png";
 const STEP = 0.05;
 const M = 24;
 const CHECK = 60, BTN = 56, VALUE = 120, X_W = 60, G = 8; // a stack row: checkbox, name, −, weight, +, ×
+const INFO_W = 600, INFO_PAD = 20, INFO_KEY = 160, INFO_LH = 32; // the info sheet: width, inset, label column, line height
+const COPY = 48, COPIED_MS = 1500; // its Copy button, and how long the button shows its check after a press
 
 const previewUrl = (url) => !url || /\.(mp4|webm)$/i.test(url) ? NO_PREVIEW : url;
 const round2 = (v) => Number(v.toFixed(2));
+const loraPath = (it) => (it.folder ? it.folder + "/" : "") + it.file_name; // relative to the LoRA root, no extension
 
 async function listLoras(params) {
 	const res = await fetch("/api/lm/loras/list?" + new URLSearchParams({ sort_by: "name", ...params }));
@@ -25,7 +28,7 @@ async function findLoras(search) {
 	const first = await listLoras({ page_size: 100, page: 1 });
 	const rest = await Promise.all(Array.from({ length: Math.max(0, first.total_pages - 1) }, (_, i) => listLoras({ page_size: 100, page: i + 2 })));
 	return [first, ...rest].flatMap((r) => r.items)
-		.filter((it) => [(it.folder ? it.folder + "/" : "") + it.file_name, it.model_name].some((s) => s.toLowerCase().includes(q)));
+		.filter((it) => [loraPath(it), it.model_name].some((s) => s.toLowerCase().includes(q)));
 }
 
 // usage_tips is a JSON string; LoRA Manager stores the clip value as clipStrength
@@ -37,6 +40,121 @@ function newLora(item) {
 }
 
 const { Label, Button, TextField, List, ImageGrid, ScrollView } = ui;
+
+// [label, text, max lines, a Copy button] of a LoRA Manager item's fields that have a value
+function infoRows(item) {
+	const l = newLora(item);
+	return [
+		["Base model", item.base_model, 1],
+		["Strength", l.strength + (l.clipStrength !== l.strength ? `, clip ${l.clipStrength}` : ""), 1],
+		["Trigger words", item.civitai?.trainedWords?.join(", "), 1, true],
+		["Tags", item.tags?.join(", "), 2],
+		["Size", item.file_size ? (item.file_size / 1048576).toFixed(1) + " MB" : "", 1],
+		["Notes", item.notes, 4],
+	].filter(([, text]) => text);
+}
+
+// navigator.clipboard needs a secure context and SnugUI is mostly served over plain http on the LAN, so a temporary textarea's
+// selection is copied, from a press (user activation). Read-only: a touch device opens no keyboard for it. Focusing it commits an
+// open edit, as the press's release would.
+function copyText(text) {
+	const t = document.createElement("textarea");
+	t.value = text;
+	t.readOnly = true;
+	Object.assign(t.style, { position: "fixed", left: "0", top: "0", opacity: "0", pointerEvents: "none" });
+	document.body.append(t);
+	t.select();
+	t.setSelectionRange(0, text.length); // iOS Safari selects nothing of a read-only field on select()
+	document.execCommand("copy");
+	t.remove();
+}
+
+// The info sheet of a library tile: it opens while a pointer is on the tile's info button and stays while one is on the tile or
+// on the sheet; else it is the pinned tile's (pinned(): its index or -1). Beside the tile, touching it so the pointer can cross
+// over (right of it, left without room; under or above it on a narrow panel), and inside the panel. It sits at 0, 0 and draws in
+// panel px; draw() places it (box) for the hit tests that follow. A press on it only works its Copy button (the trigger words).
+class InfoSheet extends ui.Widget {
+	hitTest(x, y) {
+		const b = this.box;
+		return b && x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h ? this : null;
+	}
+	onMove(p) {
+		const hot = !!this.copy && ui.inRect(p, this.copy);
+		if (hot !== this.hotCopy) { this.hotCopy = hot; this.invalidate(); }
+	}
+	onDown(p) { this.onMove(p); }
+	onClick(p) {
+		if (!this.copy || !ui.inRect(p, this.copy)) return;
+		copyText(this.words);
+		this.copied = this.item;
+		clearTimeout(this.timer);
+		this.timer = setTimeout(() => { this.copied = null; this.invalidate(); }, COPIED_MS);
+	}
+	draw(ctx) {
+		const { grid, panel } = this, i = this.index;
+		this.index = !grid.visible ? -1 : grid.hover && grid.hotCorner >= 0 ? grid.hotCorner
+			: i >= 0 && (this.hover || grid.hover && grid.hotItem === i) ? i : this.pinned();
+		const it = this.item = grid.items[this.index]?.value;
+		this.box = this.copy = null;
+		if (!it) return;
+		const w = Math.min(INFO_W, panel.width - 2 * M), tw = w - 2 * INFO_PAD, vw = tw - INFO_KEY;
+		ctx.font = ui.font(24);
+		const rows = infoRows(it).map(([key, text, max, copy]) => {
+			const lw = copy ? vw - COPY - G : vw, lines = max > 1 ? ui.wrapLines(ctx, String(text), lw).map((l) => l.text) : [String(text)];
+			if (lines.length > max) { lines.length = max; lines[max - 1] += "…"; }
+			return { key, text, copy, lines: lines.map((l) => ui.ellipsize(ctx, l, lw)), h: copy ? COPY : lines.length * INFO_LH };
+		});
+		const head = [[it.model_name, ui.font(28, true), ui.theme.fg, 38], [loraPath(it), ui.font(22), ui.theme.muted, 34]].filter(([t]) => t);
+		const h = 2 * INFO_PAD + head.reduce((a, r) => a + r[3], 0) + rows.reduce((a, r) => a + 8 + r.h, 0);
+		const g = grid.grid(), tx = grid.x + (this.index % g.cols) * g.step, ty = grid.y + Math.floor(this.index / g.cols) * g.step - grid.scroll;
+		let x = tx + g.cw, y = ty;
+		if (x + w > panel.width - M) x = tx - w;
+		if (x < M) {
+			x = tx;
+			y = ty + g.cw + h <= panel.height - M ? ty + g.cw : ty - h;
+		}
+		x = Math.max(M, Math.min(x, panel.width - M - w));
+		y = Math.max(M, Math.min(y, panel.height - M - h));
+		this.box = { x, y, w, h };
+		ctx.beginPath();
+		ctx.roundRect(x, y, w, h, ui.theme.radius * 0.7);
+		ctx.fillStyle = ui.theme.panel;
+		ctx.fill();
+		ctx.strokeStyle = ui.theme.border;
+		ctx.lineWidth = 2;
+		ctx.stroke();
+		ctx.textAlign = "left";
+		ctx.textBaseline = "middle";
+		let cy = y + INFO_PAD;
+		for (const [text, f, color, lh] of head) {
+			ctx.font = f;
+			ctx.fillStyle = color;
+			ctx.fillText(ui.ellipsize(ctx, text, tw), x + INFO_PAD, cy + lh / 2);
+			cy += lh;
+		}
+		ctx.font = ui.font(24);
+		for (const r of rows) {
+			cy += 8;
+			const mid = r.copy ? COPY / 2 : INFO_LH / 2;
+			ctx.fillStyle = ui.theme.muted;
+			ctx.fillText(r.key, x + INFO_PAD, cy + mid);
+			ctx.fillStyle = ui.theme.fg;
+			r.lines.forEach((l, j) => ctx.fillText(l, x + INFO_PAD + INFO_KEY, cy + mid + INFO_LH * j));
+			if (r.copy) {
+				const c = this.copy = { x: x + w - INFO_PAD - COPY, y: cy, w: COPY, h: COPY };
+				this.words = r.text;
+				ctx.beginPath();
+				ctx.roundRect(c.x, c.y, COPY, COPY, 12);
+				ctx.fillStyle = ui.theme.surface;
+				ctx.fill();
+				if (this.hover && this.hotCopy) ui.drawTint(ctx, this.pressed, c.x, c.y, COPY, COPY, 12);
+				ctx.strokeStyle = ui.theme.fg;
+				ui.drawIcon(ctx, this.copied === it ? "check" : "copy", c.x + 12, c.y + 12, COPY - 24);
+			}
+			cy += r.h;
+		}
+	}
+}
 
 // a stack row's active checkbox
 class Check extends ui.Widget {
@@ -71,6 +189,7 @@ export function createLoraPanel() {
 	let tab = 0;
 	let query = "", page = 1, pages = 1, pageSize = 0, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
 	let found = null; // matches of the current query, shared by the grid pages and the suggestions
+	let pinned = -1; // the tile whose info sheet a press on its info button pinned (touch has no hover)
 
 	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, h: 50 });
 	const empty = new Label({ text: "No LoRA Manager loader in this workflow", size: 30, color: ui.theme.muted, wrap: true, x: M, y: 90 });
@@ -84,7 +203,12 @@ export function createLoraPanel() {
 		onEdit: () => { editing = true; syncVisible(); loadSuggest(); },
 	});
 	const suggest = new List({ x: M, rowH: 60, size: 28, onSelect: (it) => { suggest.selected = undefined; add(it.value); } });
-	const grid = new ImageGrid({ x: M, cell: 180, onSelect: (it) => add(it.value) });
+	const grid = new ImageGrid({
+		x: M, cell: 250, corner: "info", cornerLeft: true,
+		onCorner: (it, i) => { pinned = pinned === i ? -1 : i; },
+		onSelect: (it) => { pinned = -1; add(it.value); },
+	});
+	const info = new InfoSheet({ grid, pinned: () => pinned });
 	const prev = new Button({ text: "‹ Prev", x: M, w: 180, h: 60, onClick: () => goto(page - 1) });
 	const next = new Button({ text: "Next ›", w: 180, h: 60, onClick: () => goto(page + 1) });
 	const pageLabel = new Label({ text: "", size: 26, color: ui.theme.muted, align: "center", x: M + 190, h: 60 });
@@ -161,6 +285,7 @@ export function createLoraPanel() {
 		panel.add(prev);
 		panel.add(pageLabel);
 		panel.add(next);
+		panel.add(info);
 		syncVisible();
 		updatePager();
 		// a page is what the grid holds (at most LoRA Manager's page_size cap); when that changes (a re-flow, the stack growing)
@@ -199,6 +324,7 @@ export function createLoraPanel() {
 			if (id !== gridSeq) return;
 			pages = Math.max(1, Math.ceil(res.total / pageSize));
 			total = res.total;
+			pinned = -1;
 			grid.setItems(res.items.map((it) => ({ url: previewUrl(it.preview_url), label: it.file_name, value: it })));
 			updatePager();
 		} catch (e) {
