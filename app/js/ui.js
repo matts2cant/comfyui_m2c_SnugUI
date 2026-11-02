@@ -880,6 +880,11 @@ export class ImageGrid extends Scrollable {
 		const g = this.grid();
 		return Math.ceil(this.items.length / g.cols) * g.step - this.gap;
 	}
+	// the tiles that fit without scrolling (at least a row): a paged grid's page
+	pageSize() {
+		const g = this.grid();
+		return g.cols * Math.max(1, Math.floor((this.h + this.gap) / g.step));
+	}
 	itemAt(p) {
 		const g = this.grid();
 		const col = Math.floor(p.lx / g.step), row = Math.floor((p.ly + this.scroll) / g.step);

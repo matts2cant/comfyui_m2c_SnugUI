@@ -92,7 +92,8 @@ The selected tab is remembered per workflow.
 
 Lists the LoRAs of the selected LoRA Manager node. Tap a weight to type it ("," works as decimal point); − / + step by 0.05.
 The clip strength follows while it equals the weight. The search matches the LoRA's path under its LoRA folder (so `character` finds
-everything inside a `Character` folder, at any depth) and its model name, ignoring case.
+everything inside a `Character` folder, at any depth) and its model name, ignoring case. The library shows LoRAs by file name, as many
+per page as the panel holds.
 
 ## Prompt panel inputs
 

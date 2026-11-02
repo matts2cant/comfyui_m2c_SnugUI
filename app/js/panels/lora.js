@@ -69,7 +69,7 @@ export function createLoraPanel() {
 	group.add(panel.mesh);
 
 	let tab = 0;
-	let query = "", page = 1, pages = 1, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
+	let query = "", page = 1, pages = 1, pageSize = 0, total = 0, editing = false, timer = 0, gridSeq = 0, suggestSeq = 0;
 	let found = null; // matches of the current query, shared by the grid pages and the suggestions
 
 	const title = new Label({ text: "LoRAs", size: 34, bold: true, x: M, y: 14, h: 50 });
@@ -163,6 +163,13 @@ export function createLoraPanel() {
 		panel.add(next);
 		syncVisible();
 		updatePager();
+		// a page is what the grid holds (at most LoRA Manager's page_size cap); when that changes (a re-flow, the stack growing)
+		// the first tile shown stays on the page
+		const size = Math.min(100, grid.pageSize());
+		if (size === pageSize) return;
+		page = Math.floor((page - 1) * pageSize / size) + 1;
+		pageSize = size;
+		loadGrid();
 	}
 
 	function syncVisible() {
@@ -188,11 +195,11 @@ export function createLoraPanel() {
 	async function loadGrid() {
 		const id = ++gridSeq;
 		try {
-			const res = await browse(12, page);
+			const res = await browse(pageSize, page);
 			if (id !== gridSeq) return;
-			pages = Math.max(1, Math.ceil(res.total / 12));
+			pages = Math.max(1, Math.ceil(res.total / pageSize));
 			total = res.total;
-			grid.setItems(res.items.map((it) => ({ url: previewUrl(it.preview_url), label: it.model_name || it.file_name, value: it })));
+			grid.setItems(res.items.map((it) => ({ url: previewUrl(it.preview_url), label: it.file_name, value: it })));
 			updatePager();
 		} catch (e) {
 			if (id !== gridSeq) return;
@@ -205,7 +212,7 @@ export function createLoraPanel() {
 		const id = ++suggestSeq;
 		try {
 			const res = await browse(8);
-			if (id === suggestSeq) suggest.setItems(res.items.map((it) => ({ label: it.model_name || it.file_name, sub: it.base_model, value: it })));
+			if (id === suggestSeq) suggest.setItems(res.items.map((it) => ({ label: it.file_name, sub: it.base_model, value: it })));
 		} catch {
 			if (id === suggestSeq) suggest.setItems([]);
 		}
@@ -235,8 +242,8 @@ export function createLoraPanel() {
 	panel.onResize = render;
 	store.addEventListener("load", () => {
 		tab = 0;
+		pageSize = 0; // render() sizes the page to the grid and loads it
 		render();
-		if (store.groups.lora.length) loadGrid();
 	});
 	store.addEventListener("change", (e) => { if (e.detail.key.startsWith("lora:")) render(); });
 	render();

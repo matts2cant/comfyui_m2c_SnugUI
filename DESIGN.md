@@ -725,15 +725,17 @@ another Lucide icon's path data under its name and change the name where it is u
   rounded to 2 decimals, not clamped, anything else reverts; clip strength follows while equal), remove ×. Row edits apply to the store's
   current list, matched by name (unique per node): the weight field commits only after a press elsewhere has run (× on another row,
   or the same row's −, + or checkbox, which replace its entry; the typed weight then lands on the new entry).
-  Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (12 per page, paging
-  buttons, thumbnails from item.preview_url; videos → use no-preview `/loras_static/images/no-preview.png`). No query:
+  Library: search TextField (live onInput → debounced 250 ms autocomplete suggestions, 8) + ImageGrid of results (a page is what the
+  grid holds without scrolling, `ImageGrid.pageSize()`, at most 100; re-sized on a re-flow or the stack growing, keeping the first
+  tile shown on the page; paging buttons, thumbnails from item.preview_url, labelled and suggested by item.file_name; videos → use
+  no-preview `/loras_static/images/no-preview.png`). No query:
   `GET /api/lm/loras/list?sort_by=name&page_size=<n>&page=<p>`. With a query: LoRA Manager's `search` only matches file_name and
   model_name (tags / creator are opt-in; `folder` / `folder_include` are prefix filters ANDed with it), so every page of the list is
   fetched (page_size 100, its cap) and filtered here, case-insensitively, on the path relative to the LoRA root
   (`item.folder + "/" + item.file_name`, no extension) or model_name, keeping LoRA Manager's name order. The matches are kept for the
   current query (paging and suggestions reuse them, a changed query refetches) and paged locally. Selecting adds `{name: item.file_name,
   strength: usage_tips.strength ?? 1, clipStrength: usage_tips.clipStrength ?? clip_strength ?? strength, active: true}` (dedupe by name).
-- lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 3 columns in VR; the Desktop View's
+- lights: title + an `ImageGrid` of 7 square preset tiles as wide as the panel (cell 250: 6 columns in VR; the Desktop View's
   window re-flows it), each the preset's sky gradient (`skyCanvas`, the colours `paintSky` gives the room) with the preset name as
   its label, drawn like the LoRA library tiles; the current one outlined (`selected`, as the gallery outlines the shown entry). Applied instantly, no sliders, whatever output is shown: Neutral studio (default), High-key studio,
   Dramatic rim, Warm dark, Daylight outdoor, Overcast, Golden hour. The choice is kept in localStorage `snugui.lighting`.
