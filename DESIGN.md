@@ -590,6 +590,7 @@ another Lucide icon's path data under its name and change the name where it is u
 - Portrait: the dock pinned to the bottom, full width: toolbar over the tab bar, a `.pad` in the panel colour under it over the bottom
   inset. The image (`stage`) and the open panel take everything above the dock, from the top inset. Keyboard up (an edit open and
   the visual viewport ending above the window): the dock (and the tray) hide, the panel ends on `visualViewport.offsetTop + height`.
+  The end of an edit (`focusout`) re-places everything, and with the keyboard down a page scroll iOS left behind is reset to 0.
 - Landscape: the dock against the right edge, full height: the toolbar's run column then the tab rail, a `.pad` in the panel
   colour under both, over the right inset and the top / bottom ones. The image (`stage`) and the open panel take everything left of
   it, from the left inset, full height inside the safe area. Keyboard up: the panel takes the whole width from the top to the

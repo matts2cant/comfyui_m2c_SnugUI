@@ -89,6 +89,8 @@ export function createPhone(specs, { toolbar, arrange, tabs, shows, row, popup, 
 		const cs = getComputedStyle(layer), [t, r, b, l] = ["Top", "Right", "Bottom", "Left"].map((s) => parseFloat(cs["padding" + s]));
 		const W = innerWidth, H = innerHeight, vv = visualViewport, end = vv.offsetTop + vv.height;
 		const kb = keyboard.isEditing() && H - end > 1, top = kb ? Math.max(t, vv.offsetTop) : t;
+		// iOS scrolls the page up for its keyboard and can leave it there once the keyboard is gone, the dock pushed off screen
+		if (!kb && (scrollX || scrollY)) scrollTo(0, 0);
 		const spec = specs.find((s) => s.name === sheet), th = (mode === "portrait" ? 3 * PM + TIER_H + PB : BAR) * PHONE, bar = BAR * PHONE;
 		adopt(layer, toolbar.canvas, tabBar.canvas, popup.canvas, pick.canvas);
 		adopt(strip, row.canvas);
