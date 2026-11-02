@@ -214,9 +214,8 @@ export function createDesktop(specs, note, deck, relayout) {
 	}
 
 	addEventListener("resize", relayout);
-	// the phone keyboard comes and goes with the visual viewport, and an edit ending (focusout) brings the dock back
+	// the phone keyboard comes and goes with the visual viewport
 	for (const type of ["resize", "scroll"]) visualViewport.addEventListener(type, () => { if (layout) relayout(); });
-	addEventListener("focusout", () => { if (layout) relayout(); });
 	return {
 		update, stage, toggle: (name) => toggle(wins.find((w) => w.spec.name === name)),
 		closeTray: phone.closeTray, toggleTray: phone.toggleTray, toast: phone.toast,
