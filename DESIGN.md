@@ -4,20 +4,7 @@ Personal-use ComfyUI custom-node package: a "SnugUI" button snapshots the curren
 (`/snugui`) lets the user tweak inputs and generate from a phone (portrait and landscape), a desktop browser or tablet (the
 Desktop View) or a Meta Quest 3 (standalone Quest Browser, WebXR).
 
-## Hard rules
-- Its own custom-node package, `custom_nodes/comfyui_m2c_SnugUI/` (no nodes, no dependency on other custom nodes). Only create/modify
-  files inside it. Never touch ComfyUI core, other custom nodes, the venv (no pip installs), Comfy Desktop config, or `%APPDATA%`.
-- No CDN / internet at runtime. Libraries are vendored in `app/vendor/`.
-- Plain ES modules, no build step, no npm deps at runtime. Modern JS (Quest Browser = recent Chromium).
-- Match a hand-written style: small direct code, sparse useful comments, no defensive boilerplate.
-- Only `web/snugui.js` may hold frontend extension code (ComfyUI auto-loads EVERY .js under WEB_DIRECTORY into the main UI).
-- No git commits unless your task says so.
-
-## Environment facts
-- ComfyUI v0.42.4, frontend `comfyui_frontend_package` 1.55.18 (minified bundles in
-  `.venv/Lib/site-packages/comfyui_frontend_package/static/assets/`, logic in `settingStore-*.js`, `GraphView-*.js`, `api-*.js`).
-- User runs ComfyUI via Comfy Desktop on port 8000 (`--listen 0.0.0.0` set by the user). Quest reaches `http://<pc-ip>:8000`.
-- LoRA Manager 1.1.7 installed at `custom_nodes/comfyui-lora-manager` (routes on the same origin under `/api/lm/...`).
+The rules, the environment, the process and the testing tools are in [AGENTS.md](AGENTS.md).
 
 ## File layout & ownership
 ```

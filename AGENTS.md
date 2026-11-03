@@ -1,46 +1,90 @@
 # Agent guide
 
-SnugUI, a personal ComfyUI custom-node package: a page served by ComfyUI to run an App-mode workflow from a phone, a desktop browser or
-a Meta Quest. Follow the style rules in the ComfyUI root [AGENTS.md](../../AGENTS.md): small direct changes, hand-written
-look, no new dependencies, no internet requests.
+SnugUI, a personal ComfyUI custom-node package: a page served by ComfyUI (`/snugui`) to tweak and run an App-mode workflow from a
+phone, a desktop browser or tablet (the Desktop View) or a Meta Quest 3 (WebXR). It adds no nodes.
 
-Edit only inside this package folder. Never modify the ComfyUI installation, other custom nodes, the venv or Comfy Desktop's
-config.
+This file is how to work on it. [DESIGN.md](DESIGN.md) is what it is: the source-of-truth spec (server routes, the snapshot
+schema, the page's architecture and shared contracts, every panel's behaviour). [README.md](README.md) is the user guide. Read
+this file, then the DESIGN.md sections your change touches, before writing code.
+
+## Rules
+
+- Follow the ComfyUI root [AGENTS.md](../../AGENTS.md) style: small direct changes, code that looks hand-written for this
+  repository, sparse useful comments, no defensive boilerplate.
+- Create and change files only inside this package folder. Never touch ComfyUI core, other custom nodes, the venv (no pip
+  installs) or Comfy Desktop's config.
+- No internet at runtime: no CDN, libraries are vendored in `app/vendor/`. No downloads.
+- The page is plain ES modules: no build step, no npm, no runtime dependencies. Modern JS (Quest Browser is a recent Chromium).
+- No dependency on other custom nodes: LoRA Manager and Pixaroma's Group Switch are used when the workflow has them.
+- ComfyUI loads every `.js` under `web/` into its own UI: only `web/snugui.js` goes there.
+- Update DESIGN.md (the spec) and README.md (user-facing behaviour) in the same commit as the change they describe.
 
 ## Layout
 
 ```
-__init__.py        package entry and server: the page's routes and the snapshot store; no nodes (empty mappings), WEB_DIRECTORY = "./web"
-web/snugui.js      the ComfyUI frontend extension (ComfyUI loads every .js under web/ into its UI: nothing else goes there)
-app/               the page: index.html, js/ (plain ES modules, no build step), vendor/ (three.js)
+__init__.py                 package entry and server: the page's routes, the snapshot store, the parts library; no nodes, WEB_DIRECTORY = "./web"
+web/snugui.js               the ComfyUI frontend extension: the SnugUI button, Alt+S, the snapshot builder
+app/                        the page: index.html, js/ (hosts, panels, the ui.js canvas toolkit), prompt/ (JSON prompt schema, starter
+                            parts library), vendor/ (three.js)
+.claude/skills/snugui-test/ the sandbox and browser test tooling (below)
 ```
 
-## Docs
+DESIGN.md's "File layout & ownership" says what each module owns. Where to read for a change:
 
-- [DESIGN.md](DESIGN.md) is the source-of-truth spec: update it in the same commit as every change.
-- [README.md](README.md) is the user guide: keep it in sync with user-facing behaviour, in the same commit.
-- No CDN or internet at runtime: libraries are vendored in `app/vendor/`. No dependency on other custom nodes (LoRA Manager and
-  the Pixaroma Group Switch are used when present).
+- Server routes, the parts library on disk: "Server".
+- What the desktop sends: "Snapshot schema", "Desktop extension".
+- Any page code: "Shared contracts" first (Panel / Widget, hosts and panels, what is shared), then the host you touch: "main.js"
+  (VR and the VR-like view), "Desktop View", "Phones"; "Scene layout" for VR placement; "Toolbar and icons".
+- A panel: "Panels (behavior)"; the JSON prompt editor and the Library: "JSON prompt".
+- ui.js helpers and conventions: "Implementation notes".
+
+## Environment
+
+- The owner runs ComfyUI through Comfy Desktop on port 8000, listening on the LAN, and it serves this checkout directly: page
+  edits show on the owner's devices at the next reload, server edits after a ComfyUI restart (which only the owner does).
+- The ComfyUI frontend is the `comfyui_frontend_package` in the venv: minified bundles in its `static/assets/` (the extension
+  APIs, `settingStore-*.js`, `GraphView-*.js`, `api-*.js`). Read versions from the installation when they matter; don't pin them
+  in the docs.
+- LoRA Manager is `custom_nodes/comfyui-lora-manager` (routes under `/api/lm/`, same origin).
+- Node.js = Comfy Desktop's Electron, `%LOCALAPPDATA%\Programs\@comfyorgcomfyui-electron\ComfyUI.exe`, always with
+  `ELECTRON_RUN_AS_NODE=1`: without it, it starts the Desktop app.
+- Windows, PowerShell 5.1 and Git Bash. The venv's Python is `.venv\Scripts\python.exe` in the ComfyUI root.
+
+## Process
+
+Features go through these steps; small fixes skip 1 and 2.
+
+1. Grill the request with the owner until every decision is settled.
+2. UI work: wireframes first, approved by the owner before any code.
+3. Write a spec; implement it (or brief a sub-agent with it and review its work against the spec and DESIGN.md).
+4. Test in the sandbox with the `snugui-test` skill: syntax checks, the affected views, screenshots you have looked at, no page
+   errors.
+5. Report what changed, what was tested and what was not (headset, real phones), and let the owner try it on the devices.
+6. Commit only on the owner's OK.
 
 ## Testing
 
-NEVER use or restart the owner's running ComfyUI (Comfy Desktop, port 8000). Test in a sandbox instance started from the
-ComfyUI root:
+Use the `snugui-test` skill (`.claude/skills/snugui-test/SKILL.md`): a sandbox ComfyUI with every writable folder in your
+scratchpad, headless Edge over CDP with phone, desktop and VR-like views, fixtures and a LoRA Manager mock. Whatever you run:
 
-```
-.venv\Scripts\python.exe main.py --port 8189 --listen 127.0.0.1 --cpu --disable-all-custom-nodes --whitelist-custom-nodes comfyui_m2c_SnugUI --user-directory <scratch>\user --output-directory <scratch>\out --input-directory <scratch>\in
-```
-
-- The snapshot lives in the ComfyUI user directory, so a sandbox with its own `--user-directory` can't touch the owner's.
-- Stop only the sandbox process you started, by PID.
-- Drive the page with a headless browser on a fresh profile (screenshots, `window.__snugui`); close every browser you start. Never
-  screenshot the LoRA panel with the owner's LoRA library.
-- Node.js for syntax checks and quick script tests: Comfy Desktop's Electron exe
-  `%LOCALAPPDATA%\Programs\@comfyorgcomfyui-electron\ComfyUI.exe` run with env `ELECTRON_RUN_AS_NODE=1`. Without that variable
-  it launches the Desktop app, so never run it without it.
-- Headset-only behaviour (Quest Browser system keyboard, quad layers, hand tracking, grabbing) cannot be tested by agents; say so
-  in reports.
+- Never use, restart or point a browser at the owner's ComfyUI on port 8000.
+- A sandbox writes only to scratch: its user, output, input, models (the parts library) and temp folders. Check the parts path the
+  sandbox prints before testing the Library.
+- Never enable LoRA Manager in a sandbox, and never capture the owner's LoRA library or its thumbnails: they are private. The mock
+  is the only LoRA source in tests.
+- Stop only the processes you started, by PID; close every browser you start.
+- Headset and real-phone behaviour (WebXR, controllers, hands, the Quest and iOS keyboards) is tested by the owner: say what your
+  change touches there.
 
 ## Commits
 
-Local only, never push. Subjects like `Add ...`, `Fix ...`, `Make ...`.
+- Only the session working with the owner commits, and only on the owner's OK; a sub-agent never commits.
+- Local only, never push. The repository's own git identity, ending with the trailer
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Short subjects like the history: `Add ...`, `Fix ...`, `Make ...`, `Remove ...`. One behavioural change per commit, its
+  DESIGN.md and README.md updates included.
+- A feature of several commits goes on a branch, merged into master on the owner's OK. Paused work stays on a named branch.
+- This checkout is live on the owner's devices: edit it in place only for what the owner will test right away; otherwise work in a
+  git worktree.
+- Never commit screenshots, test data or scratch files.
+- Pass the message as a file (`git commit -F <file>`): PowerShell splits quoted multi-line arguments.

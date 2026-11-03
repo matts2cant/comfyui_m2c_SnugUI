@@ -9,8 +9,7 @@ image or 3D model in the middle and the workflow's inputs in panels around it. I
 ## Install
 
 Put this folder in `ComfyUI/custom_nodes/` and restart ComfyUI. It needs nothing beyond ComfyUI itself; the LoRA panel uses
-LoRA Manager and the Input panel shows Pixaroma's Group Switch when the workflow has them. The Sapiens2 nodes that used to ship
-with this code are now in their own package, `comfyui_m2c_sapiens2_tools`; SnugUI shows their GLBs like any other 3D output.
+LoRA Manager and the Input panel shows Pixaroma's Group Switch when the workflow has them.
 
 ## Setup
 
@@ -42,7 +41,7 @@ along the right edge: a run column (one-word status, timer, upright progress bar
 "Error" to read the whole message) and the tabs, on the same rows: Cancel level with the fifth tab, Generate with the last two.
 An open panel takes all the room left by the dock, edge to edge, over the image; closing it brings the image back.
 With several outputs (or a single image output, for its settings) the dock gets an output button showing the selected output (portrait: over the first tab, Cancel moves over
-the second; landscape: level with the third tab), with a dot when another output has new results. Tap it to open the output tiles
+the second; landscape: level with the fourth tab), with a dot when another output has new results. Tap it to open the output tiles
 in a small tray just above (portrait) or left of (landscape) the dock: tap a tile to switch outputs (the tray stays open; swipe
 it when the tiles do not fit), or the cog for the output's settings. Tap the button again, anywhere else, a tab, or press Esc to
 close it. Tapping a text field opens the phone's own keyboard (normal caret, selection and backspace); the open panel moves above
@@ -147,7 +146,9 @@ as `.txt`, and saving onto an existing name asks before overwriting. Load shows 
 tapping a prompt replaces the current one and switches to JSON or Text to match. Placeholders in a saved prompt are filled first,
 as for parts.
 
-The parts library lives in `models/snugui/parts/` (Comfy Desktop: the `snugui/parts` folder of its models directory), one text file
+The parts library lives in the `snugui/parts` folder of the models directory ComfyUI uses: `ComfyUI/models/snugui/parts/`, or
+Comfy Desktop's models folder when ComfyUI is started with Desktop's extra models config (it is the folder that gets the starter
+files at the first start). It holds one text file
 per field in `values/` (`person.pose.txt`: one part per line, `# Group` lines start a group), one JSON file of presets per
 subject type in `presets/`, the fragments in `fragments/` (`color.txt`, same format as the value files: the values `{color}` takes)
 and the saved prompts in `prompts/`. A placeholder naming a fragment that does not exist stays as typed (the picker shows its part in
@@ -167,7 +168,8 @@ snugui:
 
 The Library panel (the books button, after Prompt) manages everything the prompt editor saves, in four tabs: Prompts (the saved
 prompts' folders), Presets (by subject type), Parts (one file per field, then its parts by group) and Fragments (the same for
-the placeholder value lists). Each has a search line, "+ New" and "+ Folder" / "+ Group". Pick an item to rename it (edit its name
+the placeholder value lists). Each has a search line and "+ New"; Prompts also has "+ Folder", and Parts and Fragments "+ Group"
+once a file is open. Pick an item to rename it (edit its name
 and press Enter), move it to another folder or group, delete it (press Delete twice) or edit it: a part's text, a preset's JSON,
 a prompt's text. A part or fragment file can also be edited as a whole ("Edit file as text"), and a saved prompt loaded into the
 Prompt panel ("Load into prompt"). On a wide panel the details show beside the list; on a phone they replace it, with a Back row.
@@ -190,8 +192,8 @@ turned back on. Output tiles of switched-off outputs are dimmed; if every output
 ## Several outputs and 3D models
 
 If App mode marks several output nodes, a row of square tiles above the toolbar (each output's latest result, its type and title)
-picks which one the screen shows (remembered per workflow). A dot marks an output with new results; the view never switches on its
-own. The Gallery follows the selected output. A workflow with a single output in App mode has no tiles. On phones the tiles are
+picks which one the screen shows (remembered per workflow). A dot marks an output with new results; new results never switch the view
+(a Group Switch turning off the selected output does: the first active one is shown). The Gallery follows the selected output. A workflow with a single output in App mode has no tiles. On phones the tiles are
 in a tray opened from the dock's output button (see Phones).
 The cog at the end of the row opens a small pop-up with the selected output's display settings (images: Flat / 3D R/L / 3D L/R and HD;
 3D outputs have none yet, so the cog is greyed out while one is selected). It stays open while you pick, follows the selected tile, and closes on a press anywhere else, on the
@@ -234,10 +236,16 @@ choice is remembered. Panels and images are not lit.
 
 ## Limits
 
-- Images and GLB/glTF models only: video, audio and other 3D formats (OBJ, STL, FBX, splats...) are ignored.
+- PNG, JPEG and WebP images and GLB/glTF models only: other images (GIF, AVIF...), video, audio and other 3D formats (OBJ, STL,
+  FBX, splats...) are ignored.
 - Large models (1M triangles, tens of MB) are untested on the Quest.
 - Only widgets of the root graph that App mode exposes are applied; widgets of unknown type are edited as text.
 - Changes made in SnugUI are not written back to the desktop workflow; they only affect the prompts sent
   from SnugUI.
 - Quest-only paths (quad layer, system keyboard, hands, grabbing, the B button) are untested on hardware. Hands pinch to click and
   turn; grabbing with a hand only works if Quest Browser reports a hand squeeze.
+
+## Development
+
+[AGENTS.md](AGENTS.md) (rules, process, testing), [DESIGN.md](DESIGN.md) (the spec) and the `snugui-test` skill in
+`.claude/skills/` (sandbox ComfyUI and browser tests).
