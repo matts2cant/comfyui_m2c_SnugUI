@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "workflowName": "snugui_basic",
+  "prompt": {
+    "1": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "a fennec girl with big fluffy ears and a fluffy tail, long blonde wavy hair, blue eyes, reading in a cozy library"}, "_meta": {"title": "Prompt"}},
+    "2": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "blurry, low quality"}, "_meta": {"title": "Negative"}},
+    "3": {"class_type": "PrimitiveInt", "inputs": {"value": 42}, "_meta": {"title": "Seed"}},
+    "4": {"class_type": "EmptyImage", "inputs": {"width": 512, "height": 512, "batch_size": 1, "color": 16753920}, "_meta": {"title": "Image A"}},
+    "5": {"class_type": "EmptyImage", "inputs": {"width": 512, "height": 512, "batch_size": 1, "color": 3368652}, "_meta": {"title": "Image B"}},
+    "6": {"class_type": "ImageBlend", "inputs": {"image1": ["4", 0], "image2": ["5", 0], "blend_factor": 0.5, "blend_mode": "normal"}, "_meta": {"title": "Blend"}},
+    "7": {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "snugui_test"}, "_meta": {"title": "Save Image"}},
+    "8": {"class_type": "PreviewImage", "inputs": {"images": ["4", 0]}, "_meta": {"title": "Preview A"}}
+  },
+  "switchGroups": {},
+  "previewMethod": "default",
+  "inputs": [
+    {"key": "1:value", "nodeId": "1", "classType": "PrimitiveStringMultiline", "nodeTitle": "Prompt", "widget": "value", "label": "_prompt",
+     "targets": [{"nodeId": "1", "input": "value", "classType": "PrimitiveStringMultiline"}], "type": "STRING", "disabled": false, "multiline": true,
+     "value": "a fennec girl with big fluffy ears and a fluffy tail, long blonde wavy hair, blue eyes, reading in a cozy library", "control": null},
+    {"key": "2:value", "nodeId": "2", "classType": "PrimitiveStringMultiline", "nodeTitle": "Negative", "widget": "value", "label": "_negative_prompt",
+     "targets": [{"nodeId": "2", "input": "value", "classType": "PrimitiveStringMultiline"}], "type": "STRING", "disabled": false, "multiline": true,
+     "value": "blurry, low quality", "control": null},
+    {"key": "3:value", "nodeId": "3", "classType": "PrimitiveInt", "nodeTitle": "Seed", "widget": "value", "label": "_seed",
+     "targets": [{"nodeId": "3", "input": "value", "classType": "PrimitiveInt"}], "type": "INT", "disabled": false,
+     "min": 0, "max": 1125899906842624, "step": 1, "round": 1, "value": 42, "control": "randomize"},
+    {"key": "4:width", "nodeId": "4", "classType": "EmptyImage", "nodeTitle": "Image A", "widget": "width", "label": "[Image A] Width",
+     "targets": [{"nodeId": "4", "input": "width", "classType": "EmptyImage"}], "type": "INT", "disabled": false,
+     "min": 1, "max": 16384, "step": 1, "round": 1, "value": 512, "control": null},
+    {"key": "4:color", "nodeId": "4", "classType": "EmptyImage", "nodeTitle": "Image A", "widget": "color", "label": "[Image A] Color",
+     "targets": [{"nodeId": "4", "input": "color", "classType": "EmptyImage"}], "type": "INT", "disabled": false,
+     "min": 0, "max": 16777215, "step": 1, "round": 1, "value": 16753920, "control": null},
+    {"key": "5:color", "nodeId": "5", "classType": "EmptyImage", "nodeTitle": "Image B", "widget": "color", "label": "[Image B] Color",
+     "targets": [{"nodeId": "5", "input": "color", "classType": "EmptyImage"}], "type": "INT", "disabled": false,
+     "min": 0, "max": 16777215, "step": 1, "round": 1, "value": 3368652, "control": null},
+    {"key": "6:blend_factor", "nodeId": "6", "classType": "ImageBlend", "nodeTitle": "Blend", "widget": "blend_factor", "label": "[Blend] Factor",
+     "targets": [{"nodeId": "6", "input": "blend_factor", "classType": "ImageBlend"}], "type": "FLOAT", "disabled": false,
+     "min": 0, "max": 1, "step": 0.01, "round": 0.01, "value": 0.5, "control": null},
+    {"key": "6:blend_mode", "nodeId": "6", "classType": "ImageBlend", "nodeTitle": "Blend", "widget": "blend_mode", "label": "[Blend] Mode",
+     "targets": [{"nodeId": "6", "input": "blend_mode", "classType": "ImageBlend"}], "type": "COMBO", "disabled": false,
+     "options": ["normal", "multiply", "screen", "overlay", "soft_light", "difference"], "value": "normal", "control": null},
+    {"key": "7:filename_prefix", "nodeId": "7", "classType": "SaveImage", "nodeTitle": "Save Image", "widget": "filename_prefix", "label": "Filename prefix",
+     "targets": [{"nodeId": "7", "input": "filename_prefix", "classType": "SaveImage"}], "type": "STRING", "disabled": false, "multiline": false,
+     "value": "snugui_test", "control": null}
+  ],
+  "outputs": [
+    {"nodeId": "7", "title": "Save Image", "kind": "image"},
+    {"nodeId": "8", "title": "Preview A", "kind": "image"}
+  ],
+  "loraNodes": []
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "workflowName": "snugui_lora",
+  "prompt": {
+    "1": {"class_type": "Lora Loader (LoraManager)", "inputs": {"text": "<lora:paper_cutout:0.8>", "loras": {"__value__": [{"name": "paper_cutout", "strength": 0.8, "clipStrength": 0.8, "active": true}]}}, "_meta": {"title": "Lora Loader"}},
+    "2": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "a paper cutout fennec in a snowy forest"}, "_meta": {"title": "Prompt"}},
+    "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "snugui_test"}, "_meta": {"title": "Save Image"}}
+  },
+  "switchGroups": {},
+  "previewMethod": "default",
+  "inputs": [
+    {"key": "2:value", "nodeId": "2", "classType": "PrimitiveStringMultiline", "nodeTitle": "Prompt", "widget": "value", "label": "_prompt",
+     "targets": [{"nodeId": "2", "input": "value", "classType": "PrimitiveStringMultiline"}], "type": "STRING", "disabled": false, "multiline": true,
+     "value": "a paper cutout fennec in a snowy forest", "control": null}
+  ],
+  "outputs": [{"nodeId": "9", "title": "Save Image", "kind": "image"}],
+  "loraNodes": [
+    {"nodeId": "1", "classType": "Lora Loader (LoraManager)", "title": "Lora Loader", "text": "<lora:paper_cutout:0.8>",
+     "loras": [{"name": "paper_cutout", "strength": 0.8, "clipStrength": 0.8, "active": true}], "lorasWrapped": true}
+  ]
+}
